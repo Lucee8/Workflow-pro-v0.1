@@ -1,0 +1,243 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "Internal staff user record representing administrators, carpenters, or polish artisans",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Auth UID and unique internal key" },
+        "name": { "type": "string", "description": "Display name of the artisan or manager" },
+        "email": { "type": "string", "description": "Email address for login" },
+        "role": { "type": "string", "enum": ["admin", "carpenter", "polish_person"], "description": "System access control level" },
+        "initials": { "type": "string", "description": "Uppercase abbreviation initials" },
+        "is_active": { "type": "boolean", "description": "Active status of the workspace staff" },
+        "last_seen": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "created_by": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role", "initials", "is_active", "created_at"]
+    },
+    "customer": {
+      "title": "Customer",
+      "description": "Client profile containing delivery information and contact notes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "notes": { "type": "string" },
+        "whatsapp_opt_in": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "created_by": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "whatsapp_opt_in", "created_at", "created_by"]
+    },
+    "order": {
+      "title": "Order",
+      "description": "A custom wooden or steel furniture manufacturing transaction assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "article_no": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "category": { "type": "string" },
+        "sub_category": { "type": "string" },
+        "size": { "type": "string" },
+        "custom_size": { "type": "string" },
+        "finish": { "type": "string" },
+        "finish_type": { "type": "string" },
+        "special_notes": { "type": "string" },
+        "design_type": { "type": "string", "enum": ["Standard", "Custom"] },
+        "material": { "type": "string" },
+        "color_shade": { "type": "string" },
+        "no_of_units": { "type": "number" },
+        "carpenter_id": { "type": "string" },
+        "carpenter_labour_rate": { "type": "number" },
+        "polish_person_id": { "type": "string" },
+        "polish_labour_rate": { "type": "number" },
+        "current_status": { "type": "string" },
+        "is_delayed": { "type": "boolean" },
+        "priority": { "type": "string", "enum": ["normal", "urgent"] },
+        "order_date": { "type": "string" },
+        "delivery_date": { "type": "string" },
+        "internal_notes": { "type": "string" },
+        "portal_token": { "type": "string" },
+        "portal_token_expires": { "type": "string" },
+        "qr_token": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "created_by": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "images": {
+          "type": "array",
+          "description": "Progress photostream of mockups and ready furniture deliverables"
+        }
+      },
+      "required": ["id", "article_no", "customer_id", "category", "sub_category", "size", "design_type", "material", "color_shade", "no_of_units", "carpenter_id", "current_status", "is_delayed", "priority", "order_date", "delivery_date", "portal_token", "portal_token_expires", "qr_token", "created_at", "created_by"]
+    },
+    "statusLog": {
+      "title": "StatusLog",
+      "description": "Trace events logging furniture stage progress and artisan QA checklists",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "stage": { "type": "string" },
+        "changed_by": { "type": "string" },
+        "changed_by_name": { "type": "string" },
+        "changed_by_role": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" },
+        "qc_passed": { "type": "boolean" }
+      },
+      "required": ["id", "order_id", "stage", "changed_by", "changed_by_name", "changed_by_role", "timestamp"]
+    },
+    "material": {
+      "title": "Material",
+      "description": "Raw inventory of timber, laminates, polishes and functional hardware items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "unit": { "type": "string" },
+        "qty_in_stock": { "type": "number" },
+        "reorder_level": { "type": "number" },
+        "supplier_notes": { "type": "string" },
+        "last_updated": { "type": "string", "format": "date-time" },
+        "updated_by": { "type": "string" }
+      },
+      "required": ["id", "name", "unit", "qty_in_stock", "reorder_level", "last_updated", "updated_by"]
+    },
+    "payment": {
+      "title": "Payment",
+      "description": "Financial transaction ledger recording customer advance payments against structured order volumes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique payment record UUID identifier" },
+        "order_id": { "type": "string", "description": "Reference ID linking to the associated client furniture order" },
+        "total_amount": { "type": "number", "description": "The complete gross pricing valuation agreed with client" },
+        "advance_paid": { "type": "number", "description": "The initial prepayments received block" },
+        "balance_due": { "type": "number", "description": "Outstanding amount calculated automatically as total minus advance" },
+        "payment_date": { "type": "string", "description": "Vetted date stamp of received payment" },
+        "payment_mode": { "type": "string", "enum": ["cash", "upi", "transfer"], "description": "Method of fund transfer received" },
+        "notes": { "type": "string", "description": "Administrative notes and reference serials of the payments" },
+        "created_by": { "type": "string", "description": "Admin staff key who logged payments record" },
+        "created_at": { "type": "string", "format": "date-time", "description": "UTC timestamp of payments ledger creation" }
+      },
+      "required": [
+        "id",
+        "order_id",
+        "total_amount",
+        "advance_paid",
+        "balance_due",
+        "payment_date",
+        "payment_mode",
+        "created_by",
+        "created_at"
+      ]
+    },
+    "mrp_hardware": {
+      "title": "Hardware Material",
+      "description": "Hardware items master list in the Material Requirement Planning dashboard",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "available_stock": { "type": "number" },
+        "reserved_stock": { "type": "number" },
+        "unit": { "type": "string" },
+        "low_threshold": { "type": "number" },
+        "unit_cost": { "type": "number" },
+        "supplier": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "available_stock", "reserved_stock", "unit", "low_threshold", "unit_cost"]
+    },
+    "mrp_wood": {
+      "title": "Wood Board Material",
+      "description": "Wood/timber items master list in the Material Requirement Planning dashboard",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "thickness": { "type": "string" },
+        "grade": { "type": "string" },
+        "available_stock": { "type": "number" },
+        "reserved_stock": { "type": "number" },
+        "unit": { "type": "string" },
+        "low_threshold": { "type": "number" },
+        "unit_cost": { "type": "number" },
+        "supplier": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "thickness", "grade", "available_stock", "reserved_stock", "unit", "low_threshold", "unit_cost"]
+    },
+    "mrp_consumption_logs": {
+      "title": "Consumption Log",
+      "description": "Audit trails logging manual or automated consumption of woodwork inventory items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "itemName": { "type": "string" },
+        "quantityConsumed": { "type": "number" },
+        "unit": { "type": "string" },
+        "orderArticleNo": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "itemName", "quantityConsumed", "unit", "orderArticleNo", "timestamp"]
+    },
+    "mrp_project_boms": {
+      "title": "Project BOM",
+      "description": "Bill of Materials (BOM) custom lists allocated per order project",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "items": { "type": "array" }
+      },
+      "required": ["projectId", "items"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "Internal staff roster directory"
+    },
+    "/customers/{customerId}": {
+      "schema": "customer",
+      "description": "Directory storing client profiles and communication permissions"
+    },
+    "/orders/{orderId}": {
+      "schema": "order",
+      "description": "Central catalog directory logging all bespoke carpenter and polish orders"
+    },
+    "/statusLogs/{logId}": {
+      "schema": "statusLog",
+      "description": "Roster logs capturing progressive lifecycle transformations per order item"
+    },
+    "/materials/{materialId}": {
+      "schema": "material",
+      "description": "Real-time raw resource and timber inventory dashboard records"
+    },
+    "/payments/{paymentId}": {
+      "schema": "payment",
+      "description": "Ledger directory storing advance deposit balances and structural prices per order"
+    },
+    "/mrp_hardware/{itemId}": {
+      "schema": "mrp_hardware",
+      "description": "Master list directory storing technical or decorative hardware items"
+    },
+    "/mrp_wood/{itemId}": {
+      "schema": "mrp_wood",
+      "description": "Master list directory storing high-end timber, plywood woods and board varieties"
+    },
+    "/mrp_consumption_logs/{logId}": {
+      "schema": "mrp_consumption_logs",
+      "description": "Audit trails storing consumption events"
+    },
+    "/mrp_project_boms/{projectId}": {
+      "schema": "mrp_project_boms",
+      "description": "Store custom Bill Of Materials lists per active custom order project"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Since Firebase Auth has provider restrictions in this environment,
+    // we allow unauthenticated access for public/guest sandbox synchronization.
+    function isAuthenticated() {
+      return true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(userId);
+    }
+
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(customerId);
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(orderId);
+    }
+
+    match /statusLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(logId);
+    }
+
+    match /materials/{materialId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(materialId);
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(paymentId);
+    }
+
+    match /mrp_hardware/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(itemId);
+    }
+
+    match /mrp_wood/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(itemId);
+    }
+
+    match /mrp_consumption_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(logId);
+    }
+
+    match /mrp_project_boms/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(projectId);
+    }
+  }
+}

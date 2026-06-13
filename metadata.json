@@ -1,0 +1,6 @@
+{
+  "name": "Bhise'z Workshop Order Tracker",
+  "description": "Bhise'z Workshop Order Tracker is a highly-polished responsive web application designed for custom furniture production tracking. It helps administrators manage orders, assign carpenters and polish persons, log quality checks, track customer details, and automatically generate standard workshop article numbers according to YY/MM/XX/NNNN formatting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
