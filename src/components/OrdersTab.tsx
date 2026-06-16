@@ -64,6 +64,10 @@ export default function OrdersTab({
     const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();
 
     return matchesSearch && matchesStage && matchesStatus && matchesPriority;
+    }).sort((a, b) => {
+    const dateA = new Date(a.created_at || a.order_date).getTime();
+    const dateB = new Date(b.created_at || b.order_date).getTime();
+    return dateB - dateA;
   });
 
   // Pagination index helper

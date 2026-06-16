@@ -340,7 +340,10 @@ export default function DashboardTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {orders.slice(0, 5).map((order, i) => {
+                  {[...orders]
+                    .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime())
+                    .slice(0, 5)
+                    .map((order, i) => {
                     const cust = customers.find((c) => c.id === order.customer_id);
                     const carpenter = users.find((u) => u.id === order.carpenter_id);
                     return (

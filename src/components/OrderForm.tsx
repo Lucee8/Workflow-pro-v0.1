@@ -50,6 +50,43 @@ const CATEGORY_MAP: Record<string, string[]> = {
   'Diwans': ['Open Diwan', 'Box Diwan', 'Trolley Diwan', 'Bhaiyya Khat'],
 };
 
+// Helper scale and compression utility to keep Base64 strings well under Firestore limits (<100KB)
+function compressImage(dataUrl: string, maxWidth = 800, maxHeight = 800, quality = 0.6): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      // Maintain aspect ratio
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } else {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 interface OrderFormProps {
   customers: Customer[];
   users: User[];
@@ -143,11 +180,14 @@ export default function OrderForm({ customers, users, orders, onSave, onCancel }
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        compressImage(dataUrl).then((compressedUrl) => {
         setRefImages((prev) => [
           ...prev,
-          { id: generateUUID(), url: dataUrl, type: 'Design Reference' }
+            { id: generateUUID(), url: compressedUrl, type: 'Design Reference' }
         ]);
+        });
+
         stopWebcam();
       }
     }
@@ -186,10 +226,18 @@ export default function OrderForm({ customers, users, orders, onSave, onCancel }
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
+          compressImage(event.target.result as string).then((compressedUrl) => {
+            setRefImages((prev) => [
+              ...prev,
+              { id: generateUUID(), url: compressedUrl, type: 'Design Reference' }
+            ]);
+          }).catch((err) => {
+            console.error("Compression failed, using raw", err);
           setRefImages((prev) => [
             ...prev,
             { id: generateUUID(), url: event.target!.result as string, type: 'Design Reference' }
           ]);
+  });
         }
       };
       reader.readAsDataURL(file);
