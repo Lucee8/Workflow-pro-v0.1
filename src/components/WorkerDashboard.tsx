@@ -590,7 +590,7 @@ export default function WorkerDashboard({
                           className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
                         />
                       </div>
-                      <div>
+                      {/* <div>
                         <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">SQFT Area (Surface)</label>
                         <input
                           type="number"
@@ -601,7 +601,7 @@ export default function WorkerDashboard({
                           placeholder="e.g. 32.5"
                           className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 font-mono"
                         />
-                      </div>
+                      </div> */}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 items-center">
