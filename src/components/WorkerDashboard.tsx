@@ -16,7 +16,10 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
   let modelName = order.article_no ? order.article_no.split('/').pop() || 'BED-01' : 'BED-01';
   let sizeOfProduct = order.size === 'Custom' ? (order.custom_size || '5FT X 6.5FT') : (order.size || '5FT X 6.5FT');
   let catalogueName = order.category ? `${order.category} Catalogue` : 'Beds Catalogue';
-  let defaultImage = 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=600&auto=format&fit=crop'; // High quality wooden Bed picture
+  
+  // Find any Design Reference image from order
+  const designRefImg = order.images?.find((img) => img.type === 'Design Reference')?.url;
+  let defaultImage = designRefImg || 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
   let sqft = 32.5;
 
   if (sub.includes('bed') || cat.includes('bed')) {
@@ -24,7 +27,9 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     modelName = 'BED-01';
     sizeOfProduct = '5FT X 6.5FT';
     sqft = 32.5;
-    defaultImage = 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=650&auto=format&fit=crop';
+    if (!designRefImg) {
+      defaultImage = 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=650&auto=format&fit=crop';
+    }
     parts = [
       { id: 'part_1', part_name: 'BACKSIDE LEGS', width: 3, breadth: 3, length: 3.5, quantity: 2 },
       { id: 'part_2', part_name: 'FRONT LEGS', width: 3, breadth: 3, length: 1.5, quantity: 3 },
@@ -42,7 +47,9 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     modelName = 'CAB-02';
     sizeOfProduct = '4FT X 7FT';
     sqft = 28;
-    defaultImage = 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=650&auto=format&fit=crop';
+    if (!designRefImg) {
+      defaultImage = 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=650&auto=format&fit=crop';
+    }
     parts = [
       { id: 'part_1', part_name: 'SIDE PANELS', width: 0.75, breadth: 24, length: 7, quantity: 2 },
       { id: 'part_2', part_name: 'TOP & BOTTOM BOARDS', width: 0.75, breadth: 24, length: 4, quantity: 2 },
@@ -56,7 +63,9 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     modelName = 'TAB-15';
     sizeOfProduct = '5FT X 2.5FT';
     sqft = 12.5;
-    defaultImage = 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=650&auto=format&fit=crop';
+    if (!designRefImg) {
+      defaultImage = 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=650&auto=format&fit=crop';
+    }
     parts = [
       { id: 'part_1', part_name: 'TABLE TOP COUNTER', width: 1.5, breadth: 30, length: 5, quantity: 1 },
       { id: 'part_2', part_name: 'HEAVY FOUR LEGS', width: 3, breadth: 3, length: 2.5, quantity: 4 },
@@ -69,7 +78,9 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     modelName = 'SOF-03';
     sizeOfProduct = '6.5FT X 3FT';
     sqft = 19.5;
-    defaultImage = 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=650&auto=format&fit=crop';
+    if (!designRefImg) {
+      defaultImage = 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=650&auto=format&fit=crop';
+    }
     parts = [
       { id: 'part_1', part_name: 'OUTER BOTTOM FRAME', width: 3, breadth: 1.5, length: 6.5, quantity: 2 },
       { id: 'part_2', part_name: 'OUTER SIDE SUPPORT', width: 3, breadth: 1.5, length: 3, quantity: 2 },
@@ -83,7 +94,9 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     modelName = 'MODEL-X';
     sizeOfProduct = 'Custom Size';
     sqft = 12.0;
-    defaultImage = 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
+    if (!designRefImg) {
+      defaultImage = 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
+    }
     parts = [
       { id: 'part_1', part_name: 'MAIN STRUT BEAMS', width: 2, breadth: 2, length: 4, quantity: 4 },
       { id: 'part_2', part_name: 'CROSS SUPPORT RAILS', width: 1.5, breadth: 1.5, length: 3, quantity: 6 },
@@ -258,7 +271,13 @@ export default function WorkerDashboard({
     setModelName(schedule.model_name);
     setSizeOfProduct(schedule.size_of_product);
     setSqft(schedule.sqft || 0);
-    setImageLink(schedule.image_link || '');
+
+    const originalDesignImg = activeOrder.images?.find((img) => img.type === 'Design Reference')?.url;
+    if (originalDesignImg) {
+      setImageLink(originalDesignImg);
+    } else {
+      setImageLink(schedule.image_link || '');
+    }
     setParts(schedule.parts || []);
   };
 
@@ -273,7 +292,15 @@ export default function WorkerDashboard({
       setModelName(schedule.model_name);
       setSizeOfProduct(schedule.size_of_product);
       setSqft(schedule.sqft || 0);
-      setImageLink(schedule.image_link || '');
+
+      const originalDesignImg = ord.images?.find((img) => img.type === 'Design Reference')?.url;
+      // If the saved wood schedule STILL uses a generic unsplash placeholder but we have a custom design reference uploaded, open with the custom design reference!
+      if (originalDesignImg && (!schedule.image_link || schedule.image_link.includes('unsplash.com'))) {
+        setImageLink(originalDesignImg);
+      } else {
+        setImageLink(schedule.image_link || originalDesignImg || '');
+      }
+
       setParts(schedule.parts || []);
       setShowRefImg(false);
     } else {
@@ -361,14 +388,14 @@ export default function WorkerDashboard({
     const updatedOrder: Order = {
       ...activeOrder,
       current_status: nextStage,
-            carpenter_sub_status: isCarpenter ? nextSubStatus : activeOrder.carpenter_sub_status,
+      carpenter_sub_status: isCarpenter ? nextSubStatus : activeOrder.carpenter_sub_status,
       images: [...existingOtherImages, ...newInProgressImages],
       updated_at: new Date().toISOString(),
       wood_schedule: isCarpenter ? woodScheduleData : activeOrder.wood_schedule,
     };
 
     onUpdateOrder(updatedOrder, log);
-    
+
     if (isCarpenter && nextStage === 'Carpentry') {
       setActiveOrder(updatedOrder);
       setProgressStatus(nextSubStatus || 'wood_procurement');
@@ -379,15 +406,15 @@ export default function WorkerDashboard({
         alert('Success: Under Carpentry completed! Sub-status has been frozen and auto-advanced to "Completed (Move to QC Check 1)".');
       }
     } else {
-    setActiveOrder(null);
-    alert(`Success: Staging status saved. Order advanced to "${nextStage}".`);
-        }
+      setActiveOrder(null);
+      alert(`Success: Staging status saved. Order advanced to "${nextStage}".`);
+    }
   };
 
   if (activeOrder) {
     // --- MODE B: UPDATE STATUS PAGE LAYOUT ---
     const activeCust = customers.find((c) => c.id === activeOrder.customer_id);
-        const savedSub = activeOrder.carpenter_sub_status || 'wood_procurement';
+    const savedSub = activeOrder.carpenter_sub_status || 'wood_procurement';
     return (
       <div className="space-y-6 animate-in fade-in duration-200">
         {/* Header navigation back */}
@@ -496,6 +523,27 @@ export default function WorkerDashboard({
                     </>
                   ) : (
                     /* Default In Progress (used by paint/polish) */
+                    <label
+                      className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
+                        progressStatus === 'in_progress'
+                          ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
+                          : 'bg-stone-50 border-stone-200 text-stone-550'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="progressRadios"
+                        checked={progressStatus === 'in_progress'}
+                        onChange={() => setProgressStatus('in_progress')}
+                        className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
+                      />
+                      <div>
+                        <strong className="text-xs block font-sans">In Progress</strong>
+                        <span className="text-[10px] text-stone-400 font-medium font-sans">Continue work on active cabinetry floor cutting</span>
+                      </div>
+                    </label>
+                  )}
+
                   <label
                     className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
                       isCarpenter && savedSub !== 'completed'
@@ -512,27 +560,6 @@ export default function WorkerDashboard({
                       disabled={isCarpenter && savedSub !== 'completed'}
                       onChange={() => setProgressStatus('completed')}
                       className="text-green-700 focus:ring-green-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                      <div>
-                        <strong className="text-xs block font-sans">In Progress</strong>
-                        <span className="text-[10px] text-stone-400 font-medium font-sans">Continue work on active cabinetry floor cutting</span>
-                      </div>
-                    </label>
-                  )}
-
-                  <label
-                    className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
-                      progressStatus === 'completed'
-                        ? 'bg-green-50/40 border-green-500 ring-2 ring-green-500/10 text-green-900'
-                        : 'bg-stone-50 border-stone-200 text-stone-550'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="progressRadios"
-                      checked={progressStatus === 'completed'}
-                      onChange={() => setProgressStatus('completed')}
-                      className="text-green-700 focus:ring-green-500 font-bold shrink-0 cursor-pointer"
                     />
                     <div>
                       <strong className="text-xs block font-sans">
@@ -631,7 +658,7 @@ export default function WorkerDashboard({
                           className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
                         />
                       </div>
-                      {/* <div>
+                      <div>
                         <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">SQFT Area (Surface)</label>
                         <input
                           type="number"
@@ -642,7 +669,7 @@ export default function WorkerDashboard({
                           placeholder="e.g. 32.5"
                           className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 font-mono"
                         />
-                      </div> */}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 items-center">
@@ -676,6 +703,48 @@ export default function WorkerDashboard({
                         )}
                       </div>
                     </div>
+
+                    {/* Design Reference Drawings list (If provided when creating the order) */}
+                    {activeOrder?.images && activeOrder.images.filter((img) => img.type === 'Design Reference').length > 0 && (
+                      <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 mt-2">
+                        <span className="block text-[10px] text-[#593622] font-extrabold uppercase tracking-wider">
+                          Original Design Reference Drawings (Uploaded on Order Creation)
+                        </span>
+                        <div className="flex flex-wrap gap-2.5">
+                          {activeOrder.images
+                            .filter((img) => img.type === 'Design Reference')
+                            .map((img, idx) => (
+                              <div
+                                key={img.id || idx}
+                                onClick={() => {
+                                  setImageLink(img.url);
+                                  setShowRefImg(true);
+                                }}
+                                className={`group relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer transition ${
+                                  imageLink === img.url
+                                    ? 'border-[#593622] ring-2 ring-[#593622]/20 shadow-xs'
+                                    : 'border-stone-200 hover:border-stone-400'
+                                }`}
+                              >
+                                <img
+                                  referrerPolicy="no-referrer"
+                                  src={img.url}
+                                  alt={`Design Ref ${idx + 1}`}
+                                  className="object-cover w-full h-full transition duration-150 group-hover:scale-105"
+                                />
+                                {imageLink === img.url && (
+                                  <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#593622] text-white flex items-center justify-center text-[8px] font-bold">
+                                    ✓
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                        </div>
+                        <p className="text-[9px] text-[#593622]/80 font-medium">
+                          💡 Click any original design reference image above to load/view it in the Wood Schedule template as the primary blueprint!
+                        </p>
+                      </div>
+                    )}
 
                     {showRefImg && imageLink && (
                       <div className="border border-stone-200 rounded-xl overflow-hidden shadow-inner bg-stone-100 max-h-[220px] max-w-lg mx-auto flex items-center justify-center p-1.5">
