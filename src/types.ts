@@ -100,6 +100,7 @@ export interface Order {
     uploaded_by: string;
   }>;
   wood_schedule?: WoodSchedule;
+    carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'completed';
 }
 
 export interface StatusLog {

@@ -69,6 +69,7 @@
         "created_at": { "type": "string", "format": "date-time" },
         "created_by": { "type": "string" },
         "updated_at": { "type": "string", "format": "date-time" },
+        "carpenter_sub_status": { "type": "string", "enum": ["wood_procurement", "under_carpentry", "completed"], "description": "Artisan subtask progression status" },
         "images": {
           "type": "array",
           "description": "Progress photostream of mockups and ready furniture deliverables"
