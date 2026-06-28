@@ -64,7 +64,7 @@ export default function OrdersTab({
     const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();
 
     return matchesSearch && matchesStage && matchesStatus && matchesPriority;
-    }).sort((a, b) => {
+  }).sort((a, b) => {
     const dateA = new Date(a.created_at || a.order_date).getTime();
     const dateB = new Date(b.created_at || b.order_date).getTime();
     return dateB - dateA;
@@ -99,11 +99,14 @@ export default function OrdersTab({
 
         {isAdmin && (
           <button
-            onClick={() => onNavigateTab('create_order')}
+            onClick={() => {
+              alert("OrderFlow Pro Protocol: Orders must be placed through the CRM! Mark a CRM lead status as 'Order Confirmed' or approve a customer quotation to automatically queue a production order. Redirecting to CRM...");
+              onNavigateTab('crm');
+            }}
             className="flex items-center gap-2 bg-[#593622] hover:bg-[#402414] text-white font-bold py-2.5 px-4 rounded-xl shadow transition text-xs"
           >
             <PlusCircle size={15} />
-            New Order
+            Place Order via CRM
           </button>
         )}
       </div>

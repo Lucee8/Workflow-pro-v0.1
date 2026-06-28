@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'carpenter' | 'polish_person';
+export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person';
 
 export interface User {
   id: string; // Firebase Auth UID equivalent
@@ -100,7 +100,7 @@ export interface Order {
     uploaded_by: string;
   }>;
   wood_schedule?: WoodSchedule;
-    carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'completed';
+  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'completed';
 }
 
 export interface StatusLog {
@@ -188,4 +188,118 @@ export interface NotificationItem {
   timestamp: string;
   is_read: boolean;
 }
+
+export type CRMCustomerStatus =
+  | 'New Inquiry'
+  | 'Quotation Pending'
+  | 'Quotation Sent'
+  | 'Follow-up'
+  | 'Order Confirmed'
+  | 'In Production'
+  | 'Delivered'
+  | 'Cancelled';
+
+export type CRMCustomerSource = 'Social media' | 'website' | 'walkin' | 'Other';
+
+export interface CRMCustomer {
+  id: string; // Auto Generated/UUID
+  name: string;
+  companyName?: string;
+  phone: string;
+  whatsappNumber?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
+  gstNumber?: string;
+  notes?: string;
+  preferredContactMethod: 'Phone' | 'WhatsApp' | 'Email';
+  source?: CRMCustomerSource;
+  budget?: number;
+  status?: CRMCustomerStatus;
+  created_at: string;
+  created_by: string;
+}
+
+export interface CRMQuotationItem {
+  id: string;
+  furnitureItem: string;
+  quantity: number;
+  material: string;
+  dimensions: string;
+  unitPrice: number;
+  discount: number; // percentage
+  gst: number; // percentage
+  totalAmount: number;
+}
+
+export interface CRMQuotation {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  items: CRMQuotationItem[];
+  totalAmount: number;
+  validUntil: string;
+  notes?: string;
+  status: 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Expired';
+  created_at: string;
+  created_by: string;
+}
+
+export interface CRMFollowUp {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  reminder: string;
+  notes?: string;
+  status: 'Pending' | 'Completed';
+  created_at: string;
+  created_by: string;
+}
+
+export interface CRMPayment {
+  id: string;
+  customer_id: string;
+  order_id?: string;
+  advance_paid: number;
+  balance_due: number;
+  payment_method: 'Cash' | 'UPI' | 'Bank Transfer';
+  transaction_id?: string;
+  payment_date: string;
+  total_amount: number;
+  pending_amount: number;
+}
+
+export interface CRMNote {
+  id: string;
+  customer_id: string;
+  author: string;
+  timestamp: string;
+  note: string;
+}
+
+export interface CRMAttachment {
+  id: string;
+  customer_id: string;
+  fileName: string;
+  fileType: string;
+  fileCategory: 'Design Image' | 'Reference Photo' | 'PDF' | 'CAD Drawing' | 'Invoice' | 'Agreement';
+  url: string;
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
+export interface CRMTimelineEvent {
+  id: string;
+  customer_id: string;
+  type: 'customer_created' | 'quotation_sent' | 'quotation_approved' | 'order_created' | 'status_change' | 'payment_logged' | 'note_added' | 'phone_call' | 'whatsapp_msg' | 'email_sent';
+  title: string;
+  description: string;
+  timestamp: string;
+  operator: string;
+}
+
 

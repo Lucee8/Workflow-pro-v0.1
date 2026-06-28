@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage } from '../types';
+import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
 
 // Helper to generate UUIDs
 export function generateUUID(): string {
@@ -98,6 +98,13 @@ export interface AppState {
   materials: Material[];
   payments: Payment[];
   currentUser: User | null;
+  crmCustomers: CRMCustomer[];
+  crmQuotations: CRMQuotation[];
+  crmFollowUps: CRMFollowUp[];
+  crmPayments: CRMPayment[];
+  crmNotes: CRMNote[];
+  crmAttachments: CRMAttachment[];
+  crmTimelineEvents: CRMTimelineEvent[];
 }
 
 export function loadState(): AppState {
@@ -119,6 +126,13 @@ export function loadState(): AppState {
             ...parsed,
             payments: parsed.payments || [],
             materials: parsed.materials || [],
+            crmCustomers: parsed.crmCustomers || [],
+            crmQuotations: parsed.crmQuotations || [],
+            crmFollowUps: parsed.crmFollowUps || [],
+            crmPayments: parsed.crmPayments || [],
+            crmNotes: parsed.crmNotes || [],
+            crmAttachments: parsed.crmAttachments || [],
+            crmTimelineEvents: parsed.crmTimelineEvents || [],
           };
         }
       }
@@ -136,6 +150,13 @@ export function loadState(): AppState {
     materials: SEED_MATERIALS,
     payments: SEED_PAYMENTS,
     currentUser: SEED_USERS[0], // Start as Admin for convenience, login allows changes
+    crmCustomers: [],
+    crmQuotations: [],
+    crmFollowUps: [],
+    crmPayments: [],
+    crmNotes: [],
+    crmAttachments: [],
+    crmTimelineEvents: [],
   };
   saveState(state);
   return state;

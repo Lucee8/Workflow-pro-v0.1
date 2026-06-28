@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState } from './db/store';
-import { User, Customer, Order, StatusLog, Payment } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -16,7 +16,20 @@ import {
   saveStatusLogToFirebase,
   savePaymentToFirebase,
   saveUserToFirebase,
-  deleteUserFromFirebase
+  deleteUserFromFirebase,
+  saveCRMCustomerToFirebase,
+  deleteCRMCustomerFromFirebase,
+  saveCRMQuotationToFirebase,
+  deleteCRMQuotationFromFirebase,
+  saveCRMFollowUpToFirebase,
+  deleteCRMFollowUpFromFirebase,
+  saveCRMPaymentToFirebase,
+  deleteCRMPaymentFromFirebase,
+  saveCRMNoteToFirebase,
+  deleteCRMNoteFromFirebase,
+  saveCRMAttachmentToFirebase,
+  deleteCRMAttachmentFromFirebase,
+  saveCRMTimelineEventToFirebase
 } from './db/firebaseService';
 
 // Component imports
@@ -34,6 +47,7 @@ import NotificationCenter from './components/NotificationCenter';
 import CustomersTab from './components/CustomersTab';
 import DetailOrderFormTab from './components/DetailOrderFormTab';
 import MaterialRequirementPlanning from './components/MaterialRequirementPlanning';
+import CRMTab from './components/CRMTab';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
@@ -64,22 +78,22 @@ export default function App() {
         await seedFirestoreIfEmpty(db);
         setFirebaseSeeding(false);
 
-// Subscribes to snapshotted real-time database updates
-unsubscribe = syncFirestore(
-  (updatedState) => {
-    setDb((currentDb) => {
-      const nextDb = {
-        ...currentDb,
-        ...updatedState,
-      };
-      saveState(nextDb);
-      return nextDb;
-    });
-  },
-  (error) => {
-    console.error("Firestore sync subscription error:", error);
-  }
-);
+        // Subscribes to snapshotted real-time database updates
+        unsubscribe = syncFirestore(
+          (updatedState) => {
+            setDb((currentDb) => {
+              const nextDb = {
+                ...currentDb,
+                ...updatedState,
+              };
+              saveState(nextDb);
+              return nextDb;
+            });
+          },
+          (error) => {
+            console.error("Firestore sync subscription error:", error);
+          }
+        );
       }
     }
 
@@ -270,6 +284,106 @@ unsubscribe = syncFirestore(
     deleteUserFromFirebase(userId).catch(console.error);
   };
 
+  // CRM CRUD State Handlers
+  const handleSaveCRMCustomer = (cust: CRMCustomer) => {
+    const exists = db.crmCustomers.some(c => c.id === cust.id);
+    const updated = exists 
+      ? db.crmCustomers.map(c => c.id === cust.id ? cust : c)
+      : [cust, ...db.crmCustomers];
+    updateDbState({ ...db, crmCustomers: updated });
+    saveCRMCustomerToFirebase(cust);
+  };
+
+  const handleDeleteCRMCustomer = (id: string) => {
+    const updated = db.crmCustomers.filter(c => c.id !== id);
+    updateDbState({ ...db, crmCustomers: updated });
+    deleteCRMCustomerFromFirebase(id);
+  };
+
+  const handleSaveCRMQuotation = (quote: CRMQuotation) => {
+    const exists = db.crmQuotations.some(q => q.id === quote.id);
+    const updated = exists
+      ? db.crmQuotations.map(q => q.id === quote.id ? quote : q)
+      : [quote, ...db.crmQuotations];
+    updateDbState({ ...db, crmQuotations: updated });
+    saveCRMQuotationToFirebase(quote);
+  };
+
+  const handleDeleteCRMQuotation = (id: string) => {
+    const updated = db.crmQuotations.filter(q => q.id !== id);
+    updateDbState({ ...db, crmQuotations: updated });
+    deleteCRMQuotationFromFirebase(id);
+  };
+
+  const handleSaveCRMFollowUp = (item: CRMFollowUp) => {
+    const exists = db.crmFollowUps.some(f => f.id === item.id);
+    const updated = exists
+      ? db.crmFollowUps.map(f => f.id === item.id ? item : f)
+      : [item, ...db.crmFollowUps];
+    updateDbState({ ...db, crmFollowUps: updated });
+    saveCRMFollowUpToFirebase(item);
+  };
+
+  const handleDeleteCRMFollowUp = (id: string) => {
+    const updated = db.crmFollowUps.filter(f => f.id !== id);
+    updateDbState({ ...db, crmFollowUps: updated });
+    deleteCRMFollowUpFromFirebase(id);
+  };
+
+  const handleSaveCRMPayment = (item: CRMPayment) => {
+    const exists = db.crmPayments.some(p => p.id === item.id);
+    const updated = exists
+      ? db.crmPayments.map(p => p.id === item.id ? item : p)
+      : [item, ...db.crmPayments];
+    updateDbState({ ...db, crmPayments: updated });
+    saveCRMPaymentToFirebase(item);
+  };
+
+  const handleDeleteCRMPayment = (id: string) => {
+    const updated = db.crmPayments.filter(p => p.id !== id);
+    updateDbState({ ...db, crmPayments: updated });
+    deleteCRMPaymentFromFirebase(id);
+  };
+
+  const handleSaveCRMNote = (item: CRMNote) => {
+    const exists = db.crmNotes.some(n => n.id === item.id);
+    const updated = exists
+      ? db.crmNotes.map(n => n.id === item.id ? item : n)
+      : [item, ...db.crmNotes];
+    updateDbState({ ...db, crmNotes: updated });
+    saveCRMNoteToFirebase(item);
+  };
+
+  const handleDeleteCRMNote = (id: string) => {
+    const updated = db.crmNotes.filter(n => n.id !== id);
+    updateDbState({ ...db, crmNotes: updated });
+    deleteCRMNoteFromFirebase(id);
+  };
+
+  const handleSaveCRMAttachment = (item: CRMAttachment) => {
+    const exists = db.crmAttachments.some(a => a.id === item.id);
+    const updated = exists
+      ? db.crmAttachments.map(a => a.id === item.id ? item : a)
+      : [item, ...db.crmAttachments];
+    updateDbState({ ...db, crmAttachments: updated });
+    saveCRMAttachmentToFirebase(item);
+  };
+
+  const handleDeleteCRMAttachment = (id: string) => {
+    const updated = db.crmAttachments.filter(a => a.id !== id);
+    updateDbState({ ...db, crmAttachments: updated });
+    deleteCRMAttachmentFromFirebase(id);
+  };
+
+  const handleSaveCRMTimelineEvent = (item: CRMTimelineEvent) => {
+    const exists = db.crmTimelineEvents.some(e => e.id === item.id);
+    const updated = exists
+      ? db.crmTimelineEvents.map(e => e.id === item.id ? item : e)
+      : [item, ...db.crmTimelineEvents];
+    updateDbState({ ...db, crmTimelineEvents: updated });
+    saveCRMTimelineEventToFirebase(item);
+  };
+
   // Nav to specific order details tab
   const handleViewOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -299,6 +413,7 @@ unsubscribe = syncFirestore(
   }
 
   const isAdmin = currentUser.role === 'admin';
+  const isManager = currentUser.role === 'manager';
 
   return (
     <div className="min-h-screen bg-stone-100 flex flex-col relative transition-all duration-300">
@@ -379,6 +494,36 @@ unsubscribe = syncFirestore(
                 payments={db.payments}
                 onNavigateTab={(tab) => setCurrentTab(tab)}
                 onViewOrder={handleViewOrder}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: CRM MODULE TAB (Admin & Manager Only) */}
+          {currentTab === 'crm' && (isAdmin || isManager) && (
+            <motion.div
+              key="crm"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+            >
+              <CRMTab
+                db={db}
+                onSaveCRMCustomer={handleSaveCRMCustomer}
+                onDeleteCRMCustomer={handleDeleteCRMCustomer}
+                onSaveCRMQuotation={handleSaveCRMQuotation}
+                onDeleteCRMQuotation={handleDeleteCRMQuotation}
+                onSaveCRMFollowUp={handleSaveCRMFollowUp}
+                onDeleteCRMFollowUp={handleDeleteCRMFollowUp}
+                onSaveCRMPayment={handleSaveCRMPayment}
+                onDeleteCRMPayment={handleDeleteCRMPayment}
+                onSaveCRMNote={handleSaveCRMNote}
+                onDeleteCRMNote={handleDeleteCRMNote}
+                onSaveCRMAttachment={handleSaveCRMAttachment}
+                onDeleteCRMAttachment={handleDeleteCRMAttachment}
+                onSaveCRMTimelineEvent={handleSaveCRMTimelineEvent}
+                onSaveOrder={handleSaveOrder}
+                currentUser={currentUser}
+                users={db.users}
               />
             </motion.div>
           )}

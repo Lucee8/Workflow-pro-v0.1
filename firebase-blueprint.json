@@ -197,6 +197,127 @@
         "items": { "type": "array" }
       },
       "required": ["projectId", "items"]
+    },
+    "crmCustomer": {
+      "title": "CRM Customer",
+      "description": "Customer Profile with extended CRM attributes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "companyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "pinCode": { "type": "string" },
+        "gstNumber": { "type": "string" },
+        "notes": { "type": "string" },
+        "preferredContactMethod": { "type": "string", "enum": ["Phone", "WhatsApp", "Email"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "created_by": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "preferredContactMethod", "created_at", "created_by"]
+    },
+    "crmQuotation": {
+      "title": "CRM Quotation",
+      "description": "Bespoke furniture price quote created before order production",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "customer_name": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "validUntil": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Sent", "Approved", "Rejected", "Expired"] },
+        "created_at": { "type": "string" },
+        "created_by": { "type": "string" }
+      },
+      "required": ["id", "customer_id", "customer_name", "items", "totalAmount", "validUntil", "status", "created_at", "created_by"]
+    },
+    "crmFollowUp": {
+      "title": "CRM Follow-up",
+      "description": "Reminders and logs for tracking customer reachouts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "customer_name": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "reminder": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Completed"] },
+        "created_at": { "type": "string" },
+        "created_by": { "type": "string" }
+      },
+      "required": ["id", "customer_id", "customer_name", "date", "time", "reminder", "status"]
+    },
+    "crmPayment": {
+      "title": "CRM Payment Progress Tracker",
+      "description": "Advance and balance due transactions mapped to a specific customer profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "advance_paid": { "type": "number" },
+        "balance_due": { "type": "number" },
+        "payment_method": { "type": "string", "enum": ["Cash", "UPI", "Bank Transfer"] },
+        "transaction_id": { "type": "string" },
+        "payment_date": { "type": "string" },
+        "total_amount": { "type": "number" },
+        "pending_amount": { "type": "number" }
+      },
+      "required": ["id", "customer_id", "advance_paid", "balance_due", "payment_method", "payment_date", "total_amount", "pending_amount"]
+    },
+    "crmNote": {
+      "title": "CRM Customer Note",
+      "description": "Interactions logs and internal workshop details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "author": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "required": ["id", "customer_id", "author", "timestamp", "note"]
+    },
+    "crmAttachment": {
+      "title": "CRM Customer Attachment",
+      "description": "Reference blueprint files, agreements or CAD designs for specific client accounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileCategory": { "type": "string", "enum": ["Design Image", "Reference Photo", "PDF", "CAD Drawing", "Invoice", "Agreement"] },
+        "url": { "type": "string" },
+        "uploaded_at": { "type": "string" },
+        "uploaded_by": { "type": "string" }
+      },
+      "required": ["id", "customer_id", "fileName", "fileType", "fileCategory", "url", "uploaded_at", "uploaded_by"]
+    },
+    "crmTimelineEvent": {
+      "title": "CRM Timeline Activity Event",
+      "description": "Audit trails logging system, order, and manual reachout events chronologically",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "operator": { "type": "string" }
+      },
+      "required": ["id", "customer_id", "type", "title", "description", "timestamp", "operator"]
     }
   },
   "firestore": {
@@ -239,6 +360,34 @@
     "/mrp_project_boms/{projectId}": {
       "schema": "mrp_project_boms",
       "description": "Store custom Bill Of Materials lists per active custom order project"
+    },
+    "/crmCustomers/{customerId}": {
+      "schema": "crmCustomer",
+      "description": "CRM extended customer records"
+    },
+    "/crmQuotations/{quotationId}": {
+      "schema": "crmQuotation",
+      "description": "Bespoke quotations database"
+    },
+    "/crmFollowUps/{followUpId}": {
+      "schema": "crmFollowUp",
+      "description": "Logs for lead and schedule follow-ups"
+    },
+    "/crmPayments/{paymentId}": {
+      "schema": "crmPayment",
+      "description": "Ledger storing advance deposits and balances per customer"
+    },
+    "/crmNotes/{noteId}": {
+      "schema": "crmNote",
+      "description": "Continuous notes log per customer"
+    },
+    "/crmAttachments/{attachmentId}": {
+      "schema": "crmAttachment",
+      "description": "Bespoke design drawings, contracts, and PDFs"
+    },
+    "/crmTimelineEvents/{eventId}": {
+      "schema": "crmTimelineEvent",
+      "description": "Chronological CRM customer action timeline ledger"
     }
   }
 }

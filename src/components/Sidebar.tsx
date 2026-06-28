@@ -43,6 +43,7 @@ export default function Sidebar({
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [confirmLogout, setConfirmLogout] = React.useState(false);
   const isAdmin = currentUser.role === 'admin';
+  const isManager = currentUser.role === 'manager';
 
   // Auto-reset logout confirmation banner after 3.5 seconds
   React.useEffect(() => {
@@ -53,9 +54,10 @@ export default function Sidebar({
   }, [confirmLogout]);
 
   // Define nav links per role
-  const navItems = isAdmin
+  const navItems = (isAdmin || isManager)
     ? [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'crm', label: 'CRM', icon: Contact },
         { id: 'orders', label: 'Orders', icon: ClipboardList },
         { id: 'customers', label: 'Customers', icon: Contact },
         { id: 'create_order', label: 'Create Order', icon: PlusSquare },
@@ -81,9 +83,9 @@ export default function Sidebar({
       {/* Top Header Bar for Mobile viewports */}
       <header className="lg:hidden h-14 bg-stone-900 border-b border-stone-800 px-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
-{/* Logo icon */} 
+          {/* Logo icon */}
           <img 
-            src="images\bhisez-logo.png" 
+            src="/logo.png" 
             alt="Logo" 
             className="w-8 h-8 rounded-lg object-contain bg-amber-500 p-1 shadow"
             onError={(e) => {
@@ -95,8 +97,8 @@ export default function Sidebar({
             referrerPolicy="no-referrer"
           />
           <div id="logo-fallback-mobile" className="hidden bg-amber-500 text-stone-950 px-2 py-1 rounded font-bold text-sm shadow">
-  Bh </div>
-</div>
+            Bh
+          </div>
           <div>
             <span className="font-display font-black text-amber-400 text-xs uppercase tracking-wider block">
               Bhise'z
@@ -105,7 +107,7 @@ export default function Sidebar({
               Order Tracker
             </span>
           </div>
-        
+        </div>
 
         <div className="flex items-center gap-4">
           {/* Mobile Notification Badge */}
@@ -116,7 +118,7 @@ export default function Sidebar({
                 {notificationsCount}
               </span>
             )}
-          </button> 
+          </button>
 
           {/* Hamburger toggle */}
           <button
@@ -147,7 +149,7 @@ export default function Sidebar({
         <div className="p-6 border-b border-stone-900/30 hidden lg:block">
           <div className="flex items-center gap-3">
             <img 
-              src="src\assets\images\bhisez-logo.png" 
+              src="/logo.png" 
               alt="Logo" 
               className="w-11 h-11 rounded-xl object-contain bg-amber-500 p-1.5 shadow-lg border border-amber-400"
               onError={(e) => {
@@ -281,7 +283,7 @@ export default function Sidebar({
         <button
           onClick={() => {
             if (isAdmin) {
-              onTabChange('create_order');
+              onTabChange('crm');
             } else {
               setMobileMenuOpen(true);
             }
@@ -295,7 +297,7 @@ export default function Sidebar({
           ) : (
             <Menu size={18} />
           )}
-          <span className="text-[9px] mt-1 font-bold">{isAdmin ? 'Add Order' : 'More...'}</span>
+          <span className="text-[9px] mt-1 font-bold">{isAdmin ? 'Add via CRM' : 'More...'}</span>
         </button>
       </nav>
     </>

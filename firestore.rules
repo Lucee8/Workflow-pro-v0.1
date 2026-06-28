@@ -66,5 +66,40 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && isValidId(projectId);
     }
+
+    match /crmCustomers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(customerId);
+    }
+
+    match /crmQuotations/{quotationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(quotationId);
+    }
+
+    match /crmFollowUps/{followUpId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(followUpId);
+    }
+
+    match /crmPayments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(paymentId);
+    }
+
+    match /crmNotes/{noteId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(noteId);
+    }
+
+    match /crmAttachments/{attachmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(attachmentId);
+    }
+
+    match /crmTimelineEvents/{eventId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(eventId);
+    }
   }
 }

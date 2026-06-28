@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
 
 // Connect with proper authentication securely or fall back to unauthenticated guest mode if Auth is not enabled in Firebase Console
 export async function authenticateFirebase(): Promise<boolean> {
@@ -77,9 +77,8 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
             batch.set(doc(db, name, item.id), cleanUndefined(item));
           }
           await batch.commit();
+        }
       }
-    }
-
     };
 
     // Synchronize and seed all collections step by step
@@ -89,12 +88,15 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
     await syncCollectionToFirestore('statusLogs', seedData.statusLogs || []);
     await syncCollectionToFirestore('materials', seedData.materials || []);
     await syncCollectionToFirestore('payments', seedData.payments || []);
+    await syncCollectionToFirestore('crmCustomers', seedData.crmCustomers || []);
+    await syncCollectionToFirestore('crmQuotations', seedData.crmQuotations || []);
+    await syncCollectionToFirestore('crmFollowUps', seedData.crmFollowUps || []);
+    await syncCollectionToFirestore('crmPayments', seedData.crmPayments || []);
+    await syncCollectionToFirestore('crmNotes', seedData.crmNotes || []);
+    await syncCollectionToFirestore('crmAttachments', seedData.crmAttachments || []);
+    await syncCollectionToFirestore('crmTimelineEvents', seedData.crmTimelineEvents || []);
 
     console.log("Database initialization and synchronization sync phase complete.");
-
-    console.log("Database initialization and synchronization sync phase complete.");
-
-
   } catch (error) {
     console.error("Failed to complete local-to-cloud sync phase on initialization:", error);
   }
@@ -129,6 +131,13 @@ export function syncFirestore(
   listenCollection('statusLogs', (docs) => onUpdate({ statusLogs: docs as StatusLog[] }));
   listenCollection('materials', (docs) => onUpdate({ materials: docs as Material[] }));
   listenCollection('payments', (docs) => onUpdate({ payments: docs as Payment[] }));
+  listenCollection('crmCustomers', (docs) => onUpdate({ crmCustomers: docs as CRMCustomer[] }));
+  listenCollection('crmQuotations', (docs) => onUpdate({ crmQuotations: docs as CRMQuotation[] }));
+  listenCollection('crmFollowUps', (docs) => onUpdate({ crmFollowUps: docs as CRMFollowUp[] }));
+  listenCollection('crmPayments', (docs) => onUpdate({ crmPayments: docs as CRMPayment[] }));
+  listenCollection('crmNotes', (docs) => onUpdate({ crmNotes: docs as CRMNote[] }));
+  listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
+  listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
 
   return () => {
     unsubscribers.forEach(unsub => unsub());
@@ -217,3 +226,122 @@ export async function deleteUserFromFirebase(userId: string): Promise<void> {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
+
+// CRM write and delete operations
+export async function saveCRMCustomerToFirebase(cust: CRMCustomer): Promise<void> {
+  const path = `crmCustomers/${cust.id}`;
+  try {
+    await setDoc(doc(db, 'crmCustomers', cust.id), cleanUndefined(cust));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
+  const path = `crmCustomers/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmCustomers', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCRMQuotationToFirebase(quote: CRMQuotation): Promise<void> {
+  const path = `crmQuotations/${quote.id}`;
+  try {
+    await setDoc(doc(db, 'crmQuotations', quote.id), cleanUndefined(quote));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMQuotationFromFirebase(id: string): Promise<void> {
+  const path = `crmQuotations/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmQuotations', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCRMFollowUpToFirebase(item: CRMFollowUp): Promise<void> {
+  const path = `crmFollowUps/${item.id}`;
+  try {
+    await setDoc(doc(db, 'crmFollowUps', item.id), cleanUndefined(item));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMFollowUpFromFirebase(id: string): Promise<void> {
+  const path = `crmFollowUps/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmFollowUps', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCRMPaymentToFirebase(item: CRMPayment): Promise<void> {
+  const path = `crmPayments/${item.id}`;
+  try {
+    await setDoc(doc(db, 'crmPayments', item.id), cleanUndefined(item));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMPaymentFromFirebase(id: string): Promise<void> {
+  const path = `crmPayments/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmPayments', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCRMNoteToFirebase(item: CRMNote): Promise<void> {
+  const path = `crmNotes/${item.id}`;
+  try {
+    await setDoc(doc(db, 'crmNotes', item.id), cleanUndefined(item));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMNoteFromFirebase(id: string): Promise<void> {
+  const path = `crmNotes/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmNotes', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCRMAttachmentToFirebase(item: CRMAttachment): Promise<void> {
+  const path = `crmAttachments/${item.id}`;
+  try {
+    await setDoc(doc(db, 'crmAttachments', item.id), cleanUndefined(item));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMAttachmentFromFirebase(id: string): Promise<void> {
+  const path = `crmAttachments/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmAttachments', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCRMTimelineEventToFirebase(item: CRMTimelineEvent): Promise<void> {
+  const path = `crmTimelineEvents/${item.id}`;
+  try {
+    await setDoc(doc(db, 'crmTimelineEvents', item.id), cleanUndefined(item));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
