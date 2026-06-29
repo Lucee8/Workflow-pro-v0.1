@@ -191,6 +191,15 @@ export async function saveOrderToFirebase(order: Order): Promise<void> {
   }
 }
 
+export async function deleteOrderFromFirebase(orderId: string): Promise<void> {
+  const path = `orders/${orderId}`;
+  try {
+    await deleteDoc(doc(db, 'orders', orderId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export async function saveStatusLogToFirebase(log: StatusLog): Promise<void> {
   const path = `statusLogs/${log.id}`;
   try {

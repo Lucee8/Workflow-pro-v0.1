@@ -6,7 +6,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from '../types';
-import logo from '../assets/images/logo.png';
 import { 
   AlertCircle, 
   Eye, 
@@ -124,15 +123,27 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
     } catch (err: any) {
       console.error("Firebase Google Auth exception:", err);
       let friendlyMessage = err.message || String(err);
-      if (friendlyMessage.includes('popup-closed-by-user') || err?.code === 'auth/popup-closed-by-user') {
-        setErrorMessage('Google Authentication was interrupted. In an embedded development sandbox (such as these virtual iframes), browsers often block popups or restrict third-party authentication cookies.');
+      const isPopupError = 
+        friendlyMessage.includes('popup-closed-by-user') || 
+        err?.code === 'auth/popup-closed-by-user' ||
+        friendlyMessage.includes('cancelled-popup-request') ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        friendlyMessage.includes('popup-blocked') ||
+        err?.code === 'auth/popup-blocked';
+
+      if (isPopupError) {
+        setErrorMessage('Google Authentication popup was closed or blocked. In an embedded development sandbox (such as these virtual iframes), browsers often block popups or restrict third-party authentication cookies.');
         setIsPopupBlockedError(true);
+        // Seamless fallback to Google Accounts Sandbox
+        setShowGoogleModal(true);
       } else if (friendlyMessage.includes('auth/unauthorized-domain')) {
-        setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings.');
+        setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings. Launching Sandbox Google Login instead.');
         setIsPopupBlockedError(false);
+        setShowGoogleModal(true);
       } else {
-        setErrorMessage(`Google Auth Error: ${friendlyMessage}`);
+        setErrorMessage(`Google Auth Error: ${friendlyMessage}. Redirecting to simulated Google login...`);
         setIsPopupBlockedError(false);
+        setShowGoogleModal(true);
       }
     }
   };
@@ -229,18 +240,32 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
           >
             <div className="space-y-6">
               
-{/* App logo framing */}
-<div className="flex items-center justify-center">
-  <img 
-    src={logo} 
-    alt="Logo" 
-    className="w-30 h-20 object-contain"
-  />
-</div>
+              {/* App logo framing */}
+              <div className="flex items-center gap-2 justify-center pb-4 border-b border-stone-100">
+                <img 
+                  src="/logo.png" 
+                  alt="Logo" 
+                  className="w-8 h-8 rounded-lg object-contain bg-[#593622] p-1 shadow border border-stone-800"
+                  onError={(e) => {
+                    // Show text fallback if logo.png is not loaded
+                    e.currentTarget.style.display = 'none';
+                    const fallback = document.getElementById('logo-fallback-login');
+                    if (fallback) fallback.classList.remove('hidden');
+                  }}
+                  referrerPolicy="no-referrer"
+                />
+                <div id="logo-fallback-login" className="hidden bg-[#593622] text-white px-2 py-1 rounded-lg font-black text-xs shadow border border-stone-800">
+                  Bh
+                </div>
+                <div className="text-left">
+                  <span className="font-sans font-black tracking-widest text-stone-900 text-[11px] uppercase block leading-none">Bhise'z</span>
+                  <span className="text-[8px] uppercase font-mono tracking-wider text-stone-400 block mt-1 font-extrabold">Workshop Terminal Login</span>
+                </div>
+              </div>
 
               <div>
                 <h2 className="text-lg font-black text-stone-900 tracking-tight leading-none text-center">Workspace Sign In</h2>
-                <p className="text-stone-500 text-[11px] mt-1.5 text-center pb-5">Provide credentials, or authorize single sign-on using Google login credentials.</p>
+                <p className="text-stone-500 text-[11px] mt-1.5 text-center">Provide credentials, or authorize single sign-on using Google login credentials.</p>
               </div>
 
               {errorMessage && (
@@ -261,6 +286,23 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                         </li>
                         <li>
                           <strong className="text-stone-800">Allow third-party cookies:</strong> Enable third-party cookies and popups for this page in your browser address bar.
+                        </li>
+                        <li className="list-none pt-1">
+                          <span className="block mb-1 font-bold text-stone-800">
+                            Immediate Sandbox Fallback (Recommended):
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setErrorMessage(null);
+                              setIsPopupBlockedError(false);
+                              setShowGoogleModal(true);
+                            }}
+                            className="w-full justify-center px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold tracking-wide uppercase transition shadow-sm mt-1 cursor-pointer flex items-center gap-1.5"
+                          >
+                            <ShieldCheck size={12} />
+                            Launch Simulated Google Identity Accounts
+                          </button>
                         </li>
                         {users.some(u => u.email.trim().toLowerCase() === 'luceecode@gmail.com') && (
                           <li className="list-none pt-1">
@@ -409,6 +451,16 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                 </svg>
                 <span>Continue with Google Account</span>
               </button>
+
+              <div className="text-center pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleModal(true)}
+                  className="text-[10px] font-black text-[#593622] hover:text-[#422919] hover:underline uppercase tracking-wider bg-transparent border-0 cursor-pointer focus:outline-none"
+                >
+                  Or Use Sandbox Simulation 🔬
+                </button>
+              </div>
 
 
 

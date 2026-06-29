@@ -12,6 +12,7 @@ import {
   seedFirestoreIfEmpty,
   syncFirestore,
   saveOrderToFirebase,
+  deleteOrderFromFirebase,
   saveCustomerToFirebase,
   saveStatusLogToFirebase,
   savePaymentToFirebase,
@@ -223,6 +224,16 @@ export default function App() {
     if (newLog) {
       saveStatusLogToFirebase(newLog);
     }
+  };
+
+  const handleDeleteOrder = (orderId: string) => {
+    if (!window.confirm("Are you sure you want to cancel and permanently delete this order? This action cannot be undone.")) return;
+    const updated = db.orders.filter((o) => o.id !== orderId);
+    updateDbState({
+      ...db,
+      orders: updated
+    });
+    deleteOrderFromFirebase(orderId);
   };
 
   const handleAddPayment = (payment: Payment) => {
@@ -544,6 +555,7 @@ export default function App() {
                 onViewOrder={handleViewOrder}
                 onNavigateTab={(tab) => setCurrentTab(tab)}
                 isAdmin={isAdmin}
+                onDeleteOrder={handleDeleteOrder}
               />
             </motion.div>
           )}

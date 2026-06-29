@@ -59,7 +59,9 @@ import {
   Settings,
   X,
   FileCheck,
-  UserPlus
+  UserPlus,
+  Camera,
+  Upload
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -122,6 +124,95 @@ export default function CRMTab({
   const [editingCustomer, setEditingCustomer] = React.useState<CRMCustomer | null>(null);
   const [showAddQuoteModal, setShowAddQuoteModal] = React.useState(false);
   const [showAddFollowupModal, setShowAddFollowupModal] = React.useState(false);
+
+  // Attachment Dialog States
+  const [showAttachmentModal, setShowAttachmentModal] = React.useState(false);
+  const [attachCategory, setAttachCategory] = React.useState<'Design Image' | 'Reference Photo' | 'PDF' | 'CAD Drawing' | 'Invoice' | 'Agreement'>('Design Image');
+  const [attachFileName, setAttachFileName] = React.useState('');
+  const [isCameraActive, setIsCameraActive] = React.useState(false);
+  const [capturedImage, setCapturedImage] = React.useState<string | null>(null);
+  const [uploadedFileData, setUploadedFileData] = React.useState<string | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+
+  const startCamera = async () => {
+    setUploadedFileData(null);
+    setCapturedImage(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        setIsCameraActive(true);
+      }
+    } catch (err: any) {
+      console.error("Error accessing camera: ", err);
+      const isPermissionDenied = err.name === 'NotAllowedError' || err.message?.includes('Permission dismissed') || err.message?.includes('Permission denied');
+      if (isPermissionDenied) {
+        alert("Camera Permission was dismissed or denied. Because the app is running in an embedded preview frame, some browsers block media access. To fix this:\n\n1. Open the app in a new tab using the diagonal arrow icon at the top right of the screen.\n2. Allow camera access when prompted.\n\nAlternatively, you can click the 'From Computer' button to select any sketch design, PDF, or image file directly from your device!");
+      } else {
+        alert("Could not access the camera. Please open the app in a new tab to grant permissions, or use the standard file uploader instead.");
+      }
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth || 640;
+      canvas.height = videoRef.current.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setCapturedImage(dataUrl);
+        stopCamera();
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+      setIsCameraActive(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachFileName(file.name.split('.').slice(0, -1).join('.') || file.name);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setUploadedFileData(event.target?.result as string);
+        setCapturedImage(null); // Clear camera capture if they upload a file
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveUploadedAttachment = () => {
+    if (!selectedCustomerId) return;
+    const finalDataUrl = capturedImage || uploadedFileData;
+    if (!finalDataUrl) {
+      alert("Please upload a file or take a camera snapshot first.");
+      return;
+    }
+    if (!attachFileName.trim()) {
+      alert("Please enter a file description or name.");
+      return;
+    }
+    
+    handleAddAttachment(selectedCustomerId, attachCategory, attachFileName, finalDataUrl);
+    
+    // Reset state & close modal
+    setShowAttachmentModal(false);
+    setAttachFileName('');
+    setCapturedImage(null);
+    setUploadedFileData(null);
+    stopCamera();
+  };
 
   // Filter States for Customer Directory
   const [custSearch, setCustSearch] = React.useState('');
@@ -207,7 +298,7 @@ export default function CRMTab({
       const orderId = generateId('order');
       const articleNo = `${new Date().getFullYear().toString().slice(-2)}/${String(new Date().getMonth() + 1).padStart(2, '0')}/QU/${Math.floor(1000 + Math.random() * 9000)}`;
       
-      const firstItem = latestQuote.items[0];
+      const firstItem = latestQuote.items?.[0];
       const newOrder: Order = {
         id: orderId,
         article_no: articleNo,
@@ -444,7 +535,7 @@ export default function CRMTab({
     const orderId = generateId('order');
     const articleNo = `${new Date().getFullYear().toString().slice(-2)}/${String(new Date().getMonth() + 1).padStart(2, '0')}/QU/${Math.floor(1000 + Math.random() * 9000)}`;
     
-    const firstItem = quote.items[0];
+    const firstItem = quote.items?.[0];
     const newOrder: Order = {
       id: orderId,
       article_no: articleNo,
@@ -511,7 +602,7 @@ export default function CRMTab({
       customer_id: quote.customer_id,
       type: 'quotation_approved',
       title: 'Quotation Approved & Order Converted',
-      description: `Quotation ${quote.id} approved for total value ₹${quote.totalAmount.toLocaleString('en-IN')}. Custom manufacture order #${articleNo} initialized into production lifecycle.`,
+      description: `Quotation ${quote.id} approved for total value ₹${(quote.totalAmount ?? 0).toLocaleString('en-IN')}. Custom manufacture order #${articleNo} initialized into production lifecycle.`,
       timestamp: new Date().toISOString(),
       operator: currentUser.name
     };
@@ -618,7 +709,7 @@ export default function CRMTab({
       customer_name: customer ? customer.name : 'Unknown Customer',
       items: [item],
       totalAmount: finalAmount,
-      validUntil: formData.get('validUntil') as string,
+      validUntil: (formData.get('validUntil') as string) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       notes: (formData.get('notes') as string) || undefined,
       status: 'Sent',
       created_at: new Date().toISOString(),
@@ -1497,7 +1588,10 @@ export default function CRMTab({
 
                         {selectedCustPayments.length > 0 ? (
                           selectedCustPayments.map(pay => {
-                            const pct = Math.round((pay.advance_paid / pay.total_amount) * 100);
+                            const advPaid = pay.advance_paid ?? 0;
+                            const totAmt = pay.total_amount ?? 1;
+                            const balDue = pay.balance_due ?? 0;
+                            const pct = Math.round((advPaid / totAmt) * 100);
                             return (
                               <div key={pay.id} className="space-y-2">
                                 <div className="flex justify-between items-center text-xs">
@@ -1506,7 +1600,7 @@ export default function CRMTab({
                                     <span className="text-[10px] font-mono text-stone-400">Order Ref: {pay.order_id || 'Not assigned'}</span>
                                   </div>
                                   <span className="text-emerald-600 font-mono font-bold text-sm">
-                                    ₹{pay.advance_paid.toLocaleString()} / ₹{pay.total_amount.toLocaleString()}
+                                    ₹{advPaid.toLocaleString('en-IN')} / ₹{(pay.total_amount ?? 0).toLocaleString('en-IN')}
                                   </span>
                                 </div>
 
@@ -1516,7 +1610,7 @@ export default function CRMTab({
 
                                 <div className="flex justify-between items-center text-[10px] font-mono font-bold text-stone-400">
                                   <span>{pct}% Collected Advance</span>
-                                  <span className="text-rose-500">₹{pay.balance_due.toLocaleString()} Balance due</span>
+                                  <span className="text-rose-500">₹{balDue.toLocaleString('en-IN')} Balance due</span>
                                 </div>
                               </div>
                             );
@@ -1565,7 +1659,7 @@ export default function CRMTab({
                                 <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                   <div>
                                     <strong className="text-xs text-stone-950 font-bold block">{q.id}</strong>
-                                    <span className="text-[10px] text-stone-500">₹{q.totalAmount.toLocaleString()} | Valid: {q.validUntil}</span>
+                                    <span className="text-[10px] text-stone-500">₹{(q.totalAmount ?? 0).toLocaleString('en-IN')} | Valid: {q.validUntil}</span>
                                   </div>
                                   <div className="flex items-center gap-1.5">
                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
@@ -1602,16 +1696,15 @@ export default function CRMTab({
                           {hasWriteAccess && (
                             <button
                               onClick={() => {
-                                const cat = window.prompt("Choose category (Design Image, Reference Photo, PDF, CAD Drawing, Invoice, Agreement):", "Design Image");
-                                const name = window.prompt("Enter File Name description:");
-                                const url = window.prompt("Enter document/image URL (leave blank for random mock blueprint):");
-                                if (cat && name) {
-                                  handleAddAttachment(selectedCustomer.id, cat, name, url || '');
-                                }
+                                setAttachCategory("Design Image");
+                                setAttachFileName("");
+                                setCapturedImage(null);
+                                setUploadedFileData(null);
+                                setShowAttachmentModal(true);
                               }}
-                              className="text-xs text-[#593622] font-bold hover:underline flex items-center gap-1"
+                              className="text-xs text-[#593622] font-bold hover:underline flex items-center gap-1 cursor-pointer"
                             >
-                              <Plus size={13} /> Attach File
+                              <Plus size={13} /> Attach File / Photo
                             </button>
                           )}
                         </div>
@@ -1788,7 +1881,7 @@ export default function CRMTab({
                 <tbody className="divide-y divide-stone-100 font-medium text-stone-700">
                   {db.crmQuotations && db.crmQuotations.length > 0 ? (
                     db.crmQuotations.map(quote => {
-                      const firstItem = quote.items[0];
+                      const firstItem = quote.items?.[0];
                       return (
                         <tr key={quote.id} className="hover:bg-stone-50/50 transition">
                           <td className="p-4 font-mono font-bold text-[#593622]">{quote.id}</td>
@@ -1796,7 +1889,7 @@ export default function CRMTab({
                           <td className="p-4">{firstItem?.furnitureItem || 'Custom scope'}</td>
                           <td className="p-4 font-mono">{quote.validUntil}</td>
                           <td className="p-4 text-stone-500 text-[11px]">{firstItem?.material || '-'}</td>
-                          <td className="p-4 font-mono font-bold text-stone-950">₹{quote.totalAmount.toLocaleString('en-IN')}</td>
+                          <td className="p-4 font-mono font-bold text-stone-950">₹{(quote.totalAmount ?? 0).toLocaleString('en-IN')}</td>
                           <td className="p-4">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
                               quote.status === 'Approved' ? 'bg-green-100 text-green-700' :
@@ -2276,31 +2369,23 @@ export default function CRMTab({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">GST percentage (%)</label>
-                  <select
-                    name="gst"
-                    defaultValue="18"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
-                  >
-                    <option value="18">18% GST (Standard)</option>
-                    <option value="12">12% GST (Semi-premium)</option>
-                    <option value="5">5% GST (Basic)</option>
-                    <option value="0">0% (Nil)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Offer Valid Until *</label>
-                  <input
-                    required
-                    type="date"
-                    name="validUntil"
-                    defaultValue={new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold font-mono"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="font-bold text-stone-600">GST percentage (%)</label>
+                <select
+                  name="gst"
+                  defaultValue="18"
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
+                >
+                  <option value="18">18% GST (Standard)</option>
+                  <option value="12">12% GST (Semi-premium)</option>
+                  <option value="5">5% GST (Basic)</option>
+                  <option value="0">0% (Nil)</option>
+                </select>
+                <input
+                  type="hidden"
+                  name="validUntil"
+                  value={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                />
               </div>
 
               <div className="space-y-1">
@@ -2407,6 +2492,212 @@ export default function CRMTab({
                 Schedule Planner Entry
               </button>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* 4. CUSTOMER FILE ATTACHMENT MODAL */}
+      {showAttachmentModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[95vh] overflow-y-auto"
+          >
+            <div className="flex justify-between items-center border-b border-stone-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#593622] font-display uppercase tracking-tight">
+                  Attach Design Reference or Document
+                </h3>
+                <p className="text-[10px] text-stone-400 font-medium">Add workshop references, CAD designs, or snap live custom photos</p>
+              </div>
+              <button 
+                onClick={() => {
+                  stopCamera();
+                  setShowAttachmentModal(false);
+                }} 
+                className="text-stone-400 hover:text-stone-700 cursor-pointer p-1 rounded-full hover:bg-stone-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-stone-600">Attachment Category *</label>
+                  <select
+                    value={attachCategory}
+                    onChange={(e) => setAttachCategory(e.target.value as any)}
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold text-stone-700"
+                  >
+                    <option value="Design Image">Design Image</option>
+                    <option value="Reference Photo">Reference Photo</option>
+                    <option value="PDF">PDF Document</option>
+                    <option value="CAD Drawing">CAD Drawing</option>
+                    <option value="Invoice">Invoice Receipt</option>
+                    <option value="Agreement">Agreement Form</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-stone-600">File Description Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={attachFileName}
+                    onChange={(e) => setAttachFileName(e.target.value)}
+                    placeholder="e.g. 6-Seater Dining Sketch Frame v2"
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-semibold text-stone-700"
+                  />
+                </div>
+              </div>
+
+              {/* Source selection choices */}
+              <div className="border border-stone-200 rounded-2xl overflow-hidden bg-stone-50 p-4 space-y-4">
+                <span className="text-[10px] font-black uppercase text-stone-400 tracking-wider block font-mono">
+                  Select Source / Method
+                </span>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
+                      setCapturedImage(null);
+                      const fileInput = document.getElementById('computer-file-picker');
+                      if (fileInput) fileInput.click();
+                    }}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border font-bold transition cursor-pointer ${
+                      uploadedFileData 
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700' 
+                        : 'bg-white border-stone-200 hover:bg-stone-100 text-stone-700'
+                    }`}
+                  >
+                    <Upload size={14} />
+                    <span>From Computer</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadedFileData(null);
+                      if (isCameraActive) {
+                        stopCamera();
+                      } else {
+                        startCamera();
+                      }
+                    }}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border font-bold transition cursor-pointer ${
+                      isCameraActive || capturedImage
+                        ? 'bg-[#593622]/10 border-[#593622]/30 text-[#593622]' 
+                        : 'bg-white border-stone-200 hover:bg-stone-100 text-stone-700'
+                    }`}
+                  >
+                    <Camera size={14} />
+                    <span>{isCameraActive ? 'Stop Camera' : capturedImage ? 'Photo Recaptured' : 'Snap Live Photo'}</span>
+                  </button>
+                </div>
+
+                {/* Hidden Native File Input */}
+                <input
+                  type="file"
+                  id="computer-file-picker"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+
+                {/* Sub-panels based on action */}
+                {uploadedFileData && (
+                  <div className="bg-white border border-emerald-200 rounded-xl p-3 flex items-center justify-between text-emerald-800">
+                    <div className="min-w-0">
+                      <p className="font-bold text-[11px] truncate">Selected file ready!</p>
+                      <p className="text-[10px] text-emerald-600 font-mono">File successfully loaded into memory</p>
+                    </div>
+                    <button
+                      onClick={() => setUploadedFileData(null)}
+                      className="text-xs font-bold text-rose-500 hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                {isCameraActive && (
+                  <div className="space-y-2.5">
+                    <div className="relative aspect-video rounded-xl overflow-hidden bg-black border border-stone-300">
+                      <video
+                        ref={videoRef}
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={capturePhoto}
+                          className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-full shadow-lg text-[11px] uppercase tracking-wider transition cursor-pointer"
+                        >
+                          Capture Snapshot
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-stone-400 text-center italic">Align design blueprint paper or material samples in frame</p>
+                  </div>
+                )}
+
+                {capturedImage && (
+                  <div className="space-y-2">
+                    <div className="relative aspect-video rounded-xl overflow-hidden bg-black border border-stone-200 shadow-inner">
+                      <img
+                        src={capturedImage}
+                        alt="Captured reference snapshot"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute top-2 right-2 bg-black/70 text-white font-bold text-[9px] uppercase px-2 py-0.5 rounded-full tracking-wider">
+                        Snapshot Preview
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-emerald-600 font-bold">Photo successfully captured!</span>
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        className="text-[#593622] hover:underline font-bold font-mono cursor-pointer"
+                      >
+                        Retake Photo
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCamera();
+                    setShowAttachmentModal(false);
+                  }}
+                  className="w-1/3 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold transition text-xs cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveUploadedAttachment}
+                  disabled={!attachFileName.trim() || (!capturedImage && !uploadedFileData)}
+                  className={`w-2/3 py-2.5 rounded-xl font-bold transition text-xs text-center cursor-pointer shadow-md ${
+                    attachFileName.trim() && (capturedImage || uploadedFileData)
+                      ? 'bg-[#593622] hover:bg-[#402414] text-white'
+                      : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                  }`}
+                >
+                  Confirm Attachment
+                </button>
+              </div>
+            </div>
           </motion.div>
         </div>
       )}
