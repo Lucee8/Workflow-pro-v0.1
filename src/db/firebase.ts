@@ -3,17 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { initializeApp, getApp, getApps } from 'firebase/app';
+import { initializeApp, getApp, getApps, type FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfigJson from '../firebase-applet-config.json';
+
+interface FirebaseAppletConfig extends FirebaseOptions {
+  firestoreDatabaseId?: string;
+}
+
+const firebaseConfig = firebaseConfigJson as FirebaseAppletConfig;
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Use custom database ID in the platform environment but fallback to default database ID when run locally 
-const databaseId = firebaseConfig.projectId === "adroit-acronym-78gvj" 
-  ? firebaseConfig.firestoreDatabaseId 
-  : undefined;
+const databaseId =
+  firebaseConfig.projectId === 'adroit-acronym-78gvj'
+    ? firebaseConfig.firestoreDatabaseId
+    : firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.startsWith('ai-studio-')
+      ? firebaseConfig.firestoreDatabaseId
+      : undefined;
 
 export const db = getFirestore(app, databaseId);
 export const auth = getAuth(app);
