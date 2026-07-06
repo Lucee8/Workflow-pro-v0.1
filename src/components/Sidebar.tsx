@@ -22,6 +22,10 @@ import {
   Contact,
   FileText,
   Boxes,
+  ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 import React from 'react';
 
@@ -42,6 +46,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [confirmLogout, setConfirmLogout] = React.useState(false);
+  const [switcherExpanded, setSwitcherExpanded] = React.useState(true);
   const isAdmin = currentUser.role === 'admin';
   const isManager = currentUser.role === 'manager';
 
@@ -224,6 +229,54 @@ export default function Sidebar({
             );
           })}
         </nav>
+
+        {/* Workspace Switcher / Admin Panels (Visible to Admins only) */}
+        {isAdmin && (
+          <div className="px-3 py-3 mx-3 mb-3 rounded-xl bg-[#23170e]/40 border border-stone-900/60 font-sans shadow-inner">
+            <button
+              onClick={() => setSwitcherExpanded(!switcherExpanded)}
+              className="w-full flex items-center justify-between text-[10px] font-black tracking-wider text-amber-500/80 uppercase group hover:text-amber-400 transition"
+            >
+              <span className="flex items-center gap-1.5">
+                <Boxes size={12} className="text-amber-500 animate-pulse" />
+                Workspace Switcher
+              </span>
+              <span className="text-[10px] text-stone-500 group-hover:text-stone-300 transition-colors">
+                {switcherExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </span>
+            </button>
+            
+            {switcherExpanded && (
+              <div className="mt-2.5 space-y-1.5">
+                <a
+                  href="https://bhisez-furniture.vercel.app/?view=admin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-[13px] shrink-0">🪑</span>
+                    <span className="truncate">Furniture Admin</span>
+                  </span>
+                  <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
+                </a>
+
+                <a
+                  href="https://geetas-s-masale-v0-1.onrender.com/admin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-[13px] shrink-0">🌶️</span>
+                    <span className="truncate">Masale Admin</span>
+                  </span>
+                  <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Dedicated Support & Actions block */}
         <div className="p-4 border-t border-stone-900/30 space-y-1">

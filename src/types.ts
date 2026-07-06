@@ -199,7 +199,7 @@ export type CRMCustomerStatus =
   | 'Delivered'
   | 'Cancelled';
 
-export type CRMCustomerSource = 'Social media' | 'website' | 'walkin' | 'Other';
+export type CRMCustomerSource = 'Website' | 'Walkin' | 'Social Media' | 'Youtube' | 'Reference';
 
 export interface CRMCustomer {
   id: string; // Auto Generated/UUID
@@ -214,10 +214,12 @@ export interface CRMCustomer {
   pinCode?: string;
   gstNumber?: string;
   notes?: string;
-  preferredContactMethod: 'Phone' | 'WhatsApp' | 'Email';
+  preferredContactMethod?: 'Phone' | 'WhatsApp' | 'Email';
   source?: CRMCustomerSource;
   budget?: number;
   status?: CRMCustomerStatus;
+  productRequirement?: string;
+  timeline?: string;
   created_at: string;
   created_by: string;
 }

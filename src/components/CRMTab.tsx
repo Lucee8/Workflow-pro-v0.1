@@ -313,7 +313,7 @@ export default function CRMTab({
         material: firstItem?.material || 'Premium Plywood & Teak Veneer',
         color_shade: 'Teak / Walnut',
         no_of_units: firstItem?.quantity || 1,
-        carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_amit_prod',
+        carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Pending',
         is_delayed: false,
         priority: 'normal',
@@ -369,7 +369,7 @@ export default function CRMTab({
         material: 'Premium Plywood & Teak Wood',
         color_shade: 'Teak / Walnut',
         no_of_units: 1,
-        carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_amit_prod',
+        carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Pending',
         is_delayed: false,
         priority: 'normal',
@@ -485,20 +485,18 @@ export default function CRMTab({
     const newCust: CRMCustomer = {
       id: custId,
       name: formData.get('name') as string,
-      companyName: (formData.get('companyName') as string) || undefined,
       phone: formData.get('phone') as string,
-      whatsappNumber: (formData.get('whatsappNumber') as string) || undefined,
-      email: (formData.get('email') as string) || undefined,
+      productRequirement: (formData.get('productRequirement') as string) || undefined,
       address: (formData.get('address') as string) || undefined,
       city: (formData.get('city') as string) || undefined,
       state: (formData.get('state') as string) || undefined,
       pinCode: (formData.get('pinCode') as string) || undefined,
-      gstNumber: (formData.get('gstNumber') as string) || undefined,
-      notes: (formData.get('notes') as string) || undefined,
-      preferredContactMethod: formData.get('preferredContactMethod') as 'Phone' | 'WhatsApp' | 'Email',
-      source: (formData.get('source') as any) || 'walkin',
+      source: (formData.get('source') as any) || 'Walkin',
       budget: formData.get('budget') ? Number(formData.get('budget')) : undefined,
+      timeline: (formData.get('timeline') as string) || undefined,
       status: (formData.get('status') as any) || 'New Inquiry',
+      notes: (formData.get('notes') as string) || undefined,
+      preferredContactMethod: 'WhatsApp', // safe default fallback
       created_at: editingCustomer ? editingCustomer.created_at : new Date().toISOString(),
       created_by: editingCustomer ? editingCustomer.created_by : currentUser.id,
     };
@@ -550,7 +548,7 @@ export default function CRMTab({
       material: firstItem?.material || 'Premium Plywood & Teak Veneer',
       color_shade: 'Teak / Walnut',
       no_of_units: firstItem?.quantity || 1,
-      carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_amit_prod',
+      carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
       current_status: 'Pending',
       is_delayed: false,
       priority: 'normal',
@@ -683,11 +681,11 @@ export default function CRMTab({
     
     const qty = Number(formData.get('quantity') || 1);
     const unitPrice = Number(formData.get('unitPrice') || 0);
-    const discount = Number(formData.get('discount') || 0);
-    const gstPercent = Number(formData.get('gst') || 18);
+    const discountAmount = Number(formData.get('discount') || 0);
+    const gstPercent = Number(formData.get('gst') || 0);
 
     const subTotal = qty * unitPrice;
-    const discountedTotal = subTotal - (subTotal * (discount / 100));
+    const discountedTotal = Math.max(0, subTotal - discountAmount);
     const finalAmount = Math.round(discountedTotal + (discountedTotal * (gstPercent / 100)));
 
     const item: CRMQuotationItem = {
@@ -697,7 +695,7 @@ export default function CRMTab({
       material: formData.get('material') as string,
       dimensions: formData.get('dimensions') as string,
       unitPrice,
-      discount,
+      discount: discountAmount,
       gst: gstPercent,
       totalAmount: finalAmount
     };
@@ -1180,16 +1178,18 @@ export default function CRMTab({
                                   <h3 className="text-sm font-black text-stone-900 group-hover:text-[#593622] transition leading-snug">
                                     {cust.name}
                                   </h3>
-                                  {cust.companyName && (
-                                    <span className="text-[11px] font-medium text-stone-500 flex items-center gap-1 mt-0.5">
-                                      <Building size={11} className="text-stone-400" /> {cust.companyName}
+                                  {cust.productRequirement && (
+                                    <span className="text-[11px] font-medium text-stone-600 flex items-center gap-1 mt-0.5 bg-stone-50 px-1.5 py-0.5 rounded border border-stone-150">
+                                      📦 {cust.productRequirement}
                                     </span>
                                   )}
                                 </div>
                                 <div className="flex flex-col items-end gap-1 shrink-0">
-                                  <span className="bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase">
-                                    {cust.preferredContactMethod}
-                                  </span>
+                                  {cust.timeline && (
+                                    <span className="bg-[#593622]/5 text-[#593622] px-2 py-0.5 rounded-full text-[9px] font-bold">
+                                      ⏳ {cust.timeline}
+                                    </span>
+                                  )}
                                   <span className={`px-2 py-0.5 rounded-full text-[8px] font-black border uppercase tracking-tight ${getStatusBadgeColor(displayStatus)}`}>
                                     {getStatusLabelWithEmoji(displayStatus)}
                                   </span>
@@ -1377,16 +1377,22 @@ export default function CRMTab({
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[9px] font-mono text-stone-400 font-bold uppercase tracking-wider">{selectedCustomer.id}</span>
-                          <span className="bg-amber-500 text-stone-950 px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
-                            {selectedCustomer.preferredContactMethod} Preferred
-                          </span>
+                          {selectedCustomer.timeline && (
+                            <span className="bg-amber-500 text-stone-950 px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
+                              Timeline: {selectedCustomer.timeline}
+                            </span>
+                          )}
                         </div>
                         <h2 className="text-xl font-black font-display tracking-tight text-white mt-1">
                           {selectedCustomer.name}
                         </h2>
-                        <p className="text-[11px] text-stone-400 mt-1">
-                          {selectedCustomer.companyName ? `Corporate account: ${selectedCustomer.companyName}` : 'Individual Premium Design Lead'}
-                        </p>
+                        {selectedCustomer.productRequirement && (
+                          <p className="text-[11px] text-stone-300 mt-1 flex items-center gap-1.5">
+                            <span className="bg-white/10 px-2 py-0.5 rounded text-xs font-semibold text-stone-200">
+                              Requirement: {selectedCustomer.productRequirement}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -1426,33 +1432,15 @@ export default function CRMTab({
 
                       <div className="space-y-3 font-medium text-stone-700 text-xs">
                         <div className="space-y-1">
-                          <span className="text-[9px] uppercase text-stone-400 font-bold block">Mobile Number</span>
+                          <span className="text-[9px] uppercase text-stone-400 font-bold block">Contact Number</span>
                           <p className="font-mono text-stone-900 font-bold flex items-center gap-1.5">
                             <Phone size={13} className="text-stone-400" /> {selectedCustomer.phone}
                           </p>
                         </div>
 
-                        {selectedCustomer.whatsappNumber && (
-                          <div className="space-y-1">
-                            <span className="text-[9px] uppercase text-stone-400 font-bold block">WhatsApp Number</span>
-                            <p className="font-mono text-stone-900 font-bold flex items-center gap-1.5 text-emerald-600">
-                              <MessageSquare size={13} className="text-emerald-400" /> {selectedCustomer.whatsappNumber}
-                            </p>
-                          </div>
-                        )}
-
-                        {selectedCustomer.email && (
-                          <div className="space-y-1">
-                            <span className="text-[9px] uppercase text-stone-400 font-bold block">Email Inbox</span>
-                            <p className="text-stone-900 font-bold flex items-center gap-1.5">
-                              <Mail size={13} className="text-stone-400" /> {selectedCustomer.email}
-                            </p>
-                          </div>
-                        )}
-
                         {(selectedCustomer.address || selectedCustomer.city) && (
                           <div className="space-y-1">
-                            <span className="text-[9px] uppercase text-stone-400 font-bold block">Dispatch Address</span>
+                            <span className="text-[9px] uppercase text-stone-400 font-bold block">Location (Address)</span>
                             <p className="text-stone-900 font-semibold flex items-start gap-1.5 leading-snug">
                               <MapPin size={13} className="text-stone-400 shrink-0 mt-0.5" />
                               <span>
@@ -1460,15 +1448,6 @@ export default function CRMTab({
                                 {selectedCustomer.city || ''} {selectedCustomer.state ? `, ${selectedCustomer.state}` : ''}
                                 {selectedCustomer.pinCode ? ` - ${selectedCustomer.pinCode}` : ''}
                               </span>
-                            </p>
-                          </div>
-                        )}
-
-                        {selectedCustomer.gstNumber && (
-                          <div className="space-y-1">
-                            <span className="text-[9px] uppercase text-stone-400 font-bold block">GST Verification</span>
-                            <p className="font-mono text-stone-900 font-bold">
-                              {selectedCustomer.gstNumber}
                             </p>
                           </div>
                         )}
@@ -2080,57 +2059,32 @@ export default function CRMTab({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Company Name (Optional)</label>
-                  <input
-                    type="text"
-                    name="companyName"
-                    defaultValue={editingCustomer?.companyName || ''}
-                    placeholder="e.g. Bhise Enterprises"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Mobile Number *</label>
-                  <input
-                    required
-                    type="tel"
-                    name="phone"
-                    defaultValue={editingCustomer?.phone || ''}
-                    placeholder="e.g. 9876543210"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">WhatsApp Number (Optional)</label>
-                  <input
-                    type="tel"
-                    name="whatsappNumber"
-                    defaultValue={editingCustomer?.whatsappNumber || ''}
-                    placeholder="e.g. 9876543210"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Email Address</label>
-                  <input
-                    type="email"
-                    name="email"
-                    defaultValue={editingCustomer?.email || ''}
-                    placeholder="e.g. client@gmail.com"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="font-bold text-stone-600">Contact Number *</label>
+                <input
+                  required
+                  type="tel"
+                  name="phone"
+                  defaultValue={editingCustomer?.phone || ''}
+                  placeholder="e.g. 9876543210"
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
+                />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-stone-600">Address Details</label>
+                <label className="font-bold text-stone-600">Product Requirement *</label>
+                <input
+                  required
+                  type="text"
+                  name="productRequirement"
+                  defaultValue={editingCustomer?.productRequirement || ''}
+                  placeholder="e.g. 6-Seater Solid Teak wood dining table"
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-stone-600">Location (Address details)</label>
                 <input
                   type="text"
                   name="address"
@@ -2142,7 +2096,7 @@ export default function CRMTab({
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-stone-600">City</label>
+                  <label className="font-bold text-stone-650">City</label>
                   <input
                     type="text"
                     name="city"
@@ -2152,7 +2106,7 @@ export default function CRMTab({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-stone-600">State</label>
+                  <label className="font-bold text-stone-655">State</label>
                   <input
                     type="text"
                     name="state"
@@ -2162,7 +2116,7 @@ export default function CRMTab({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-stone-600">PIN Code</label>
+                  <label className="font-bold text-stone-660">PIN Code</label>
                   <input
                     type="text"
                     name="pinCode"
@@ -2173,57 +2127,41 @@ export default function CRMTab({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">GST Number (Optional)</label>
-                  <input
-                    type="text"
-                    name="gstNumber"
-                    defaultValue={editingCustomer?.gstNumber || ''}
-                    placeholder="27AAAAA1111A1Z1"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-mono uppercase"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Preferred Contact *</label>
-                  <select
-                    name="preferredContactMethod"
-                    defaultValue={editingCustomer?.preferredContactMethod || 'WhatsApp'}
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
-                  >
-                    <option value="Phone">Phone Call</option>
-                    <option value="WhatsApp">WhatsApp Message</option>
-                    <option value="Email">Email Inbox</option>
-                  </select>
-                </div>
+              <div className="space-y-1">
+                <label className="font-bold text-stone-600">Source *</label>
+                <select
+                  name="source"
+                  defaultValue={editingCustomer?.source || 'Walkin'}
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
+                >
+                  <option value="Website">Website</option>
+                  <option value="Walkin">Walkin</option>
+                  <option value="Social Media">Social Media</option>
+                  <option value="Youtube">Youtube</option>
+                  <option value="Reference">Reference</option>
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Lead Source *</label>
-                  <select
-                    name="source"
-                    defaultValue={editingCustomer?.source || 'walkin'}
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
-                  >
-                    <option value="Social media">Social media</option>
-                    <option value="website">website</option>
-                    <option value="walkin">walkin</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
+              <div className="space-y-1">
+                <label className="font-bold text-stone-600">Project Budget (INR)</label>
+                <input
+                  type="number"
+                  name="budget"
+                  defaultValue={editingCustomer?.budget || ''}
+                  placeholder="e.g. 150000"
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
+                />
+              </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Project Budget (INR)</label>
-                  <input
-                    type="number"
-                    name="budget"
-                    defaultValue={editingCustomer?.budget || ''}
-                    placeholder="e.g. 150000"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="font-bold text-stone-600">Time line</label>
+                <input
+                  type="text"
+                  name="timeline"
+                  defaultValue={editingCustomer?.timeline || ''}
+                  placeholder="e.g. 3-4 weeks"
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
+                />
               </div>
 
               <div className="space-y-1">
@@ -2233,14 +2171,14 @@ export default function CRMTab({
                   defaultValue={editingCustomer?.status || 'New Inquiry'}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
-                  <option value="New Inquiry">🟥 New Inquiry</option>
-                  <option value="Quotation Pending">🟨 Quotation Pending</option>
-                  <option value="Quotation Sent">🟦 Quotation Sent</option>
-                  <option value="Follow-up">🟪 Follow-up</option>
-                  <option value="Order Confirmed">🟩 Order Confirmed</option>
-                  <option value="In Production">🏭 In Production</option>
-                  <option value="Delivered">🟫 Delivered</option>
-                  <option value="Cancelled">⚫ Cancelled</option>
+                  <option value="New Inquiry">New Inquiry</option>
+                  <option value="Quotation Pending">Quotation Pending</option>
+                  <option value="Quotation Sent">Quotation Sent</option>
+                  <option value="Follow-up">Follow-up</option>
+                  <option value="Order Confirmed">Order Confirmed</option>
+                  <option value="In Production">In Production</option>
+                  <option value="Delivered">Delivered</option>
+                  <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
 
@@ -2256,7 +2194,7 @@ export default function CRMTab({
 
               <button
                 type="submit"
-                className="w-full bg-[#593622] hover:bg-[#4d2f1e] text-white py-2.5 rounded-xl font-bold transition shadow-md text-xs mt-3 cursor-pointer"
+                className="w-full bg-[#593622] hover:bg-[#4d2f1e] text-white py-2.5 rounded-xl font-bold transition shadow-md text-xs mt-3 cursor-pointer animate-none"
               >
                 Save Customer Lead
               </button>
@@ -2299,7 +2237,7 @@ export default function CRMTab({
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-stone-600">Furniture Scope Name *</label>
+                <label className="font-bold text-stone-600">Item name *</label>
                 <input
                   required
                   type="text"
@@ -2357,12 +2295,11 @@ export default function CRMTab({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Discount (%)</label>
+                  <label className="font-bold text-stone-600">Discount Amount (INR) *</label>
                   <input
                     type="number"
                     name="discount"
                     min="0"
-                    max="100"
                     defaultValue="0"
                     className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-mono"
                   />
@@ -2373,13 +2310,12 @@ export default function CRMTab({
                 <label className="font-bold text-stone-600">GST percentage (%)</label>
                 <select
                   name="gst"
-                  defaultValue="18"
+                  defaultValue="0"
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
-                  <option value="18">18% GST (Standard)</option>
-                  <option value="12">12% GST (Semi-premium)</option>
-                  <option value="5">5% GST (Basic)</option>
-                  <option value="0">0% (Nil)</option>
+                  <option value="0">0% (Default)</option>
+                  <option value="5">5% GST</option>
+                  <option value="18">18% GST</option>
                 </select>
                 <input
                   type="hidden"

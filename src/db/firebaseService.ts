@@ -65,9 +65,34 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
         }
         await batch.commit();
       } else {
+                let currentSnapshot = snapshot;
+        if (name === 'users') {
+          const batch = writeBatch(db);
+          let deletedAny = false;
+          snapshot.docs.forEach((d) => {
+            const userData = d.data();
+            if (
+              d.id === 'user_amit_prod' ||
+              d.id === 'user_mahesh_prod' ||
+              userData.name === 'Amit Sharma' ||
+              userData.name === 'Bhavesh k' ||
+              userData.name === 'Mahesh Verma'
+            ) {
+              batch.delete(d.ref);
+              deletedAny = true;
+            }
+          });
+          if (deletedAny) {
+            console.log("Deleting old legacy users from Firestore...");
+            await batch.commit();
+            // Re-fetch snapshot to get the fresh accurate state of cloud documents
+            currentSnapshot = await getDocs(colRef);
+          }
+        }
+
         // If Firestore already has some items, let's identify which local items are missing from the cloud
         // and upload only the missing ones so local-only or offline-created items are never lost!
-        const existingCloudIds = snapshot.docs.map(doc => doc.id);
+        const existingCloudIds = currentSnapshot.docs.map(doc => doc.id);
         const missingLocalItems = items.filter(item => item.id && !existingCloudIds.includes(item.id));
         
         if (missingLocalItems.length > 0) {

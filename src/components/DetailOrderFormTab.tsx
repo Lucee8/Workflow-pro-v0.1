@@ -347,7 +347,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
           </div>
 
           <div>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">II. Product Line details</h2>
+            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">II. Product Configuration</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">

@@ -35,11 +35,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
   const [isPopupBlockedError, setIsPopupBlockedError] = React.useState(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
-  // Google Single Sign On interactive modal
-  const [showGoogleModal, setShowGoogleModal] = React.useState(false);
-  const [gEmail, setGEmail] = React.useState('');
-  const [gPass, setGPass] = React.useState('');
-  const [gError, setGError] = React.useState<string | null>(null);
+
 
   // Trigger real production-grade Google Authentication with Firebase Auth
   const handleRealGoogleLogin = async () => {
@@ -134,16 +130,12 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
       if (isPopupError) {
         setErrorMessage('Google Authentication popup was closed or blocked. In an embedded development sandbox (such as these virtual iframes), browsers often block popups or restrict third-party authentication cookies.');
         setIsPopupBlockedError(true);
-        // Seamless fallback to Google Accounts Sandbox
-        setShowGoogleModal(true);
       } else if (friendlyMessage.includes('auth/unauthorized-domain')) {
-        setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings. Launching Sandbox Google Login instead.');
+        setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings. Please authorize this domain in your Firebase console.');
         setIsPopupBlockedError(false);
-        setShowGoogleModal(true);
       } else {
-        setErrorMessage(`Google Auth Error: ${friendlyMessage}. Redirecting to simulated Google login...`);
+        setErrorMessage(`Google Auth Error: ${friendlyMessage}. Please verify your network and credentials and try again.`);
         setIsPopupBlockedError(false);
-        setShowGoogleModal(true);
       }
     }
   };
@@ -186,45 +178,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
     }, 500);
   };
 
-  // Google quick identification matching
-  const handleGoogleAccountSelect = (profile: User) => {
-    setGError(null);
-    setGEmail(profile.email);
-    setGPass(profile.password || 'admin');
-  };
 
-  // Trigger simulated Google Sign-in verify
-  const submitGoogleAuth = (e: React.FormEvent) => {
-    e.preventDefault();
-    setGError(null);
-
-    const found = users.find(
-      (u) => u.email.trim().toLowerCase() === gEmail.trim().toLowerCase()
-    );
-
-    if (!found) {
-      setGError('Email account not recognized in workshop mapping grid.');
-      return;
-    }
-
-    if (!found.is_active) {
-      setGError('Account deactivated by administrator. Link request denied.');
-      return;
-    }
-
-    const validPass = found.password || 'admin';
-    if (gPass.trim() !== validPass.trim()) {
-      setGError('Google account pass-code mismatch. Please specify your correct password.');
-      return;
-    }
-
-    // Validated successfully
-    setShowGoogleModal(false);
-    setSuccessMessage(`Successfully authenticated via Google as ${found.name}! Redirecting...`);
-    setTimeout(() => {
-      onLoginSuccess(found);
-    }, 450);
-  };
 
   return (
     <div className="flex-1 min-h-screen bg-[#f7f5f0] flex flex-col justify-between font-sans">
@@ -286,23 +240,6 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                         </li>
                         <li>
                           <strong className="text-stone-800">Allow third-party cookies:</strong> Enable third-party cookies and popups for this page in your browser address bar.
-                        </li>
-                        <li className="list-none pt-1">
-                          <span className="block mb-1 font-bold text-stone-800">
-                            Immediate Sandbox Fallback (Recommended):
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setErrorMessage(null);
-                              setIsPopupBlockedError(false);
-                              setShowGoogleModal(true);
-                            }}
-                            className="w-full justify-center px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold tracking-wide uppercase transition shadow-sm mt-1 cursor-pointer flex items-center gap-1.5"
-                          >
-                            <ShieldCheck size={12} />
-                            Launch Simulated Google Identity Accounts
-                          </button>
                         </li>
                         {users.some(u => u.email.trim().toLowerCase() === 'luceecode@gmail.com') && (
                           <li className="list-none pt-1">
@@ -452,15 +389,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                 <span>Continue with Google Account</span>
               </button>
 
-              <div className="text-center pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => setShowGoogleModal(true)}
-                  className="text-[10px] font-black text-[#593622] hover:text-[#422919] hover:underline uppercase tracking-wider bg-transparent border-0 cursor-pointer focus:outline-none"
-                >
-                  Or Use Sandbox Simulation 🔬
-                </button>
-              </div>
+
 
 
 
@@ -474,156 +403,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
         </div>
       </div>
 
-      {/* SIMULATED GOOGLE OAUTH CHOOSE ACCOUNT INTERACTIVE POPUP */}
-      <AnimatePresence>
-        {showGoogleModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 10 }}
-              transition={{ duration: 0.2 }}
-              className="bg-[#f0f2f5] rounded-3xl max-w-sm w-full outline outline-1 outline-stone-250 shadow-3xl text-stone-800 flex flex-col font-sans overflow-hidden"
-            >
-              {/* Fake Google Accounts Title Header wrapper */}
-              <div className="bg-white p-5 border-b border-stone-200 space-y-4">
-                <div className="flex items-center justify-between">
-                  {/* Google SVG logo */}
-                  <svg className="h-5" viewBox="0 0 74 24">
-                    <path fill="#4285F4" d="M11.64 5.1C10.2 3.73 8.32 3 6.13 3 2.75 3 0 5.67 0 9.05c0 3.38 2.75 6.05 6.13 6.05 2.19 0 4.07-.73 5.51-2.1v-.05V9.45H6.13v2.81h2.95c-.32 1.57-1.84 2.81-2.95 2.81-1.78 0-3.32-1.25-3.32-3.24 0-1.99 1.54-3.24 3.32-3.24 1.15 0 2.11.49 2.76 1.14l2.12-2.12c-.01-.01-.01-.01-.01 0z" />
-                    <path fill="#EA4335" d="M21.75 3c-3.38 0-6.13 2.67-6.13 6.05s2.75 6.05 6.13 6.05S27.88 12.43 27.88 9.05 25.13 3 21.75 3zm0 9.29c-1.78 0-3.32-1.25-3.32-3.24 0-1.99 1.54-3.24 3.32-3.24S25.07 7.06 25.07 9.05c0 1.99-1.54 3.24-3.32 3.24z" />
-                    <path fill="#FBBC05" d="M38.25 3c-3.38 0-6.13 2.67-6.13 6.05s2.75 6.05 6.13 6.05S44.38 12.43 44.38 9.05 41.63 3 38.25 3zm0 9.29c-1.78 0-3.32-1.25-3.32-3.24 0-1.99 1.54-3.24 3.32-3.24S41.57 7.06 41.57 9.05c0 1.99-1.54 3.24-3.32 3.24z" />
-                    <path fill="#34A853" d="M54.75 3c-3.38 0-6.13 2.67-6.13 6.05s2.75 6.05 6.13 6.05c2.19 0 4.07-.73 5.51-2.1v1.51c0 1.99-1.54 3.24-3.32 3.24-1.15 0-2.11-.49-2.76-1.14l-2.12 2.12c1.44 1.37 3.32 2.1 5.51 2.1 3.38 0 6.13-2.67 6.13-6.05V3.45H54.75zm0 9.29c-1.78 0-3.32-1.25-3.32-3.24 0-1.99 1.54-3.24 3.32-3.24s3.32 1.25 3.32 3.24c0 1.99-1.54 3.24-3.32 3.32z" />
-                    <path fill="#4285F4" d="M64.62 1.05h3.04v21.9h-3.04z" />
-                  </svg>
-                  <button 
-                    type="button" 
-                    onClick={() => setShowGoogleModal(false)}
-                    className="text-stone-400 hover:text-stone-700 bg-stone-100 hover:bg-stone-200 p-1 rounded-full text-xs"
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
 
-                <div className="text-left space-y-1">
-                  <h3 className="font-semibold text-stone-900 text-sm tracking-tight">Choose an account</h3>
-                  <p className="text-[11px] text-stone-500 leading-normal">to sign in to <strong className="text-stone-700">BhisesWorkshop Terminal</strong></p>
-                </div>
-              </div>
-
-              {/* Scrollable list of authentic Google Accounts in the directory */}
-              <div className="p-4 space-y-3 max-h-[290px] overflow-y-auto">
-                
-                {/* Dynamically list any user with Google linked email */}
-                <div className="space-y-1.5 text-left">
-                  <span className="text-[9px] uppercase tracking-wider text-stone-400 font-bold block mb-1">
-                    Registered Google Identities
-                  </span>
-
-                  {users.filter(u => u.google_linked || u.email.endsWith('@gmail.com')).map((profile) => {
-                    const isSelected = gEmail.toLowerCase() === profile.email.toLowerCase();
-                    return (
-                      <div
-                        key={profile.id}
-                        onClick={() => handleGoogleAccountSelect(profile)}
-                        className={`p-3 bg-white hover:bg-white/90 border rounded-xl cursor-pointer transition flex items-center justify-between select-none ${
-                          isSelected ? 'ring-2 ring-blue-500 border-transparent bg-blue-50/10' : 'border-stone-200/80'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          {/* Google Color Initials avatar */}
-                          <div className="h-9 w-9 rounded-full bg-stone-100 border text-stone-800 font-bold flex items-center justify-center text-xs shrink-0 select-none uppercase font-mono">
-                            {profile.initials}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-bold text-[12px] text-stone-900 block truncate leading-none">
-                              {profile.name}
-                            </span>
-                            <span className="text-[10px] text-stone-500 font-mono block mt-1 truncate">
-                              {profile.email}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Mapped role indicator */}
-                        <div className="text-right shrink-0">
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-stone-100 text-stone-700 border border-stone-200 font-sans tracking-tight font-extrabold">
-                            {profile.role === 'admin' ? 'admin' : profile.role === 'carpenter' ? 'carpenter' : 'polish'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Secure verify authorization block when selected */}
-                {gEmail && (
-                  <motion.form 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    onSubmit={submitGoogleAuth}
-                    className="bg-white p-4 border rounded-2xl border-stone-250 text-left space-y-3 text-xs shadow-xs"
-                  >
-                    <div className="flex items-center gap-1 text-blue-600 font-bold text-[10px] uppercase tracking-wider">
-                      <ShieldCheck size={12} />
-                      <span>Google Security Check</span>
-                    </div>
-
-                    {gError && (
-                      <div className="text-[10px] bg-red-50 text-red-700 p-2 rounded font-bold border border-red-200 leading-normal">
-                        {gError}
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      <label className="block text-[9px] font-black uppercase text-stone-400">Selected Email</label>
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value={gEmail} 
-                        className="w-full bg-stone-50 p-2 rounded border border-stone-200 font-mono text-[11px] text-stone-600 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-[9px] font-black uppercase text-stone-400">Account Passcode</label>
-                        <span className="text-[9px] font-bold text-blue-600 font-mono tracking-tighter">
-                          Expected: {gPass}
-                        </span>
-                      </div>
-                      <input 
-                        type="password"
-                        required
-                        value={gPass}
-                        onChange={(e) => setGPass(e.target.value)}
-                        placeholder="Google workspace password"
-                        className="w-full p-2 rounded border border-stone-300 focus:border-blue-600 focus:outline-none font-semibold text-xs text-stone-900 bg-white"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-heavy text-[11px] uppercase py-2 rounded-lg text-center tracking-widest block transition-colors shadow"
-                    >
-                      Verify &amp; Continue with Google
-                    </button>
-                  </motion.form>
-                )}
-              </div>
-
-              {/* Fake Google footer links */}
-              <div className="bg-stone-100 p-3 text-center border-t border-stone-200 flex justify-between text-[9px] text-stone-400 font-sans tracking-wide font-extrabold uppercase select-none">
-                <span>Language Check: English</span>
-                <span className="flex gap-2">
-                  <a href="#help" onClick={(e) => { e.preventDefault(); alert("Safe workspace sandbox: Choose a Google profile from the list above and press sign-in!"); }} className="hover:underline text-stone-500">Help</a>
-                  <a href="#privacy" onClick={(e) => e.preventDefault()} className="hover:underline">Privacy</a>
-                </span>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
