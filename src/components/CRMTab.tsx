@@ -61,7 +61,13 @@ import {
   FileCheck,
   UserPlus,
   Camera,
-  Upload
+  Upload,
+  Printer,
+  Download,
+  Share2,
+  Image,
+  QrCode,
+  FileSignature
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -124,6 +130,12 @@ export default function CRMTab({
   const [editingCustomer, setEditingCustomer] = React.useState<CRMCustomer | null>(null);
   const [showAddQuoteModal, setShowAddQuoteModal] = React.useState(false);
   const [showAddFollowupModal, setShowAddFollowupModal] = React.useState(false);
+  const [viewingEstimateQuote, setViewingEstimateQuote] = React.useState<CRMQuotation | null>(null);
+
+  // Customized printable estimate asset states (stored in localStorage for persistence)
+  const [customLogo, setCustomLogo] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_logo'));
+  const [customQR, setCustomQR] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_qr'));
+  const [customSignature, setCustomSignature] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_signature'));
 
   // Attachment Dialog States
   const [showAttachmentModal, setShowAttachmentModal] = React.useState(false);
@@ -701,6 +713,13 @@ export default function CRMTab({
     };
 
     const quoteId = `QT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const nextEstimateNo = (db.crmQuotations && db.crmQuotations.length > 0) 
+      ? Math.max(0, ...db.crmQuotations.map(q => q.estimateNo || 0)) + 1 
+      : 1;
+    const estimateDate = new Date().toISOString().split('T')[0];
+    const customDescription = '';
+    const customTerms = '';
+
     const newQuote: CRMQuotation = {
       id: quoteId,
       customer_id: custId,
@@ -710,8 +729,11 @@ export default function CRMTab({
       validUntil: (formData.get('validUntil') as string) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       notes: (formData.get('notes') as string) || undefined,
       status: 'Sent',
-      created_at: new Date().toISOString(),
-      created_by: currentUser.name
+      created_at: new Date(estimateDate + 'T12:00:00').toISOString(),
+      created_by: currentUser.name,
+      estimateNo: nextEstimateNo,
+      description: customDescription,
+      termsAndConditions: customTerms
     };
 
     onSaveCRMQuotation(newQuote);
@@ -923,8 +945,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => typeof value === 'number'
-                      ? `₹${value.toLocaleString()}` : value?.toString() ?? ''}/>
+                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1882,6 +1903,13 @@ export default function CRMTab({
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex justify-end gap-1.5">
+                              <button
+                                onClick={() => setViewingEstimateQuote(quote)}
+                                className="bg-[#593622] hover:bg-[#482b1b] text-white p-1.5 rounded-lg transition flex items-center justify-center cursor-pointer"
+                                title="View Estimate Receipt"
+                              >
+                                <Eye size={13} />
+                              </button>
                               {quote.status === 'Sent' && hasWriteAccess && (
                                 <>
                                   <button
@@ -2638,6 +2666,629 @@ export default function CRMTab({
           </motion.div>
         </div>
       )}
+
+      {/* 5. ESTIMATE RECEIPT VIEWER MODAL */}
+      {viewingEstimateQuote && (() => {
+        const handleUpdateField = (field: keyof CRMQuotation, value: any) => {
+          if (!viewingEstimateQuote) return;
+          const updated = { ...viewingEstimateQuote, [field]: value };
+          setViewingEstimateQuote(updated);
+          onSaveCRMQuotation(updated);
+        };
+
+        const customer = db.crmCustomers?.find(c => c.id === viewingEstimateQuote.customer_id);
+        const itemsList = viewingEstimateQuote.items || [];
+        const itemSubtotal = itemsList.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
+        const totalDiscount = itemsList.reduce((acc, item) => acc + (item.discount || 0), 0);
+        const taxableAmount = Math.max(0, itemSubtotal - totalDiscount);
+        const totalGstAmount = itemsList.reduce((acc, item) => {
+          const itemTaxable = Math.max(0, (item.unitPrice * item.quantity) - (item.discount || 0));
+          return acc + Math.round(itemTaxable * ((item.gst || 0) / 100));
+        }, 0);
+
+        const firstItem = itemsList[0];
+        const itemDiscount = firstItem ? (firstItem.discount || 0) : 0;
+        const itemGstPercent = firstItem ? (firstItem.gst || 0) : 0;
+        const itemGstAmount = firstItem ? Math.round(Math.max(0, (firstItem.unitPrice * firstItem.quantity) - itemDiscount) * (itemGstPercent / 100)) : 0;
+
+        // Number to Words function
+        const getAmountInWords = (num: number): string => {
+          if (num === 0) return 'Zero Rupees only';
+          const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+          const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+          
+          const helper = (n: number): string => {
+            if (n < 20) return ones[n];
+            if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
+            if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' and ' + helper(n % 100) : '');
+            if (n < 100000) return helper(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + helper(n % 1000) : '');
+            if (n < 10000000) return helper(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + helper(n % 100000) : '');
+            return helper(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + helper(n % 10000000) : '');
+          };
+          
+          return helper(Math.round(num)).trim() + ' Rupees Only';
+        };
+
+        const shareText = `Hello ${customer?.name || viewingEstimateQuote.customer_name},\n\nPlease find the custom price Estimate from *Bhisez Furniture*:\n\n*Estimate No:* QT-${viewingEstimateQuote.id}\n*Date:* ${new Date(viewingEstimateQuote.created_at).toLocaleDateString('en-GB')}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Price/Unit:* ₹${(firstItem?.unitPrice || 0).toLocaleString('en-IN')}\n*Discount:* ₹${itemDiscount.toLocaleString('en-IN')}\n*GST (${itemGstPercent}%):* ₹${itemGstAmount.toLocaleString('en-IN')}\n*Net Total:* ₹${viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}\n\nThank you for choosing Bhisez Furniture!`;
+        const phoneForWa = customer?.phone ? customer.phone.replace(/\D/g, '') : '';
+        const whatsappUrl = phoneForWa
+          ? `https://api.whatsapp.com/send?phone=${phoneForWa}&text=${encodeURIComponent(shareText)}`
+          : `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+
+        const handlePrintEstimate = () => {
+          const printContent = document.getElementById('estimate-print-sheet');
+          if (!printContent) return;
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            const htmlString = '<html><head><title>Estimate_QT-' + viewingEstimateQuote.id + '</title>' +
+              '<script src="https://cdn.tailwindcss.com"></script>' +
+              '<style>' +
+              '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
+              'body { font-family: "Inter", sans-serif; background-color: white; color: black; padding: 30px; }' +
+              '.print\\:hidden { display: none !important; }' +
+              '.print\\:inline { display: inline !important; }' +
+              '.print\\:block { display: block !important; }' +
+              '@media print { body { padding: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } }' +
+              '</style>' +
+              '</head><body onload="window.print(); setTimeout(function(){ window.close(); }, 500);">' +
+              '<div class="max-w-4xl mx-auto border-2 border-stone-800 p-8">' +
+              printContent.innerHTML +
+              '</div></body></html>';
+            printWindow.document.write(htmlString);
+            printWindow.document.close();
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-3 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-stone-100 rounded-3xl shadow-2xl p-4 sm:p-6 w-full max-w-4xl my-8 space-y-4 max-h-[95vh] overflow-y-auto"
+            >
+              {/* Control Panel (Not Printed) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200">
+                <div>
+                  <h3 className="text-sm font-black text-stone-900 flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Estimate Document Engine (Active)
+                  </h3>
+                  <p className="text-[11px] text-stone-500 mt-0.5 font-medium">Generate, share on WhatsApp, or download standard high-fidelity A4 Estimate PDFs.</p>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#25D366] hover:bg-[#20ba59] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Share2 size={13} />
+                    Share via WhatsApp
+                  </a>
+
+                  <button
+                    onClick={handlePrintEstimate}
+                    className="bg-[#593622] hover:bg-[#4d2f1e] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Printer size={13} />
+                    Print / Download PDF
+                  </button>
+
+                  <button
+                    onClick={() => setViewingEstimateQuote(null)}
+                    className="bg-stone-100 hover:bg-stone-200 text-stone-750 p-1.5 rounded-xl transition"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Printable Image Customizer Panel (Visible on screen, hidden in print) */}
+              <div className="bg-white p-4 rounded-2xl border border-stone-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                {/* Logo Customizer */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-stone-700">
+                    <Image size={14} className="text-amber-500" />
+                    <span>Company Brand Logo</span>
+                  </div>
+                  <p className="text-[10px] text-stone-500">Replaces the top-left text logo of the estimate.</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => document.getElementById('logo-upload-input')?.click()}
+                      className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Upload size={12} />
+                      {customLogo ? 'Replace Image' : 'Choose Logo'}
+                    </button>
+                    {customLogo && (
+                      <button
+                        onClick={() => {
+                          setCustomLogo(null);
+                          localStorage.removeItem('estimate_custom_logo');
+                        }}
+                        className="text-rose-500 hover:text-rose-700 px-2 py-1.5 rounded-lg font-bold transition text-[11px]"
+                      >
+                        Reset to Default
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    id="logo-upload-input"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const base64 = reader.result as string;
+                          setCustomLogo(base64);
+                          localStorage.setItem('estimate_custom_logo', base64);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* UPI QR Customizer */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-stone-700">
+                    <QrCode size={14} className="text-emerald-600" />
+                    <span>UPI QR Code Image</span>
+                  </div>
+                  <p className="text-[10px] text-stone-500">Replaces the default placeholder QR code.</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => document.getElementById('qr-upload-input')?.click()}
+                      className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Upload size={12} />
+                      {customQR ? 'Replace QR Image' : 'Choose QR Image'}
+                    </button>
+                    {customQR && (
+                      <button
+                        onClick={() => {
+                          setCustomQR(null);
+                          localStorage.removeItem('estimate_custom_qr');
+                        }}
+                        className="text-rose-500 hover:text-rose-700 px-2 py-1.5 rounded-lg font-bold transition text-[11px]"
+                      >
+                        Reset to Default
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    id="qr-upload-input"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const base64 = reader.result as string;
+                          setCustomQR(base64);
+                          localStorage.setItem('estimate_custom_qr', base64);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Signature Customizer */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-stone-700">
+                    <FileSignature size={14} className="text-slate-600" />
+                    <span>Authorized Signatory Signature</span>
+                  </div>
+                  <p className="text-[10px] text-stone-500">Replaces the empty sign box on the bottom-right.</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => document.getElementById('signature-upload-input')?.click()}
+                      className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Upload size={12} />
+                      {customSignature ? 'Replace Signature' : 'Choose Signature'}
+                    </button>
+                    {customSignature && (
+                      <button
+                        onClick={() => {
+                          setCustomSignature(null);
+                          localStorage.removeItem('estimate_custom_signature');
+                        }}
+                        className="text-rose-500 hover:text-rose-700 px-2 py-1.5 rounded-lg font-bold transition text-[11px]"
+                      >
+                        Reset to Default
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    id="signature-upload-input"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const base64 = reader.result as string;
+                          setCustomSignature(base64);
+                          localStorage.setItem('estimate_custom_signature', base64);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Scrollable sheet container for mobile preview */}
+              <div className="overflow-x-auto bg-white p-2 rounded-3xl border border-stone-200 shadow-sm">
+                <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-6 font-sans">
+                  
+                  {/* Title centered above the main box */}
+                  <div className="text-center mb-5">
+                    <h1 className="text-2xl font-bold text-slate-800 tracking-wide">Estimate</h1>
+                  </div>
+
+                  {/* Unified Main Box with Slate Border */}
+                  <div className="border border-slate-400 bg-white">
+                    
+                    {/* Section 1: Company Profile Info Block */}
+                    <div className="grid grid-cols-12 p-4 items-center">
+                      <div 
+                        className="col-span-5 flex flex-col items-start select-none cursor-pointer group relative"
+                        onClick={() => document.getElementById('logo-upload-input')?.click()}
+                        title="Click to upload custom logo"
+                      >
+                        {customLogo ? (
+                          <div className="relative">
+                            <img src={customLogo} alt="Company Logo" className="max-h-20 max-w-full object-contain" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
+                              Change Logo
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-4xl font-extrabold text-[#e2a228] font-serif tracking-tight leading-none">Bhisez</span>
+                            <div className="flex items-center w-full max-w-[150px] gap-1 mt-1">
+                              <div className="h-[1.5px] bg-slate-800 flex-1"></div>
+                              <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-800 font-sans">FURNITURE</span>
+                              <div className="h-[1.5px] bg-slate-800 flex-1"></div>
+                            </div>
+                            <div className="absolute -bottom-4 left-0 text-[8px] text-stone-400 opacity-0 group-hover:opacity-100 transition print:hidden">
+                              (Click to choose logo image)
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="col-span-7 text-left space-y-1 pl-4">
+                        <h2 className="text-lg font-bold text-slate-900 leading-none">Bhisez furniture</h2>
+                        <p className="text-[11px] text-slate-600">Bhisez Furniture, Near Bus Stand, Sukalwad-416534</p>
+                        <div className="flex flex-wrap gap-x-4 text-[11px] text-slate-600">
+                          <p>Phone: <span className="font-bold text-slate-900">8275351122</span></p>
+                          <p>Email: <span className="text-slate-900 font-medium">bhisezfurniture@gmail.com</span></p>
+                        </div>
+                        <p className="text-[11px] text-slate-600">State: <span className="font-bold text-slate-900">27-Maharashtra</span></p>
+                      </div>
+                    </div>
+
+                    {/* Section 2: Customer & Estimate Details Grid */}
+                    <div className="grid grid-cols-2 border-t border-slate-400 divide-x divide-slate-400">
+                      {/* Left Column: Estimate For */}
+                      <div className="flex flex-col">
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400">
+                          Estimate For:
+                        </div>
+                        <div className="p-3 space-y-1 min-h-[75px] text-xs text-slate-700">
+                          <h3 className="font-bold text-slate-900 text-sm">{customer?.name || viewingEstimateQuote.customer_name}</h3>
+                          {customer && (
+                            <div className="space-y-0.5 text-slate-600">
+                              <p>Contact: <span className="font-semibold text-slate-800">{customer.phone}</span></p>
+                              {customer.address && (
+                                <p className="leading-snug">Address: {customer.address}, {customer.city}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Estimate Details */}
+                      <div className="flex flex-col">
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide flex justify-between items-center">
+                          <span>Estimate Details:</span>
+                          <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click values to edit inline)</span>
+                        </div>
+                        <div className="p-3 text-[11px] text-slate-700 space-y-1.5 min-h-[75px]">
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-600">No:</span>
+                            <span className="hidden print:inline font-bold text-slate-900 font-mono">
+                              {viewingEstimateQuote.estimateNo !== undefined ? viewingEstimateQuote.estimateNo : (viewingEstimateQuote.id ? viewingEstimateQuote.id.toString().replace(/\D/g, '').slice(-3) || '1' : '1')}
+                            </span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={viewingEstimateQuote.estimateNo !== undefined ? viewingEstimateQuote.estimateNo : (viewingEstimateQuote.id ? Number(viewingEstimateQuote.id.toString().replace(/\D/g, '')) || 1 : 1)}
+                              onChange={(e) => handleUpdateField('estimateNo', Number(e.target.value))}
+                              className="print:hidden font-bold text-slate-900 font-mono bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-20 outline-none transition"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-600">Date:</span>
+                            <span className="hidden print:inline font-bold text-slate-900 font-mono">
+                              {new Date(viewingEstimateQuote.created_at).toLocaleDateString('en-GB')}
+                            </span>
+                            <input
+                              type="date"
+                              value={new Date(viewingEstimateQuote.created_at).toISOString().split('T')[0]}
+                              onChange={(e) => handleUpdateField('created_at', new Date(e.target.value + 'T12:00:00').toISOString())}
+                              className="print:hidden font-bold text-slate-900 font-mono bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-28 outline-none transition"
+                            />
+                          </div>
+
+                          <p className="flex items-center gap-1">
+                            <span className="text-slate-600">Place of Supply:</span>
+                            <span className="font-bold text-slate-900">27-Maharashtra</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 3: Itemized Table */}
+                    <div className="border-t border-slate-400 overflow-hidden">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-slate-400 text-[10px] text-slate-700 font-bold uppercase">
+                            <th className="p-2 w-12 border-r border-slate-400 text-center">#</th>
+                            <th className="p-2 border-r border-slate-400">Item Name</th>
+                            <th className="p-2 w-24 border-r border-slate-400 text-center">HSN/ SAC</th>
+                            <th className="p-2 w-20 border-r border-slate-400 text-center">Quantity</th>
+                            <th className="p-2 w-28 border-r border-slate-400 text-right">Price/ Unit (₹)</th>
+                            <th className="p-2 w-28 text-right font-bold text-right pr-2">Amount(₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-400 text-slate-800">
+                          {itemsList.length > 0 ? (
+                            itemsList.map((item, idx) => {
+                              const itemTotalVal = (item.unitPrice * item.quantity);
+                              return (
+                                <tr key={item.id} className="divide-x divide-slate-400 text-[11px]">
+                                  <td className="p-2 text-center text-slate-500 font-mono">{idx + 1}</td>
+                                  <td className="p-2 font-medium">
+                                    <div className="font-bold text-slate-900">{item.furnitureItem}</div>
+                                    {(item.dimensions || item.material) && (
+                                      <div className="text-[10px] text-slate-500 space-x-2 mt-0.5">
+                                        {item.dimensions && <span>Size: <span className="font-mono text-slate-700">{item.dimensions}</span></span>}
+                                        {item.material && <span>Wood: <span className="text-slate-700">{item.material}</span></span>}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-2 text-center text-slate-400 font-mono">-</td>
+                                  <td className="p-2 text-center font-bold text-slate-900">{item.quantity}</td>
+                                  <td className="p-2 text-right font-mono">₹{item.unitPrice.toLocaleString('en-IN')}.00</td>
+                                  <td className="p-2 text-right font-mono font-bold text-slate-900 pr-2">₹{itemTotalVal.toLocaleString('en-IN')}.00</td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr className="divide-x divide-slate-400 text-[11px]">
+                              <td className="p-2 text-center text-slate-500 font-mono">1</td>
+                              <td className="p-2 font-bold text-slate-900">Custom Furniture Crafting</td>
+                              <td className="p-2 text-center text-slate-400 font-mono">-</td>
+                              <td className="p-2 text-center font-bold text-slate-900">1</td>
+                              <td className="p-2 text-right font-mono">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
+                              <td className="p-2 text-right font-mono font-bold text-slate-900 pr-2">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
+                            </tr>
+                          )}
+
+                          {/* Total Row */}
+                          <tr className="divide-x divide-slate-400 bg-slate-50/50 font-bold border-t border-slate-400 text-[11px]">
+                            <td className="p-2 text-center"></td>
+                            <td className="p-2 text-slate-900">Total</td>
+                            <td className="p-2 text-center"></td>
+                            <td className="p-2 text-center font-mono text-slate-900">
+                              {itemsList.reduce((acc, curr) => acc + curr.quantity, 0) || 1}
+                            </td>
+                            <td className="p-2"></td>
+                            <td className="p-2 text-right font-mono text-slate-900 pr-2">
+                              ₹{itemSubtotal.toLocaleString('en-IN')}.00
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Section 3.5: Breakdown Calculations Layout */}
+                    <div className="grid grid-cols-12 border-t border-slate-400">
+                      <div className="col-span-8 border-r border-slate-400 bg-white min-h-[140px]"></div>
+                      <div className="col-span-4 flex flex-col font-medium text-xs divide-y divide-slate-400">
+                        <div className="grid grid-cols-2 p-2">
+                          <span className="text-slate-600">Sub Total</span>
+                          <span className="text-right font-bold text-slate-900 pr-1">: ₹{itemSubtotal.toLocaleString('en-IN')}.00</span>
+                        </div>
+                        
+                        {totalDiscount > 0 && (
+                          <div className="grid grid-cols-2 p-2 text-rose-800 bg-rose-50/20">
+                            <span>Discount</span>
+                            <span className="text-right font-bold pr-1">: -₹{totalDiscount.toLocaleString('en-IN')}.00</span>
+                          </div>
+                        )}
+                        
+                        {totalGstAmount > 0 && (
+                          <div className="grid grid-cols-2 p-2">
+                            <span className="text-slate-600">GST</span>
+                            <span className="text-right font-bold text-slate-900 pr-1">: +₹{totalGstAmount.toLocaleString('en-IN')}.00</span>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 p-2 font-bold text-slate-950 bg-slate-50/50">
+                          <span>Total</span>
+                          <span className="text-right font-extrabold text-slate-950 pr-1">: ₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</span>
+                        </div>
+
+                        {/* Estimate Amount In Words Sub-Header */}
+                        <div className="bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700 border-t border-b border-slate-400 uppercase">
+                          Estimate Amount In Words :
+                        </div>
+                        
+                        {/* Amount text */}
+                        <div className="p-2 text-[11px] leading-relaxed text-slate-800 font-semibold bg-white italic">
+                          {getAmountInWords(viewingEstimateQuote.totalAmount)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 4: Description & Terms */}
+                    <div className="grid grid-cols-2 border-t border-slate-400 divide-x divide-slate-400 text-xs">
+                      <div className="flex flex-col">
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide flex justify-between items-center">
+                          <span>Description:</span>
+                          <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click below to edit description)</span>
+                        </div>
+                        <div className="p-2.5 text-slate-700 font-semibold min-h-[55px] flex flex-col flex-1">
+                          <span className="hidden print:inline whitespace-pre-wrap leading-relaxed text-slate-700">
+                            {viewingEstimateQuote.description !== undefined ? viewingEstimateQuote.description : (viewingEstimateQuote.notes || '')}
+                          </span>
+                          <textarea
+                            placeholder="Type custom description manually..."
+                            value={viewingEstimateQuote.description !== undefined ? viewingEstimateQuote.description : (viewingEstimateQuote.notes || '')}
+                            onChange={(e) => handleUpdateField('description', e.target.value)}
+                            className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-semibold outline-none resize-none min-h-[50px] transition text-slate-700"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col">
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide flex justify-between items-center">
+                          <span>Terms And Conditions:</span>
+                          <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click below to edit terms)</span>
+                        </div>
+                        <div className="p-2.5 text-slate-500 font-medium min-h-[55px] flex flex-col flex-1">
+                          <span className="hidden print:inline whitespace-pre-wrap leading-relaxed text-slate-500">
+                            {viewingEstimateQuote.termsAndConditions !== undefined ? viewingEstimateQuote.termsAndConditions : ''}
+                          </span>
+                          <textarea
+                            placeholder="Type terms & conditions manually..."
+                            value={viewingEstimateQuote.termsAndConditions !== undefined ? viewingEstimateQuote.termsAndConditions : ''}
+                            onChange={(e) => handleUpdateField('termsAndConditions', e.target.value)}
+                            className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-medium outline-none resize-none min-h-[50px] transition text-slate-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 5: Bank Details & Signature Row */}
+                    <div className="grid grid-cols-2 border-t border-slate-400 divide-x divide-slate-400 text-xs">
+                      <div className="flex flex-col">
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide">
+                          Bank Details:
+                        </div>
+                        <div className="p-3 grid grid-cols-12 gap-3 items-center min-h-[110px]">
+                          <div className="col-span-8 space-y-1 text-[11px] text-slate-700 font-semibold">
+                            <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
+                            <p>Account No.: <span className="text-slate-900 font-extrabold font-mono">50100705616156</span></p>
+                            <p>IFSC code: <span className="text-slate-900 font-extrabold font-mono">HDFC0009348</span></p>
+                            <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
+                          </div>
+                          <div 
+                            className="col-span-4 flex flex-col items-center justify-center border-l border-slate-200 pl-3 cursor-pointer group relative"
+                            onClick={() => document.getElementById('qr-upload-input')?.click()}
+                            title="Click to upload custom UPI QR code image"
+                          >
+                            {customQR ? (
+                              <div className="relative">
+                                <img src={customQR} alt="UPI QR" className="w-16 h-16 object-contain" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-bold rounded print:hidden">
+                                  Change
+                                </div>
+                              </div>
+                            ) : (
+                              <svg className="w-16 h-16 text-slate-800" viewBox="0 0 100 100">
+                                <rect width="100" height="100" fill="white" />
+                                <rect x="5" y="5" width="25" height="25" fill="currentColor" />
+                                <rect x="10" y="10" width="15" height="15" fill="white" />
+                                <rect x="13" y="13" width="9" height="9" fill="currentColor" />
+
+                                <rect x="70" y="5" width="25" height="25" fill="currentColor" />
+                                <rect x="75" y="10" width="15" height="15" fill="white" />
+                                <rect x="78" y="13" width="9" height="9" fill="currentColor" />
+
+                                <rect x="5" y="70" width="25" height="25" fill="currentColor" />
+                                <rect x="10" y="75" width="15" height="15" fill="white" />
+                                <rect x="13" y="78" width="9" height="9" fill="currentColor" />
+
+                                <rect x="35" y="5" width="5" height="15" fill="currentColor" />
+                                <rect x="45" y="10" width="10" height="5" fill="currentColor" />
+                                <rect x="60" y="15" width="5" height="10" fill="currentColor" />
+                                <rect x="40" y="25" width="20" height="5" fill="currentColor" />
+                                <rect x="5" y="35" width="15" height="5" fill="currentColor" />
+                                <rect x="25" y="35" width="5" height="15" fill="currentColor" />
+                                <rect x="35" y="40" width="25" height="5" fill="currentColor" />
+                                <rect x="65" y="35" width="15" height="15" fill="currentColor" />
+                                <rect x="85" y="35" width="10" height="5" fill="currentColor" />
+                                <rect x="5" y="55" width="5" height="10" fill="currentColor" />
+                                <rect x="15" y="50" width="15" height="5" fill="currentColor" />
+                                <rect x="35" y="55" width="25" height="10" fill="currentColor" />
+                                <rect x="65" y="55" width="5" height="10" fill="currentColor" />
+                                <rect x="75" y="50" width="15" height="5" fill="currentColor" />
+                                <rect x="35" y="70" width="10" height="25" fill="currentColor" />
+                                <rect x="50" y="75" width="15" height="10" fill="currentColor" />
+                                <rect x="70" y="80" width="5" height="15" fill="currentColor" />
+                                <rect x="80" y="75" width="15" height="15" fill="currentColor" />
+                                <rect x="50" y="90" width="15" height="5" fill="currentColor" />
+                              </svg>
+                            )}
+                            <div className="mt-1 bg-[#1b9a59] text-white px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
+                              UPI Click to Pay
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col">
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide font-sans">
+                          For Bhisez furniture:
+                        </div>
+                        <div 
+                          className="p-3 flex flex-col items-center justify-end flex-1 min-h-[110px] cursor-pointer group relative"
+                          onClick={() => document.getElementById('signature-upload-input')?.click()}
+                          title="Click to upload custom authorized signature image"
+                        >
+                          {customSignature ? (
+                            <div className="relative w-36 h-12 flex items-center justify-center">
+                              <img src={customSignature} alt="Authorized Signature" className="max-w-full max-h-full object-contain" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
+                                Change Signature
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-36 h-12 border border-slate-200 bg-slate-50/50 rounded flex items-center justify-center text-stone-400 group-hover:text-stone-600 transition text-[9px] font-semibold print:border-none print:bg-transparent">
+                              <span className="print:hidden">(Click to add Sign)</span>
+                            </div>
+                          )}
+                          <span className="text-[10px] text-slate-500 font-bold mt-2 font-sans">Authorized Signatory</span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+
+
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
 
     </div>
   );
