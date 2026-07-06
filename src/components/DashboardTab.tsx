@@ -203,7 +203,7 @@ export default function DashboardTab({
             className="bg-gradient-to-br from-white to-[#fcf8f2] p-4 rounded-2xl border border-stone-200 shadow-xs hover:shadow-md transition-all flex items-start gap-4 cursor-pointer group"
           >
             <div className="bg-[#593622] text-amber-300 p-3 rounded-xl shadow-inner shrink-0 text-xl">
-              🪑
+              
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">

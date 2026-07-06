@@ -923,7 +923,8 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip formatter={(value) => typeof value === 'number'
+                      ? `₹${value.toLocaleString()}` : value?.toString() ?? ''}/>
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
