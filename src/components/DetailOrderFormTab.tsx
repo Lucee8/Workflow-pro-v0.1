@@ -1,15 +1,47 @@
 import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
-import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft } from 'lucide-react';
+import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat } from 'lucide-react';
+
+const CATEGORY_MAP: Record<string, string[]> = {
+  'Door Frames': ['Set', 'Mandir Room', 'Door', 'Christian Door', 'Frame'],
+  'Wooden Sofas': ['Sofa'],
+  'Beds': ['Premium Bed', 'Open Bed', 'Floating Bed', 'Box Bed', 'Trolley Bed', 'Poster Bed', 'Bunk Bed', 'Hydraulic Bed'],
+  'Dressing Table': ['Dressing Table'],
+  'Wooden Swings': ['Swing'],
+  'Wooden Safety Doors': ['Safety Door'],
+  'Wooden Mandirs': ['Mandir', 'Rajasan', 'Pooja Mandir'],
+  'Teapoys & Coffee Tables': ['Teapoy'],
+  'Sofa Cum Beds': ['Sofa Cum Bed'],
+  'Dining Tables': ['Dining'],
+  'Wardrobes': ['Wardrobe'],
+  'TV Units': ['TV Unit'],
+  'Chaurang & Paats': ['Chaurang'],
+  'Diwans': ['Open Diwan', 'Box Diwan', 'Trolley Diwan', 'Bhaiyya Khat'],
+};
 
 interface DetailOrderFormTabProps {
   orders: Order[];
   customers: Customer[];
   users: User[];
   payments: Payment[];
+  crmQuotations?: any[];
+  crmCustomers?: any[];
+  preselectedQuotationId?: string | null;
+  onClearPreselectedQuotation?: () => void;
+  onSendToWorkOrder?: (draft: any) => void;
 }
 
-export default function DetailOrderFormTab({ orders, customers, users, payments }: DetailOrderFormTabProps) {
+export default function DetailOrderFormTab({ 
+  orders, 
+  customers, 
+  users, 
+  payments,
+  crmQuotations = [],
+  crmCustomers = [],
+  preselectedQuotationId = null,
+  onClearPreselectedQuotation,
+  onSendToWorkOrder
+}: DetailOrderFormTabProps) {
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>('');
   const [language, setLanguage] = React.useState<'en' | 'mr'>('en');
 
@@ -33,6 +65,101 @@ export default function DetailOrderFormTab({ orders, customers, users, payments 
   const [discount, setDiscount] = React.useState<number>(0);
   const [hardware, setHardware] = React.useState<number>(0);
   
+  // Product Configuration states
+  const [category, setCategory] = React.useState('Door Frames');
+  const [subCategory, setSubCategory] = React.useState('Set');
+  const [size, setSize] = React.useState('6ft');
+  const [customSize, setCustomSize] = React.useState('');
+  const [designType, setDesignType] = React.useState<'Standard' | 'Custom'>('Standard');
+  const [material, setMaterial] = React.useState('Plywood');
+  const [finish, setFinish] = React.useState('hand polish');
+  const [colorShade, setColorShade] = React.useState('Walnut');
+  const [specialNotes, setSpecialNotes] = React.useState('');
+
+  // Reference Images
+  const [refImages, setRefImages] = React.useState<Array<{ id: string; url: string; type: 'Design Reference' }>>([]);
+  const [imgUrlInput, setImgUrlInput] = React.useState('');
+
+  // Handle local image file load & compression to keep size optimal
+  const compressImage = (base64Str: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const max_size = 600;
+        if (width > height) {
+          if (width > max_size) {
+            height *= max_size / width;
+            width = max_size;
+          }
+        } else {
+          if (height > max_size) {
+            width *= max_size / height;
+            height = max_size;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+    });
+  };
+
+  const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file: any) => {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const rawUrl = event.target?.result as string;
+        const compressedUrl = await compressImage(rawUrl);
+        setRefImages((prev) => [
+          ...prev,
+          {
+            id: `img_${Math.random().toString(36).substring(2, 9)}`,
+            url: compressedUrl,
+            type: 'Design Reference',
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleAddImageUrl = () => {
+    if (!imgUrlInput.trim()) return;
+    setRefImages((prev) => [
+      ...prev,
+      {
+        id: `img_${Math.random().toString(36).substring(2, 9)}`,
+        url: imgUrlInput.trim(),
+        type: 'Design Reference',
+      },
+    ]);
+    setImgUrlInput('');
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setRefImages((prev) => prev.filter((img) => img.id !== id));
+  };
+
+  // Synchronize product name & item description dynamically
+  React.useEffect(() => {
+    const nameStr = `${category} › ${subCategory} (${size === 'Custom' ? customSize || 'Custom Size' : size})`;
+    setProductName(nameStr);
+  }, [category, subCategory, size, customSize]);
+
+  React.useEffect(() => {
+    const descStr = `Structure: ${material}. Finish: ${finish}. Color: ${colorShade}. ${specialNotes}`;
+    setItemDescription(descStr);
+  }, [material, finish, colorShade, specialNotes]);
+
   // Final Rate is calculated as: Quoted Rate + Cushion + Hardware - Discount
   const finalRate = React.useMemo(() => {
     return Math.max(0, Number(quotedRate) + Number(cushion) + Number(hardware) - Number(discount));
@@ -52,47 +179,193 @@ export default function DetailOrderFormTab({ orders, customers, users, payments 
   const [paymentMode, setPaymentMode] = React.useState<'CASH' | 'BANK'>('CASH');
   const [typeOfPolish, setTypeOfPolish] = React.useState<'HAND' | 'MACHINE'>('HAND');
 
-  // Load selected order details
-  const handleLoadOrder = (orderId: string) => {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) return;
+  const handleSendToWorkOrder = () => {
+    if (!customerName.trim()) {
+      alert('Please fill in the Customer Name.');
+      return;
+    }
+    if (!whatsappNo.trim()) {
+      alert('Please fill in the WhatsApp Number.');
+      return;
+    }
+    if (size === 'Custom' && !customSize.trim()) {
+      alert('Please specify Custom Size details.');
+      return;
+    }
 
-    setSelectedOrderId(orderId);
+    const draft = {
+      category,
+      subCategory,
+      size,
+      customSize,
+      designType,
+      material,
+      finish,
+      colorShade,
+      qty,
+      specialNotes,
+      customerName,
+      whatsappNo,
+      address,
+      refImages,
+      quotedRate,
+      cushion,
+      discount,
+      hardware,
+      packingForwarding,
+      transportation,
+      advance,
+      orderDate,
+      deliveryDate,
+      productName,
+      itemDescription,
+      amount,
+      finalRate,
+      balance,
+      polishShade,
+      paymentMode,
+      typeOfPolish,
+      orderNo,
+      articleNo,
+      toArticleNo
+    };
 
-    // Get linked customer info
-    const cust = customers.find((c) => c.id === order.customer_id);
-
-    // Get linked payment advance
-    const orderPayment = payments ? payments.find((p) => p.order_id === order.id) : null;
-    const orderAdvance = orderPayment ? orderPayment.advance_paid : 0;
-
-    setOrderDate(order.order_date || new Date().toISOString().split('T')[0]);
-    setDeliveryDate(order.delivery_date || '');
-    setOrderNo(order.id);
-    setArticleNo(order.article_no || '');
-    setToArticleNo('');
-    setCustomerName(cust ? cust.name : '');
-    setWhatsappNo(cust ? cust.phone : '');
-    setAddress(cust && cust.address ? cust.address : '');
-
-    setProductName(`${order.category} › ${order.sub_category} (${order.size || 'Standard Size'})`);
-    setItemDescription(`Structure: ${order.material}. Finish: ${order.finish_type || order.finish || ''}. Color: ${order.color_shade}. ${order.special_notes || ''}`);
-    setQty(order.no_of_units || 1);
-    
-    // Attempt standard amount estimations, allow editing
-    const estimatedUnitCost = order.material === 'Plywood' ? 12000 : 25000;
-    setQuotedRate(estimatedUnitCost);
-    setAmount(estimatedUnitCost * (order.no_of_units || 1));
-    setCushion(0);
-    setDiscount(0);
-    setHardware(0);
-    setPackingForwarding(1200);
-    setTransportation(1800);
-    setAdvance(orderAdvance);
-
-    setPolishShade(order.color_shade || 'Natural');
-    setTypeOfPolish((order.finish_type || order.finish || '').toLowerCase().includes('hand') ? 'HAND' : 'MACHINE');
+    if (onSendToWorkOrder) {
+      onSendToWorkOrder(draft);
+    }
   };
+
+  // Load selection logic for either active workshop orders or approved quotations
+  const handleLoad = (combinedId: string) => {
+    if (!combinedId) {
+      clearForm();
+      return;
+    }
+
+    if (combinedId.startsWith('quote_')) {
+      const quoteId = combinedId.replace('quote_', '');
+      const quote = crmQuotations?.find((q) => q.id === quoteId);
+      if (!quote) return;
+
+      setSelectedOrderId(combinedId);
+
+      const crmCust = crmCustomers?.find((c) => c.id === quote.customer_id);
+
+      setOrderDate(quote.created_at ? quote.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+      setDeliveryDate(quote.validUntil || '');
+      setOrderNo(quote.id);
+      setArticleNo(`QT/${quote.id.replace('QT-', '')}`);
+      setToArticleNo('');
+      setCustomerName(quote.customer_name || crmCust?.name || '');
+      setWhatsappNo(crmCust?.phone || crmCust?.whatsappNumber || '');
+      setAddress(crmCust?.address || '');
+
+      const firstItem = quote.items?.[0];
+      if (firstItem) {
+        let matchedCat = 'Beds';
+        for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
+          if (subs.some((s) => firstItem.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
+            matchedCat = cat;
+            break;
+          }
+        }
+        setCategory(matchedCat);
+        setSubCategory(firstItem.furnitureItem);
+        setSize('Custom');
+        setCustomSize(firstItem.dimensions || 'Standard');
+        setMaterial(firstItem.material || 'Plywood');
+        setQty(firstItem.quantity || 1);
+        setSpecialNotes(quote.notes || '');
+
+        setQuotedRate(firstItem.unitPrice || 0);
+        setAmount((firstItem.unitPrice || 0) * (firstItem.quantity || 1));
+        setDiscount(firstItem.discount ? Math.round((firstItem.unitPrice * (firstItem.discount / 100)) * firstItem.quantity) : 0);
+      } else {
+        setCategory('Beds');
+        setSubCategory('Custom Bed');
+        setSize('6ft');
+        setCustomSize('');
+        setMaterial('Plywood');
+        setQty(1);
+        setSpecialNotes('');
+        setQuotedRate(quote.totalAmount || 0);
+        setAmount(quote.totalAmount || 0);
+        setDiscount(0);
+      }
+
+      setCushion(0);
+      setHardware(0);
+      setPackingForwarding(0);
+      setTransportation(0);
+      setAdvance(0);
+      setPolishShade('Walnut Finish');
+      setTypeOfPolish('HAND');
+      setRefImages([]);
+    } else if (combinedId.startsWith('order_')) {
+      const orderId = combinedId.replace('order_', '');
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return;
+
+      setSelectedOrderId(combinedId);
+
+      const cust = customers.find((c) => c.id === order.customer_id);
+      const orderPayment = payments ? payments.find((p) => p.order_id === order.id) : null;
+      const orderAdvance = orderPayment ? orderPayment.advance_paid : 0;
+
+      setOrderDate(order.order_date || new Date().toISOString().split('T')[0]);
+      setDeliveryDate(order.delivery_date || '');
+      setOrderNo(order.id);
+      setArticleNo(order.article_no || '');
+      setToArticleNo('');
+      setCustomerName(cust ? cust.name : '');
+      setWhatsappNo(cust ? cust.phone : '');
+      setAddress(cust && cust.address ? cust.address : '');
+
+      setCategory(order.category || 'Beds');
+      setSubCategory(order.sub_category || 'Custom');
+      setSize(order.size || 'Custom');
+      setCustomSize(order.custom_size || '');
+      setDesignType(order.design_type || 'Standard');
+      setMaterial(order.material || 'Plywood');
+      setFinish(order.finish_type || order.finish || 'hand polish');
+      setSpecialNotes(order.special_notes || '');
+      setQty(order.no_of_units || 1);
+      setColorShade(order.color_shade || 'Walnut');
+
+      setQuotedRate(15000);
+      setAmount(15000 * (order.no_of_units || 1));
+      setCushion(0);
+      setDiscount(0);
+      setHardware(0);
+      setPackingForwarding(1200);
+      setTransportation(1800);
+      setAdvance(orderAdvance);
+
+      setPolishShade(order.color_shade || 'Natural');
+      setTypeOfPolish((order.finish_type || order.finish || '').toLowerCase().includes('hand') ? 'HAND' : 'MACHINE');
+
+      if (order.images && order.images.length > 0) {
+        setRefImages(
+          order.images.map((img) => ({
+            id: img.id,
+            url: img.url,
+            type: 'Design Reference',
+          }))
+        );
+      } else {
+        setRefImages([]);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    if (preselectedQuotationId && crmQuotations && crmQuotations.length > 0) {
+      handleLoad(`quote_${preselectedQuotationId}`);
+      if (onClearPreselectedQuotation) {
+        onClearPreselectedQuotation();
+      }
+    }
+  }, [preselectedQuotationId, crmQuotations]);
 
   const handlePrint = () => {
     window.print();
@@ -210,21 +483,30 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
         {/* Existing order selector toolbar */}
         <div className="bg-[#fcfbfa]/80 p-4 rounded-2xl border border-stone-200/60 flex flex-col sm:flex-row gap-3 items-center justify-between">
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
-            <span className="text-xs font-bold text-stone-600 shrink-0">Auto-Fill from Order:</span>
+            <span className="text-xs font-bold text-stone-600 shrink-0">Auto-Fill:</span>
             <select
               value={selectedOrderId}
-              onChange={(e) => handleLoadOrder(e.target.value)}
+              onChange={(e) => handleLoad(e.target.value)}
               className="px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#593622] text-stone-750 font-semibold w-full sm:w-64 max-w-sm"
             >
-              <option value="">-- Select active workshop order --</option>
-              {orders.map((ord) => {
-                const cust = customers.find((c) => c.id === ord.customer_id);
-                return (
-                  <option key={ord.id} value={ord.id}>
-                    {ord.article_no || ord.id} • {cust?.name || 'Unknown'} ({ord.sub_category})
+              <option value="">-- Select active order or approved quotation --</option>
+              <optgroup label="Approved Quotations (Pending Production)">
+                {crmQuotations?.filter((q) => q.status === 'Approved').map((quote) => (
+                  <option key={`quote_${quote.id}`} value={`quote_${quote.id}`}>
+                    {quote.id} • {quote.customer_name}
                   </option>
-                );
-              })}
+                ))}
+              </optgroup>
+              <optgroup label="Active Workshop Orders">
+                {orders.map((ord) => {
+                  const cust = customers.find((c) => c.id === ord.customer_id);
+                  return (
+                    <option key={`order_${ord.id}`} value={`order_${ord.id}`}>
+                      {ord.article_no || ord.id} • {cust?.name || 'Unknown'} ({ord.sub_category})
+                    </option>
+                  );
+                })}
+              </optgroup>
             </select>
           </div>
 
@@ -347,22 +629,119 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
           </div>
 
           <div>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">II. Product Configuration</h2>
+            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">II. Product Configuration &amp; Specs</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <div className="md:col-span-6">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Product Name</label>
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setSubCategory(CATEGORY_MAP[e.target.value]?.[0] || 'Custom');
+                }}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                {Object.keys(CATEGORY_MAP).map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Sub-Category</label>
+              <select
+                value={subCategory}
+                onChange={(e) => setSubCategory(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                {CATEGORY_MAP[category]?.map((sub) => (
+                  <option key={sub} value={sub}>{sub}</option>
+                )) || <option value="Custom">Custom</option>}
+                <option value="Custom">Other / Custom</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Size</label>
+              <select
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                <option value="3ft">3ft (Single)</option>
+                <option value="4ft">4ft (Medium)</option>
+                <option value="6ft">6ft (King/Double)</option>
+                <option value="Custom">Custom Size</option>
+              </select>
+            </div>
+
+            {size === 'Custom' && (
+              <div className="md:col-span-6">
+                <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Custom Size Specifications</label>
+                <input
+                  type="text"
+                  value={customSize}
+                  onChange={(e) => setCustomSize(e.target.value)}
+                  placeholder="e.g. 78in x 72in x 18in"
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+                />
+              </div>
+            )}
+
+            <div className={size === 'Custom' ? 'md:col-span-6' : 'md:col-span-4'}>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Design Type</label>
+              <select
+                value={designType}
+                onChange={(e) => setDesignType(e.target.value as 'Standard' | 'Custom')}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                <option value="Standard">Standard Catalog Design</option>
+                <option value="Custom">Bespoke / Custom Sketch</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Material Structure</label>
+              <select
+                value={material}
+                onChange={(e) => setMaterial(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                <option value="Plywood">Commercial Plywood</option>
+                <option value="Teak Wood">Premium Teak Wood</option>
+                <option value="Solid Wood">Solid Local Wood</option>
+                <option value="MDF">MDF / Engineered Wood</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Finish Type</label>
+              <select
+                value={finish}
+                onChange={(e) => setFinish(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                <option value="hand polish">Hand Wax / Polish</option>
+                <option value="PU polish">Polyurethane (PU) Polish</option>
+                <option value="Laminate finish">Decorative Laminate</option>
+                <option value="Deco Paint">Duco Paint Glossy/Matte</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Color / Shade</label>
               <input
                 type="text"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="e.g. Premium Hydraulic Bed"
+                value={colorShade}
+                onChange={(e) => setColorShade(e.target.value)}
+                placeholder="e.g. Dark Walnut / Walnut Finish"
                 className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
               />
             </div>
 
-            <div className="md:col-span-3 text-xs">
+            <div className="md:col-span-4 text-xs">
               <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Quantity</label>
               <input
                 type="number"
@@ -373,8 +752,8 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               />
             </div>
 
-            <div className="md:col-span-3 text-xs">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Estimated Unit Rate (₹)</label>
+            <div className="md:col-span-4 text-xs">
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Quoted Rate Per Unit (₹)</label>
               <input
                 type="number"
                 value={quotedRate}
@@ -387,13 +766,33 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
 
             <div className="md:col-span-12">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Item Description / Specifications</label>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Special / Manufacturing Notes</label>
               <textarea
+                value={specialNotes}
+                onChange={(e) => setSpecialNotes(e.target.value)}
+                rows={2}
+                placeholder="Add special requests, internal parameters, or edge banding details..."
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              />
+            </div>
+
+            <div className="md:col-span-6">
+              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Auto-Generated Product Name (Printed)</label>
+              <input
+                type="text"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
+              />
+            </div>
+
+            <div className="md:col-span-6">
+              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Auto-Generated Specifications (Printed)</label>
+              <input
+                type="text"
                 value={itemDescription}
                 onChange={(e) => setItemDescription(e.target.value)}
-                rows={3}
-                placeholder="Mention fine material compositions, structural wood options, finish layouts, grain matches, drawer fittings, etc..."
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+                className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
               />
             </div>
           </div>
@@ -597,6 +996,94 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
           </div>
 
+          {/* Section V: Reference Drawings & Images */}
+          <div className="border-t border-stone-200 pt-5 space-y-4">
+            <div>
+              <span className="bg-amber-600/10 text-amber-850 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase block w-max mb-1.5">Custom reference drawings</span>
+              <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">V. Reference Drawings &amp; Blueprints</h2>
+            </div>
+
+            <p className="text-stone-500 text-xs leading-relaxed">
+              Upload client-approved furniture sketches, material catalogs, or dynamic reference blueprints. These images will render perfectly on page 3 of the printed agreement.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Local File Upload Picker */}
+              <div className="border-2 border-dashed border-stone-200 hover:border-[#593622] rounded-xl p-4 flex flex-col items-center justify-center text-center transition cursor-pointer relative bg-stone-50/50 min-h-[100px]">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleLocalFileUpload}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <UploadCloud size={28} className="text-stone-400 mb-1.5" />
+                <span className="text-[11px] font-black text-stone-850 uppercase tracking-wider block">Upload Files</span>
+                <span className="text-[9px] text-stone-400 block mt-0.5">Supports PNG, JPG, GIF (Max 5MB)</span>
+              </div>
+
+              {/* URL Import */}
+              <div className="border border-stone-200 rounded-xl p-4 flex flex-col justify-between bg-stone-50/30 gap-3">
+                <div>
+                  <span className="text-[10px] font-bold text-stone-600 uppercase tracking-wider block mb-1">Import from URL</span>
+                  <input
+                    type="url"
+                    value={imgUrlInput}
+                    onChange={(e) => setImgUrlInput(e.target.value)}
+                    placeholder="https://example.com/furniture-photo.jpg"
+                    className="w-full px-2.5 py-1.5 bg-white border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddImageUrl}
+                  className="px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-white text-[11px] font-bold uppercase tracking-wider rounded-lg self-end"
+                >
+                  Add URL Image
+                </button>
+              </div>
+            </div>
+
+            {/* Uploaded Reference Images grid */}
+            {refImages.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 border border-stone-150 p-2.5 rounded-xl bg-stone-50/50">
+                {refImages.map((img) => (
+                  <div key={img.id} className="relative group border border-stone-200 rounded-lg overflow-hidden aspect-square bg-white flex items-center justify-center">
+                    <img src={img.url} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(img.id)}
+                      className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-rose-700 shadow"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section VI: Send to Workshop */}
+          <div className="border-t-2 border-[#593622]/25 pt-5 space-y-4 bg-gradient-to-br from-amber-50/30 to-stone-50 p-4 rounded-2xl border border-stone-200">
+            <div>
+              <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase block w-max mb-1.5">Launch Manufacturing Line</span>
+              <h2 className="text-sm font-black text-[#593622] uppercase tracking-wider font-display">VI. Workshop Delegation</h2>
+            </div>
+
+            <p className="text-stone-500 text-xs leading-relaxed">
+              Ready to begin carpentry production? Clicking the button below validates all product dimensions, saves this draft state, and directs you immediately to the <strong>Work Order Assignment step</strong>, skipping manual repetitive input screens!
+            </p>
+
+            <button
+              type="button"
+              onClick={handleSendToWorkOrder}
+              className="w-full py-3 bg-[#593622] hover:bg-[#402414] text-amber-300 font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-md transition hover:scale-[1.01] active:scale-[0.99] border-2 border-amber-500/20"
+            >
+              <HardHat size={16} className="stroke-[2.5]" />
+              Send to Work Order Flow
+            </button>
+          </div>
+
         </div>
 
         {/* DYNAMIC AGREEMENT PAGES PREVIEW PANEL (SCREEN VIEW CONTAINER WITH LIVE RENDER) */}
@@ -771,6 +1258,36 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 </div>
               </div>
             </div>
+
+            {/* MINIFIED PAGE 3 */}
+            <div className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[9.5px] leading-normal font-sans text-stone-850 select-none max-w-full">
+              <div className="border-2 border-black p-4 space-y-2">
+                <div className="text-center font-extrabold tracking-wider border-b pb-1 flex justify-between items-center text-stone-900">
+                  <span>{language === 'mr' ? 'पान ३' : 'PAGE 3'}</span>
+                  <span>{language === 'mr' ? 'संदर्भ चित्रे' : 'REFERENCE IMAGES'}</span>
+                  <span>{language === 'mr' ? 'भिसेज् वर्कशॉप' : "BHISE'Z WORKSHOP"}</span>
+                </div>
+                {refImages.length === 0 ? (
+                  <div className="text-center py-6 text-stone-400 font-mono text-xs border border-dashed border-stone-200 rounded">
+                    {language === 'mr' ? 'कोणतीही संदर्भ चित्रे अपलोड केलेली नाहीत' : 'No reference images uploaded.'}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {refImages.map((img, idx) => (
+                      <div key={img.id || idx} className="border p-1.5 rounded bg-stone-50 flex flex-col items-center">
+                        <img src={img.url} className="max-h-24 object-contain rounded" referrerPolicy="no-referrer" />
+                        <span className="text-[8px] font-mono mt-1">Ref #{idx + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-4 flex justify-between text-center font-bold">
+                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'Manager Signature'}</span></div>
+                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'Customer Signature'}</span></div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1047,6 +1564,73 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-12 text-center text-xs font-mono border-t pt-8 mt-4">
+            <div className="space-y-12">
+              <span className="text-stone-400 block font-light">
+                {language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "Bhise'z Workshop Management"}
+              </span>
+              <div>
+                <div className="h-0.5 w-40 bg-black mx-auto" />
+                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">
+                  {language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-12">
+              <span className="text-stone-450 block font-light">
+                {language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'Client Confirmation Acceptance'}
+              </span>
+              <div>
+                <div className="h-0.5 w-40 bg-black mx-auto" />
+                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">
+                  {language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* PAGE 3 CONTENT (UPLOADED REFERENCE IMAGES & SPECIFICATIONS) */}
+        <div className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between" style={{ pageBreakBefore: 'always' }}>
+          <div>
+            <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-4">
+              <span className="text-xs font-bold font-mono tracking-widest text-stone-500 uppercase">
+                {language === 'mr' ? 'कराराचे पान ३' : 'PAGE 3 OF AGREEMENT'}
+              </span>
+              <span className="text-xs font-black font-mono tracking-widest text-[#593622] uppercase">
+                {language === 'mr' ? 'संदर्भ चित्रे आणि डिझाइन' : 'REFERENCE IMAGES & DESIGN SPECIFICATIONS'}
+              </span>
+            </div>
+
+            <p className="text-xs mb-4 text-stone-600 font-mono">
+              {language === 'mr' 
+                ? 'खालील चित्रे ग्राहकाद्वारे मंजूर केलेल्या फर्निचरची संदर्भ चित्रे आहेत:' 
+                : 'The following are the custom design and reference images approved by the customer for manufacturing:'}
+            </p>
+
+            {refImages.length === 0 ? (
+              <div className="border-2 border-dashed border-stone-300 rounded-xl p-12 text-center text-stone-400 text-xs font-mono">
+                {language === 'mr' ? 'कोणतीही संदर्भ चित्रे अपलोड केलेली नाहीत' : 'No reference images uploaded.'}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {refImages.map((img, idx) => (
+                  <div key={img.id || idx} className="border border-black p-2 rounded flex flex-col items-center bg-stone-50">
+                    <img 
+                      src={img.url} 
+                      alt={`Reference ${idx + 1}`} 
+                      className="max-h-[220px] object-contain rounded mb-1.5" 
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="text-[10px] font-mono font-bold uppercase">
+                      {language === 'mr' ? `संदर्भ चित्र #${idx + 1}` : `Reference Image #${idx + 1}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-12 text-center text-xs font-mono border-t pt-8 mt-4">

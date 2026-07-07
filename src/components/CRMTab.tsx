@@ -101,6 +101,7 @@ interface CRMTabProps {
   onSaveOrder: (order: Order, customer?: any) => void;
   currentUser: User;
   users: User[];
+  onApproveQuotation?: (quote: CRMQuotation) => void;
 }
 
 export default function CRMTab({
@@ -120,7 +121,8 @@ export default function CRMTab({
   onSaveCRMTimelineEvent,
   onSaveOrder,
   currentUser,
-  users
+  users,
+  onApproveQuotation,
 }: CRMTabProps) {
   const [subTab, setSubTab] = React.useState<'dashboard' | 'customers' | 'quotations' | 'followups'>('dashboard');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(null);
@@ -540,55 +542,13 @@ export default function CRMTab({
 
   const handleConvertQuotationToOrder = (quote: CRMQuotation) => {
     if (!hasWriteAccess) return;
-    
-    // Auto populate custom Order parameters from approved quotation
-    const orderId = generateId('order');
-    const articleNo = `${new Date().getFullYear().toString().slice(-2)}/${String(new Date().getMonth() + 1).padStart(2, '0')}/QU/${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    const firstItem = quote.items?.[0];
-    const newOrder: Order = {
-      id: orderId,
-      article_no: articleNo,
-      customer_id: quote.customer_id, // Links directly to the CRM customer profile!
-      category: 'Living Room', // default fallback
-      sub_category: firstItem?.furnitureItem || 'Bespoke Item',
-      size: 'Custom',
-      custom_size: firstItem?.dimensions || 'Custom Size',
-      finish: 'Premium Lacquer Polish',
-      special_notes: `Converted from Quotation ${quote.id}. ${quote.notes || ''}`,
-      design_type: 'Custom',
-      material: firstItem?.material || 'Premium Plywood & Teak Veneer',
-      color_shade: 'Teak / Walnut',
-      no_of_units: firstItem?.quantity || 1,
-      carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
-      current_status: 'Pending',
-      is_delayed: false,
-      priority: 'normal',
-      order_date: new Date().toISOString().split('T')[0],
-      delivery_date: quote.validUntil,
-      portal_token: Math.random().toString(36).substring(2, 10),
-      portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      qr_token: `https://bhisesworkshop.com/order/${orderId}`,
-      created_at: new Date().toISOString(),
-      created_by: currentUser.id,
-      images: []
-    };
 
-    onSaveOrder(newOrder);
-
-    // Create a Payment Ledger record for CRM payment tracking
-    const crmPay: CRMPayment = {
-      id: generateId('pay'),
-      customer_id: quote.customer_id,
-      order_id: orderId,
-      total_amount: quote.totalAmount,
-      advance_paid: Math.round(quote.totalAmount * 0.4), // 40% auto-deposit advance
-      balance_due: Math.round(quote.totalAmount * 0.6),
-      payment_method: 'UPI',
-      payment_date: new Date().toISOString().split('T')[0],
-      pending_amount: Math.round(quote.totalAmount * 0.6)
+    // Update Quotation Status to Approved
+    const updatedQuote: CRMQuotation = {
+      ...quote,
+      status: 'Approved'
     };
-    onSaveCRMPayment(crmPay);
+    onSaveCRMQuotation(updatedQuote);
 
     // Update Customer status in the CRM
     const customer = db.crmCustomers?.find(c => c.id === quote.customer_id);
@@ -599,26 +559,23 @@ export default function CRMTab({
       });
     }
 
-    // Update Quotation Status to Approved
-    const updatedQuote: CRMQuotation = {
-      ...quote,
-      status: 'Approved'
-    };
-    onSaveCRMQuotation(updatedQuote);
-
     // Add Timeline Event
     const timelineEvent: CRMTimelineEvent = {
       id: generateId('evt'),
       customer_id: quote.customer_id,
       type: 'quotation_approved',
-      title: 'Quotation Approved & Order Converted',
-      description: `Quotation ${quote.id} approved for total value ₹${(quote.totalAmount ?? 0).toLocaleString('en-IN')}. Custom manufacture order #${articleNo} initialized into production lifecycle.`,
+      title: 'Approved Quotation Draft',
+      description: `Quotation ${quote.id} approved for total value ₹${(quote.totalAmount ?? 0).toLocaleString('en-IN')}. Synthesized to Detail Order Form draft registry.`,
       timestamp: new Date().toISOString(),
       operator: currentUser.name
     };
     onSaveCRMTimelineEvent(timelineEvent);
 
-    alert(`Success! Quotation successfully converted. Production Order #${articleNo} has been queued into Carpentry Stage.`);
+    if (onApproveQuotation) {
+      onApproveQuotation(updatedQuote);
+    } else {
+      alert(`Success! Quotation ${quote.id} marked as Approved Quotation Draft.`);
+    }
   };
 
   const handleAddManualTimelineEvent = (custId: string, type: 'phone_call' | 'whatsapp_msg' | 'email_sent', details: string) => {

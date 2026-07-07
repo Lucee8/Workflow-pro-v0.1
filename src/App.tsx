@@ -58,6 +58,8 @@ export default function App() {
   const [db, setDb] = React.useState<AppState>(() => loadState());
   const [currentTab, setCurrentTab] = React.useState<string>('dashboard');
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
+  const [preselectedQuotationId, setPreselectedQuotationId] = React.useState<string | null>(null);
+  const [workOrderDraft, setWorkOrderDraft] = React.useState<any>(null);
 
   // Active simulated user session (start as null to show login page by default)
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -535,6 +537,10 @@ export default function App() {
                 onSaveOrder={handleSaveOrder}
                 currentUser={currentUser}
                 users={db.users}
+                onApproveQuotation={(quote) => {
+                  setPreselectedQuotationId(quote.id);
+                  setCurrentTab('detail_order_form');
+                }}
               />
             </motion.div>
           )}
@@ -586,12 +592,20 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
             >
-              <OrderForm
+               <OrderForm
                 orders={db.orders}
                 users={db.users}
                 customers={db.customers}
-                onSave={handleSaveOrder}
-                onCancel={() => setCurrentTab('orders')}
+                onSave={(newOrder, newCustomer) => {
+                  handleSaveOrder(newOrder, newCustomer);
+                  setWorkOrderDraft(null);
+                }}
+                onCancel={() => {
+                  setWorkOrderDraft(null);
+                  setCurrentTab('orders');
+                }}
+                initialDraft={workOrderDraft}
+                onClearDraft={() => setWorkOrderDraft(null)}
               />
             </motion.div>
           )}
@@ -702,6 +716,14 @@ export default function App() {
                 customers={db.customers}
                 users={db.users}
                 payments={db.payments}
+                crmQuotations={db.crmQuotations}
+                crmCustomers={db.crmCustomers}
+                preselectedQuotationId={preselectedQuotationId}
+                onClearPreselectedQuotation={() => setPreselectedQuotationId(null)}
+                onSendToWorkOrder={(draft) => {
+                  setWorkOrderDraft(draft);
+                  setCurrentTab('create_order');
+                }}
               />
             </motion.div>
           )}

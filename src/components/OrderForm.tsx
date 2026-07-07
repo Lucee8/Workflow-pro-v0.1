@@ -93,9 +93,19 @@ interface OrderFormProps {
   orders: Order[];
   onSave: (newOrder: Order, newCustomer?: Customer) => void;
   onCancel: () => void;
+  initialDraft?: any | null;
+  onClearDraft?: () => void;
 }
 
-export default function OrderForm({ customers, users, orders, onSave, onCancel }: OrderFormProps) {
+export default function OrderForm({ 
+  customers, 
+  users, 
+  orders, 
+  onSave, 
+  onCancel,
+  initialDraft = null,
+  onClearDraft
+}: OrderFormProps) {
   const [step, setStep] = React.useState(1);
 
   // Filter lists
@@ -182,12 +192,11 @@ export default function OrderForm({ customers, users, orders, onSave, onCancel }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         compressImage(dataUrl).then((compressedUrl) => {
-        setRefImages((prev) => [
-          ...prev,
+          setRefImages((prev) => [
+            ...prev,
             { id: generateUUID(), url: compressedUrl, type: 'Design Reference' }
-        ]);
+          ]);
         });
-
         stopWebcam();
       }
     }
@@ -233,11 +242,11 @@ export default function OrderForm({ customers, users, orders, onSave, onCancel }
             ]);
           }).catch((err) => {
             console.error("Compression failed, using raw", err);
-          setRefImages((prev) => [
-            ...prev,
-            { id: generateUUID(), url: event.target!.result as string, type: 'Design Reference' }
-          ]);
-  });
+            setRefImages((prev) => [
+              ...prev,
+              { id: generateUUID(), url: event.target!.result as string, type: 'Design Reference' }
+            ]);
+          });
         }
       };
       reader.readAsDataURL(file);
@@ -309,6 +318,53 @@ export default function OrderForm({ customers, users, orders, onSave, onCancel }
   const handleRemoveImage = (id: string) => {
     setRefImages(refImages.filter((img) => img.id !== id));
   };
+
+  React.useEffect(() => {
+    if (initialDraft) {
+      if (initialDraft.category) setCategory(initialDraft.category);
+      if (initialDraft.subCategory) setSubCategory(initialDraft.subCategory);
+      if (initialDraft.size) setSize(initialDraft.size);
+      if (initialDraft.customSize) setCustomSize(initialDraft.customSize);
+      if (initialDraft.designType) setDesignType(initialDraft.designType);
+      if (initialDraft.material) setMaterial(initialDraft.material);
+      if (initialDraft.finish) setFinish(initialDraft.finish);
+      if (initialDraft.colorShade) setColorShade(initialDraft.colorShade);
+      if (initialDraft.qty) setNoOfUnits(initialDraft.qty);
+      if (initialDraft.specialNotes) setSpecialNotes(initialDraft.specialNotes);
+      if (initialDraft.refImages) setRefImages(initialDraft.refImages);
+
+      // Customer
+      const matchingCust = customers.find(
+        (c) =>
+          c.phone === initialDraft.whatsappNo ||
+          c.name.toLowerCase() === initialDraft.customerName.toLowerCase()
+      );
+      if (matchingCust) {
+        setSelectedCustId(matchingCust.id);
+        setIsNewCust(false);
+        setCustName(matchingCust.name);
+        setCustPhone(matchingCust.phone);
+        setCustAddress(matchingCust.address);
+      } else {
+        setSelectedCustId(null);
+        setIsNewCust(true);
+        setCustName(initialDraft.customerName);
+        setCustPhone(initialDraft.whatsappNo);
+        setCustAddress(initialDraft.address);
+      }
+
+      // Rates & Polishing details can be set in internalNotes
+      let noteLines = [];
+      if (initialDraft.polishShade) noteLines.push(`Polish Shade: ${initialDraft.polishShade}`);
+      if (initialDraft.paymentMode) noteLines.push(`Payment Mode: ${initialDraft.paymentMode}`);
+      if (initialDraft.typeOfPolish) noteLines.push(`Polish Application: ${initialDraft.typeOfPolish}`);
+      if (noteLines.length > 0) {
+        setInternalNotes(noteLines.join('\n'));
+      }
+
+      setStep(4); // Start directly at Step 4: Assignment (Carpenter/Polish)
+    }
+  }, [initialDraft, customers]);
 
   // Step Nav validation
   const validateStep = (currentStep: number) => {
