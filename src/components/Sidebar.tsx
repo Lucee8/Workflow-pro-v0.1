@@ -255,7 +255,7 @@ export default function Sidebar({
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-[13px] shrink-0">🪑</span>
+                    <span className="text-[13px] shrink-0"></span>
                     <span className="truncate">Furniture Admin</span>
                   </span>
                   <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
@@ -268,7 +268,7 @@ export default function Sidebar({
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-[13px] shrink-0">🌶️</span>
+                    <span className="text-[13px] shrink-0"></span>
                     <span className="truncate">Masale Admin</span>
                   </span>
                   <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
