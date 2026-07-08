@@ -14,6 +14,7 @@ import {
   saveOrderToFirebase,
   deleteOrderFromFirebase,
   saveCustomerToFirebase,
+  deleteCustomerFromFirebase,
   saveStatusLogToFirebase,
   savePaymentToFirebase,
   saveUserToFirebase,
@@ -259,6 +260,16 @@ export default function App() {
       orders: updated
     });
     deleteOrderFromFirebase(orderId);
+  };
+
+  const handleDeleteCustomer = (customerId: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this customer profile? This action cannot be undone.")) return;
+    const updated = db.customers.filter((c) => c.id !== customerId);
+    updateDbState({
+      ...db,
+      customers: updated
+    });
+    deleteCustomerFromFirebase(customerId);
   };
 
   const handleAddPayment = (payment: Payment) => {
@@ -604,6 +615,7 @@ export default function App() {
                 users={db.users}
                 onViewOrder={handleViewOrder}
                 crmQuotations={db.crmQuotations}
+                onDeleteCustomer={handleDeleteCustomer}
               />
             </motion.div>
           )}

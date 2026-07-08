@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Customer, Order, Payment, User } from '../types';
-import { Search, Phone, MapPin, MessageSquare, CreditCard, CheckCircle, Clock, AlertTriangle, ChevronRight, User as UserIcon, Calendar, ArrowUpRight } from 'lucide-react';
+import { Search, Phone, MapPin, MessageSquare, CreditCard, CheckCircle, Clock, AlertTriangle, ChevronRight, User as UserIcon, Calendar, ArrowUpRight, Trash2 } from 'lucide-react';
 
 interface CustomersTabProps {
   customers: Customer[];
@@ -16,6 +16,7 @@ interface CustomersTabProps {
   onViewOrder: (orderId: string) => void;
   initialSelectedCustomerId?: string | null;
   crmQuotations?: any[];
+  onDeleteCustomer: (customerId: string) => void;
 }
 
 export default function CustomersTab({
@@ -26,6 +27,7 @@ export default function CustomersTab({
   onViewOrder,
   initialSelectedCustomerId = null,
   crmQuotations = [],
+  onDeleteCustomer,
 }: CustomersTabProps) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(
@@ -218,7 +220,7 @@ export default function CustomersTab({
                   </div>
                 </div>
 
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2 flex-wrap items-center">
                   {activeCustomer.phone && (
                     <a
                       href={`tel:${activeCustomer.phone}`}
@@ -232,6 +234,20 @@ export default function CustomersTab({
                       <MessageSquare size={11} /> WhatsApp Opt-In
                     </span>
                   )}
+                  <button
+                    onClick={() => {
+                      const remainingCustomers = customers.filter(c => c.id !== activeCustomer.id);
+                      onDeleteCustomer(activeCustomer.id);
+                      if (remainingCustomers.length > 0) {
+                        setSelectedCustomerId(remainingCustomers[0].id);
+                      } else {
+                        setSelectedCustomerId(null);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-xs transition cursor-pointer"
+                  >
+                    <Trash2 size={11} /> Delete Profile
+                  </button>
                 </div>
               </div>
 

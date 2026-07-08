@@ -65,7 +65,7 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
         }
         await batch.commit();
       } else {
-                let currentSnapshot = snapshot;
+        let currentSnapshot = snapshot;
         if (name === 'users') {
           const batch = writeBatch(db);
           let deletedAny = false;
@@ -204,6 +204,15 @@ export async function saveCustomerToFirebase(customer: Customer): Promise<void> 
     await setDoc(doc(db, 'customers', customer.id), cleanUndefined(customer));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCustomerFromFirebase(customerId: string): Promise<void> {
+  const path = `customers/${customerId}`;
+  try {
+    await deleteDoc(doc(db, 'customers', customerId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 
