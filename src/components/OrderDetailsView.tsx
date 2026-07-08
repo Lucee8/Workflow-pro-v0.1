@@ -243,13 +243,13 @@ export default function OrderDetailsView({
       setPaymentMode(existingPayment.payment_mode);
       setPaymentNotes(existingPayment.notes || '');
     } else {
-      setTotalAmount(0);
-      setAdvancePaid(0);
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setTotalAmount(order.total_amount || 0);
+      setAdvancePaid(order.advance_paid || 0);
+      setPaymentDate(order.order_date || new Date().toISOString().split('T')[0]);
       setPaymentMode('cash');
-      setPaymentNotes('');
+      setPaymentNotes(order.total_amount !== undefined ? 'Prefilled from Detail Order Form details.' : '');
     }
-  }, [existingPayment, order.id]);
+  }, [existingPayment, order.id, order.total_amount, order.advance_paid, order.order_date]);
 
   const balanceDue = Math.max(0, totalAmount - advancePaid);
 

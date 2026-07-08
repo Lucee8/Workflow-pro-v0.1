@@ -176,6 +176,25 @@ export default function App() {
       updatedCusts = [newCustomer, ...db.customers];
     }
 
+    let updatedPayments = [...db.payments];
+    let paymentRecord: Payment | undefined;
+    if (newOrder.total_amount !== undefined && newOrder.advance_paid !== undefined) {
+      const pid = 'pay_' + Math.random().toString(36).substring(2, 9);
+      paymentRecord = {
+        id: pid,
+        order_id: newOrder.id,
+        total_amount: newOrder.total_amount,
+        advance_paid: newOrder.advance_paid,
+        balance_due: Math.max(0, newOrder.total_amount - newOrder.advance_paid),
+        payment_date: newOrder.order_date || new Date().toISOString().split('T')[0],
+        payment_mode: 'cash',
+        notes: 'Auto-created payment record from Detail Order Form details.',
+        created_by: currentUser?.id || 'admin',
+        created_at: new Date().toISOString(),
+      };
+      updatedPayments = [paymentRecord, ...db.payments];
+    }
+
     // Auto log creations phase
     const log: StatusLog = {
       id: 'log_' + Math.random().toString(36).substring(2, 9),
@@ -195,12 +214,16 @@ export default function App() {
       orders: updatedOrders,
       customers: updatedCusts,
       statusLogs: updatedLogs,
+      payments: updatedPayments,
     });
 
     // Write to Firestore asynchronously
     saveOrderToFirebase(newOrder);
     if (newCustomer) {
       saveCustomerToFirebase(newCustomer);
+    }
+    if (paymentRecord) {
+      savePaymentToFirebase(paymentRecord);
     }
     saveStatusLogToFirebase(log);
 

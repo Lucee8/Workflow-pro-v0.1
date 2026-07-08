@@ -101,6 +101,8 @@ export interface Order {
   }>;
   wood_schedule?: WoodSchedule;
   carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'completed';
+  total_amount?: number;
+  advance_paid?: number;
 }
 
 export interface StatusLog {
@@ -247,6 +249,9 @@ export interface CRMQuotation {
   status: 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Expired';
   created_at: string;
   created_by: string;
+  estimateNo?: number;
+  description?: string;
+  termsAndConditions?: string;
 }
 
 export interface CRMFollowUp {

@@ -431,6 +431,14 @@ export default function OrderForm({
       targetCustomerId = generatedCustId;
     }
 
+    const draftFinalRate = initialDraft ? (Number(initialDraft.finalRate) || 0) : 0;
+    const draftQty = initialDraft ? (Number(initialDraft.qty) || 1) : 1;
+    const draftPacking = initialDraft ? (Number(initialDraft.packingForwarding) || 0) : 0;
+    const draftTransportation = initialDraft ? (Number(initialDraft.transportation) || 0) : 0;
+    const draftAdvance = initialDraft ? (Number(initialDraft.advance) || 0) : 0;
+    const draftTotalInvoiced = initialDraft ? ((draftFinalRate * draftQty) + draftPacking + draftTransportation) : undefined;
+    const draftAdvancePaid = initialDraft ? draftAdvance : undefined;
+
     // Build the order record itself
     const newOrder: Order = {
       id: 'order_' + generateUUID().split('-')[0],
@@ -468,6 +476,8 @@ export default function OrderForm({
         uploaded_at: new Date().toISOString(),
         uploaded_by: 'user_admin',
       })),
+      total_amount: draftTotalInvoiced,
+      advance_paid: draftAdvancePaid,
     };
 
     onSave(newOrder, newCustomerObj);

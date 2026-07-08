@@ -15,6 +15,7 @@ interface CustomersTabProps {
   users: User[];
   onViewOrder: (orderId: string) => void;
   initialSelectedCustomerId?: string | null;
+  crmQuotations?: any[];
 }
 
 export default function CustomersTab({
@@ -24,6 +25,7 @@ export default function CustomersTab({
   users,
   onViewOrder,
   initialSelectedCustomerId = null,
+  crmQuotations = [],
 }: CustomersTabProps) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(
@@ -52,9 +54,82 @@ export default function CustomersTab({
     ? payments.filter((p) => customerOrders.some((o) => o.id === p.order_id))
     : [];
 
-  const totalInvoiced = customerPayments.reduce((sum, p) => sum + p.total_amount, 0);
-  const totalPaid = customerPayments.reduce((sum, p) => sum + p.advance_paid, 0);
-  const outstandingDue = customerPayments.reduce((sum, p) => sum + p.balance_due, 0);
+  const { totalInvoiced, totalPaid, outstandingDue } = React.useMemo(() => {
+    let tInvoiced = 0;
+    let tPaid = 0;
+    let tOutstanding = 0;
+
+    if (activeCustomer) {
+      // 1. Process all orders for this customer
+      customerOrders.forEach((ord) => {
+        const orderPayment = payments.find((p) => p.order_id === ord.id);
+        
+        let ordInvoiced = 0;
+        let ordPaid = 0;
+        let ordOutstanding = 0;
+
+        if (orderPayment && orderPayment.total_amount > 0) {
+          ordInvoiced = orderPayment.total_amount;
+          ordPaid = orderPayment.advance_paid;
+          ordOutstanding = orderPayment.balance_due;
+        } else if (ord.total_amount !== undefined && ord.total_amount !== null) {
+          ordInvoiced = ord.total_amount;
+          ordPaid = ord.advance_paid || 0;
+          ordOutstanding = Math.max(0, ordInvoiced - ordPaid);
+        } else {
+          // Fallback to the default Summary of Accounts & Totals formula in DetailOrderFormTab
+          const qty = ord.no_of_units || 1;
+          const finalRate = 15000;
+          const packing = 1200;
+          const transportation = 1800;
+          ordInvoiced = (finalRate * qty) + packing + transportation;
+          ordPaid = orderPayment ? orderPayment.advance_paid : 0;
+          ordOutstanding = Math.max(0, ordInvoiced - ordPaid);
+        }
+
+        tInvoiced += ordInvoiced;
+        tPaid += ordPaid;
+        tOutstanding += ordOutstanding;
+      });
+
+      // 2. Process any approved quotations for this customer that haven't been converted to active orders yet
+      if (crmQuotations && crmQuotations.length > 0) {
+        const approvedQuotes = crmQuotations.filter(
+          (q) => q.customer_id === activeCustomer.id && q.status === 'Approved'
+        );
+
+        approvedQuotes.forEach((quote) => {
+          const isAlreadyOrder = customerOrders.some(
+            (o) => o.id === quote.id || (o.internal_notes && o.internal_notes.includes(quote.id))
+          );
+
+          if (!isAlreadyOrder) {
+            const firstItem = quote.items?.[0];
+            let qInvoiced = 0;
+            if (firstItem) {
+              const uPrice = firstItem.unitPrice || 0;
+              const qQty = firstItem.quantity || 1;
+              const qDiscountPercent = firstItem.discount || 0;
+              const qDiscount = Math.round((uPrice * (qDiscountPercent / 100)) * qQty);
+              const qFinalRate = Math.max(0, uPrice - qDiscount);
+              qInvoiced = qFinalRate * qQty;
+            } else {
+              qInvoiced = quote.totalAmount || 0;
+            }
+
+            tInvoiced += qInvoiced;
+            tOutstanding += qInvoiced;
+          }
+        });
+      }
+    }
+
+    return {
+      totalInvoiced: tInvoiced,
+      totalPaid: tPaid,
+      outstandingDue: tOutstanding,
+    };
+  }, [activeCustomer, customerOrders, payments, crmQuotations]);
 
   return (
     <div className="space-y-6">
