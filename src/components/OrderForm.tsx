@@ -334,23 +334,42 @@ export default function OrderForm({
       if (initialDraft.refImages) setRefImages(initialDraft.refImages);
 
       // Customer
-      const matchingCust = customers.find(
-        (c) =>
-          c.phone === initialDraft.whatsappNo ||
-          c.name.toLowerCase() === initialDraft.customerName.toLowerCase()
-      );
+      const draftPhone = initialDraft.whatsappNo?.trim();
+      const draftName = initialDraft.customerName?.trim();
+
+      const matchingCust = customers.find((c) => {
+        if (!draftName || !c.name) return false;
+
+        const nameMatches = c.name.toLowerCase() === draftName.toLowerCase();
+        const phoneMatches = draftPhone && c.phone && c.phone.trim() === draftPhone;
+
+        if (phoneMatches) {
+          // If phone matches, names must be similar (to prevent mismatching different customers using the same test phone number)
+          const cNameLower = c.name.toLowerCase();
+          const dNameLower = draftName.toLowerCase();
+          const nameIsSimilar = 
+            cNameLower.includes(dNameLower) || 
+            dNameLower.includes(cNameLower) ||
+            cNameLower.split(' ')[0] === dNameLower.split(' ')[0];
+          
+          return nameIsSimilar;
+        }
+
+        return nameMatches;
+      });
+
       if (matchingCust) {
         setSelectedCustId(matchingCust.id);
         setIsNewCust(false);
         setCustName(matchingCust.name);
         setCustPhone(matchingCust.phone);
-        setCustAddress(matchingCust.address);
+        setCustAddress(matchingCust.address || '');
       } else {
         setSelectedCustId(null);
         setIsNewCust(true);
-        setCustName(initialDraft.customerName);
-        setCustPhone(initialDraft.whatsappNo);
-        setCustAddress(initialDraft.address);
+        setCustName(initialDraft.customerName || '');
+        setCustPhone(initialDraft.whatsappNo || '');
+        setCustAddress(initialDraft.address || '');
       }
 
       // Rates & Polishing details can be set in internalNotes
