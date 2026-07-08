@@ -580,6 +580,7 @@ export default function App() {
                 payments={db.payments}
                 users={db.users}
                 onViewOrder={handleViewOrder}
+                crmQuotations={db.crmQuotations}
               />
             </motion.div>
           )}
