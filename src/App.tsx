@@ -52,7 +52,7 @@ import MaterialRequirementPlanning from './components/MaterialRequirementPlannin
 import CRMTab from './components/CRMTab';
 
 // Utility icons
-import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
+import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2 } from 'lucide-react';
 
 export default function App() {
   // Database store loader state (with local cache load)
@@ -126,6 +126,23 @@ export default function App() {
       setCurrentTab('my_orders');
     }
     setSelectedOrderId(null);
+  };
+
+  const [isRestarting, setIsRestarting] = React.useState(false);
+  const [restartStage, setRestartStage] = React.useState(-1);
+
+  const handleRestartApp = () => {
+    setIsRestarting(true);
+    setRestartStage(0);
+    
+    setTimeout(() => setRestartStage(1), 350);
+    setTimeout(() => setRestartStage(2), 700);
+    setTimeout(() => setRestartStage(3), 1050);
+    setTimeout(() => setRestartStage(4), 1400);
+    setTimeout(() => setRestartStage(5), 1750);
+    setTimeout(() => {
+      window.location.reload();
+    }, 2100);
   };
 
   const handleResetDB = () => {
@@ -465,6 +482,89 @@ export default function App() {
   return (
     <div className="min-h-screen bg-stone-100 flex flex-col relative transition-all duration-300">
       
+      {isRestarting && (
+        <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl border border-stone-200 p-6 shadow-2xl space-y-6 text-left">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-100 text-[#593622] p-2.5 rounded-xl flex items-center justify-center">
+                <RefreshCw size={20} className="animate-spin text-[#593622]" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-stone-900 text-sm uppercase tracking-wider">Restarting Workspace</h3>
+                <p className="text-stone-500 text-[11px]">Re-initializing environment state and cache pipelines...</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className={restartStage >= 1 ? "text-[#593622]" : "text-stone-400"}>
+                  Dashboard (Overview of active orders, workers, & workshop)
+                </span>
+                {restartStage > 1 ? (
+                  <Check size={14} className="text-green-600 font-extrabold" />
+                ) : restartStage === 1 ? (
+                  <Loader2 size={14} className="animate-spin text-[#593622]" />
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full border border-stone-300" />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className={restartStage >= 2 ? "text-[#593622]" : "text-stone-400"}>
+                  Financial Ledger Overview
+                </span>
+                {restartStage > 2 ? (
+                  <Check size={14} className="text-green-600 font-extrabold" />
+                ) : restartStage === 2 ? (
+                  <Loader2 size={14} className="animate-spin text-[#593622]" />
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full border border-stone-300" />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className={restartStage >= 3 ? "text-[#593622]" : "text-stone-400"}>
+                  Bespoke CRM (Lead funnels & quotations)
+                </span>
+                {restartStage > 3 ? (
+                  <Check size={14} className="text-green-600 font-extrabold" />
+                ) : restartStage === 3 ? (
+                  <Loader2 size={14} className="animate-spin text-[#593622]" />
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full border border-stone-300" />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className={restartStage >= 4 ? "text-[#593622]" : "text-stone-400"}>
+                  Orders Pipeline
+                </span>
+                {restartStage > 4 ? (
+                  <Check size={14} className="text-green-600 font-extrabold" />
+                ) : restartStage === 4 ? (
+                  <Loader2 size={14} className="animate-spin text-[#593622]" />
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full border border-stone-300" />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className={restartStage >= 5 ? "text-[#593622]" : "text-stone-400"}>
+                  Customer Directory
+                </span>
+                {restartStage > 5 ? (
+                  <Check size={14} className="text-green-600 font-extrabold" />
+                ) : restartStage === 5 ? (
+                  <Loader2 size={14} className="animate-spin text-[#593622]" />
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full border border-stone-300" />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Simulation HUD (Sandbox Controls) */}
       {SHOW_DEBUG_HUD && (
         <SimulationHUD
@@ -515,7 +615,14 @@ export default function App() {
               </div>
             </div>
             
-            <div className="shrink-0">
+            <div className="shrink-0 flex items-center gap-3">
+              <button
+                onClick={handleRestartApp}
+                title="Restart App"
+                className="bg-stone-50 border border-stone-200 hover:bg-stone-100 hover:text-[#593622] text-stone-600 p-2.5 rounded-xl flex items-center justify-center transition cursor-pointer shadow-2xs"
+              >
+                <RefreshCw size={16} className="stroke-[2.5]" />
+              </button>
               <NotificationCenter
                 orders={db.orders}
                 currentUser={currentUser}
@@ -734,6 +841,22 @@ export default function App() {
                     </div>
                     <span className="h-5 w-9 bg-green-500 rounded-full flex items-center px-1 font-bold"><span className="h-4.5 w-4.5 bg-white rounded-full ml-auto" /></span>
                   </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-stone-200 space-y-4">
+                <strong className="text-[#593622] text-xs block font-extrabold uppercase tracking-wider">System Control & Refresh</strong>
+                <p className="text-stone-500 text-xs">
+                  Reload the application engine and reinitialize all primary interface modules, live feeds, and caches.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={handleRestartApp}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#593622] hover:bg-[#402414] active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    <RefreshCw size={13} className="animate-spin-slow" />
+                    Restart App
+                  </button>
                 </div>
               </div>
             </motion.div>
