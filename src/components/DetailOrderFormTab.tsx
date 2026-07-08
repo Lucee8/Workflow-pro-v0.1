@@ -175,6 +175,16 @@ export default function DetailOrderFormTab({
     return Math.max(0, totalAmount + Number(packingForwarding) + Number(transportation) - Number(advance));
   }, [finalRate, qty, packingForwarding, transportation, advance]);
 
+  const totalInvoiced = React.useMemo(() => {
+    return (finalRate * Number(qty)) + Number(packingForwarding) + Number(transportation);
+  }, [finalRate, qty, packingForwarding, transportation]);
+
+  const totalAdvancePaid = React.useMemo(() => {
+    return Number(advance);
+  }, [advance]);
+
+  const outstandingBalance = balance;
+
   const [polishShade, setPolishShade] = React.useState('');
   const [paymentMode, setPaymentMode] = React.useState<'CASH' | 'BANK'>('CASH');
   const [typeOfPolish, setTypeOfPolish] = React.useState<'HAND' | 'MACHINE'>('HAND');
@@ -877,6 +887,32 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
           </div>
 
+          {/* Gorgeous highlighted Totals card section */}
+          <div className="bg-gradient-to-r from-stone-50 to-stone-100 border border-stone-200/80 rounded-xl p-4 mt-2">
+            <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase block w-max mb-3">
+              Summary of Accounts &amp; Totals
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white border border-stone-150 rounded-xl p-3.5 shadow-xs transition hover:border-[#593622]/30">
+                <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Total Invoiced</span>
+                <span className="text-xl font-black text-stone-900">₹{totalInvoiced.toLocaleString()}</span>
+                <span className="block text-[9px] text-stone-400 mt-1 font-mono">Formula: (Final Rate × Qty) + Extras</span>
+              </div>
+
+              <div className="bg-white border border-stone-150 rounded-xl p-3.5 shadow-xs transition hover:border-emerald-500/30">
+                <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Total Advance Paid</span>
+                <span className="text-xl font-black text-emerald-600">₹{totalAdvancePaid.toLocaleString()}</span>
+                <span className="block text-[9px] text-stone-400 mt-1 font-mono">Paid advance amount received</span>
+              </div>
+
+              <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3.5 shadow-xs transition hover:border-[#593622]/50">
+                <span className="block text-[10px] font-bold text-[#593622] uppercase tracking-wider mb-1">Outstanding Balance</span>
+                <span className="text-xl font-black text-[#593622]">₹{outstandingBalance.toLocaleString()}</span>
+                <span className="block text-[9px] text-amber-700/80 mt-1 font-mono">Net remaining due for dispatch</span>
+              </div>
+            </div>
+          </div>
+
           <div>
             <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">IV. Polishing, Materials &amp; Mode</h2>
           </div>
@@ -1141,11 +1177,19 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   <div><strong>{language === 'mr' ? 'हार्डवेअर खर्च:' : 'HARDWARE:'}</strong> ₹{hardware.toLocaleString()}</div>
                   <div className="font-bold"><strong>{language === 'mr' ? 'अंतिम दर:' : 'FINAL RATE:'}</strong> ₹{finalRate.toLocaleString()}</div>
                   <div><strong>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING & FORWARDING:'}</strong> ₹{packingForwarding.toLocaleString()}</div>
-                  <div className="font-bold"><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
+                  <div><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
                   <div><strong>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION:'}</strong> ₹{transportation.toLocaleString()}</div>
-                  <div className="font-bold text-amber-900 col-span-2 text-xs border-t border-stone-200 pt-1 flex justify-between">
-                    <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'BALANCE REMAINING:'}</span>
-                    <span>₹{balance.toLocaleString()}</span>
+                  <div className="font-bold col-span-2 text-[9.5px] border-t border-dashed border-stone-300 pt-1 flex justify-between">
+                    <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED:'}</span>
+                    <span>₹{totalInvoiced.toLocaleString()}</span>
+                  </div>
+                  <div className="font-bold col-span-2 text-[9.5px] flex justify-between">
+                    <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
+                    <span>₹{totalAdvancePaid.toLocaleString()}</span>
+                  </div>
+                  <div className="font-bold text-amber-900 col-span-2 text-xs border-t border-stone-400 pt-1 flex justify-between">
+                    <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'OUTSTANDING BALANCE:'}</span>
+                    <span>₹{outstandingBalance.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -1395,13 +1439,21 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   <span>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION FEE:'}</span>
                   <span>₹{transportation.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5 text-green-800 font-bold">
+                <div className="flex justify-between border-b border-stone-200 pb-0.5">
                   <span>{language === 'mr' ? '(-) ऍडव्हान्स पेमेंट:' : '(-) ADVANCE DEPOSITED:'}</span>
                   <span>₹{advance.toLocaleString()}</span>
                 </div>
+                <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-stone-900">
+                  <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED AMOUNT:'}</span>
+                  <span>₹{totalInvoiced.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-emerald-800">
+                  <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
+                  <span>₹{totalAdvancePaid.toLocaleString()}</span>
+                </div>
                 <div className="col-span-2 flex justify-between pt-1 font-black text-[#593622] text-sm border-t border-black uppercase mt-1">
-                  <span>{language === 'mr' ? 'डिलिव्हरीपूर्वी देय उर्वरित शिल्लक रक्कम:' : 'Oustanding Balance Due prior to Dispatch:'}</span>
-                  <span>₹{balance.toLocaleString()}</span>
+                  <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'Outstanding Balance:'}</span>
+                  <span>₹{outstandingBalance.toLocaleString()}</span>
                 </div>
               </div>
             </div>
