@@ -131,6 +131,7 @@ export default function CRMTab({
   const [showAddCustModal, setShowAddCustModal] = React.useState(false);
   const [editingCustomer, setEditingCustomer] = React.useState<CRMCustomer | null>(null);
   const [showAddQuoteModal, setShowAddQuoteModal] = React.useState(false);
+  const [editingQuotation, setEditingQuotation] = React.useState<CRMQuotation | null>(null);
   const [showAddFollowupModal, setShowAddFollowupModal] = React.useState(false);
   const [viewingEstimateQuote, setViewingEstimateQuote] = React.useState<CRMQuotation | null>(null);
 
@@ -658,7 +659,7 @@ export default function CRMTab({
     const finalAmount = Math.round(discountedTotal + (discountedTotal * (gstPercent / 100)));
 
     const item: CRMQuotationItem = {
-      id: generateId('item'),
+      id: editingQuotation ? (editingQuotation.items?.[0]?.id || generateId('item')) : generateId('item'),
       furnitureItem: formData.get('furnitureItem') as string,
       quantity: qty,
       material: formData.get('material') as string,
@@ -668,6 +669,33 @@ export default function CRMTab({
       gst: gstPercent,
       totalAmount: finalAmount
     };
+
+    if (editingQuotation) {
+      const updatedQuote: CRMQuotation = {
+        ...editingQuotation,
+        customer_id: custId,
+        customer_name: customer ? customer.name : 'Unknown Customer',
+        items: [item],
+        totalAmount: finalAmount,
+        notes: (formData.get('notes') as string) || undefined,
+      };
+      onSaveCRMQuotation(updatedQuote);
+
+      onSaveCRMTimelineEvent({
+        id: generateId('evt'),
+        customer_id: custId,
+        type: 'note_added',
+        title: 'Price Quotation Updated',
+        description: `Modified details for quotation ${editingQuotation.id}. Adjusted customized "${item.furnitureItem}" value to ₹${finalAmount.toLocaleString('en-IN')}.`,
+        timestamp: new Date().toISOString(),
+        operator: currentUser.name
+      });
+
+      setShowAddQuoteModal(false);
+      setEditingQuotation(null);
+      alert(`Success: Price Quotation ${editingQuotation.id} has been updated.`);
+      return;
+    }
 
     const quoteId = `QT-${Math.floor(1000 + Math.random() * 9000)}`;
     const nextEstimateNo = (db.crmQuotations && db.crmQuotations.length > 0) 
@@ -1859,7 +1887,29 @@ export default function CRMTab({
                             </span>
                           </td>
                           <td className="p-4 text-right">
-                            <div className="flex justify-end gap-1.5">
+                            <div className="flex justify-end gap-1.5 items-center">
+                              {quote.status === 'Sent' && hasWriteAccess && (
+                                <button
+                                  onClick={() => handleConvertQuotationToOrder(quote)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition shadow-xs whitespace-nowrap"
+                                  title="Approve & Convert to Production Order"
+                                >
+                                  <FileCheck size={12} />
+                                  <span>Approve & Convert</span>
+                                </button>
+                              )}
+                              {hasWriteAccess && (
+                                <button
+                                  onClick={() => {
+                                    setEditingQuotation(quote);
+                                    setShowAddQuoteModal(true);
+                                  }}
+                                  className="bg-stone-100 hover:bg-stone-200 text-stone-700 p-1.5 rounded-lg transition flex items-center justify-center cursor-pointer"
+                                  title="Edit Quotation"
+                                >
+                                  <Edit size={13} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => setViewingEstimateQuote(quote)}
                                 className="bg-[#593622] hover:bg-[#482b1b] text-white p-1.5 rounded-lg transition flex items-center justify-center cursor-pointer"
@@ -1868,26 +1918,17 @@ export default function CRMTab({
                                 <Eye size={13} />
                               </button>
                               {quote.status === 'Sent' && hasWriteAccess && (
-                                <>
-                                  <button
-                                    onClick={() => handleConvertQuotationToOrder(quote)}
-                                    className="bg-emerald-500 hover:bg-emerald-600 text-white p-1 rounded-lg transition"
-                                    title="Approve & Convert to Production Order"
-                                  >
-                                    <FileCheck size={13} />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const updated = { ...quote, status: 'Rejected' as const };
-                                      onSaveCRMQuotation(updated);
-                                      alert('Quotation marked Rejected.');
-                                    }}
-                                    className="bg-rose-500 hover:bg-rose-600 text-white p-1 rounded-lg transition"
-                                    title="Mark Rejected"
-                                  >
-                                    <XCircle size={13} />
-                                  </button>
-                                </>
+                                <button
+                                  onClick={() => {
+                                    const updated = { ...quote, status: 'Rejected' as const };
+                                    onSaveCRMQuotation(updated);
+                                    alert('Quotation marked Rejected.');
+                                  }}
+                                  className="bg-rose-500 hover:bg-rose-600 text-white p-1.5 rounded-lg transition flex items-center justify-center cursor-pointer"
+                                  title="Mark Rejected"
+                                >
+                                  <XCircle size={13} />
+                                </button>
                               )}
                               {hasWriteAccess && (
                                 <button
@@ -1896,7 +1937,8 @@ export default function CRMTab({
                                       onDeleteCRMQuotation(quote.id);
                                     }
                                   }}
-                                  className="text-stone-400 hover:text-rose-500 p-1 rounded transition"
+                                  className="text-stone-400 hover:text-rose-500 p-1.5 rounded-lg transition flex items-center justify-center cursor-pointer"
+                                  title="Delete Quotation"
                                 >
                                   <Trash2 size={13} />
                                 </button>
@@ -2199,20 +2241,24 @@ export default function CRMTab({
           >
             <div className="flex justify-between items-center border-b border-stone-100 pb-3">
               <h3 className="text-base font-black text-[#593622] font-display uppercase tracking-tight">
-                Generate Custom Price Quotation
+                {editingQuotation ? `Edit Price Quotation (${editingQuotation.id})` : 'Generate Custom Price Quotation'}
               </h3>
-              <button onClick={() => setShowAddQuoteModal(false)} className="text-stone-400 hover:text-stone-700">
+              <button onClick={() => { setShowAddQuoteModal(false); setEditingQuotation(null); }} className="text-stone-400 hover:text-stone-700">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateQuotation} className="space-y-3.5 text-xs">
+            <form
+              key={editingQuotation ? editingQuotation.id : 'new'}
+              onSubmit={handleCreateQuotation}
+              className="space-y-3.5 text-xs"
+            >
               <div className="space-y-1">
                 <label className="font-bold text-stone-600">Select Customer Lead *</label>
                 <select
                   required
                   name="customerId"
-                  defaultValue={selectedCustomerId || ''}
+                  defaultValue={editingQuotation ? editingQuotation.customer_id : (selectedCustomerId || '')}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
                   <option value="" disabled>-- Select Customer --</option>
@@ -2228,6 +2274,7 @@ export default function CRMTab({
                   required
                   type="text"
                   name="furnitureItem"
+                  defaultValue={editingQuotation ? editingQuotation.items?.[0]?.furnitureItem || '' : ''}
                   placeholder="e.g. 6-Seater Teakwood Dining Table"
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-semibold"
                 />
@@ -2239,6 +2286,7 @@ export default function CRMTab({
                   <input
                     type="text"
                     name="material"
+                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.material || '' : ''}
                     placeholder="e.g. Solid Teak wood & Matte Lacquer"
                     className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
                   />
@@ -2249,6 +2297,7 @@ export default function CRMTab({
                   <input
                     type="text"
                     name="dimensions"
+                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.dimensions || '' : ''}
                     placeholder="e.g. 72L x 36W x 30H inches"
                     className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-mono"
                   />
@@ -2263,7 +2312,7 @@ export default function CRMTab({
                     type="number"
                     name="quantity"
                     min="1"
-                    defaultValue="1"
+                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.quantity || 1 : 1}
                     className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                   />
                 </div>
@@ -2275,6 +2324,7 @@ export default function CRMTab({
                     type="number"
                     name="unitPrice"
                     min="1"
+                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.unitPrice || '' : ''}
                     placeholder="45000"
                     className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold font-mono"
                   />
@@ -2286,7 +2336,7 @@ export default function CRMTab({
                     type="number"
                     name="discount"
                     min="0"
-                    defaultValue="0"
+                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.discount || 0 : 0}
                     className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-mono"
                   />
                 </div>
@@ -2296,7 +2346,7 @@ export default function CRMTab({
                 <label className="font-bold text-stone-600">GST percentage (%)</label>
                 <select
                   name="gst"
-                  defaultValue="0"
+                  defaultValue={editingQuotation ? String(editingQuotation.items?.[0]?.gst || 0) : '0'}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
                   <option value="0">0% (Default)</option>
@@ -2306,7 +2356,7 @@ export default function CRMTab({
                 <input
                   type="hidden"
                   name="validUntil"
-                  value={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                  value={editingQuotation ? editingQuotation.validUntil : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
                 />
               </div>
 
@@ -2314,6 +2364,7 @@ export default function CRMTab({
                 <label className="font-bold text-stone-600">Quotation Proposal Terms Notes</label>
                 <textarea
                   name="notes"
+                  defaultValue={editingQuotation ? editingQuotation.notes || '' : ''}
                   placeholder="e.g. Terms: 40% Advance, 60% post-QC and before dispatch. 3 years structural warranty..."
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none h-16"
                 />
@@ -2323,7 +2374,7 @@ export default function CRMTab({
                 type="submit"
                 className="w-full bg-[#593622] hover:bg-[#4d2f1e] text-white py-2.5 rounded-xl font-bold transition shadow-md text-xs mt-3 cursor-pointer"
               >
-                Log and Issue Price Quote
+                {editingQuotation ? 'Update Price Quotation' : 'Log and Issue Price Quote'}
               </button>
             </form>
           </motion.div>
