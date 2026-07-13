@@ -260,6 +260,12 @@ export default function OrderForm({
   const [polishPersonId, setPolishPersonId] = React.useState(activePolish[0]?.id || '');
   const [carpenterLabourRate, setCarpenterLabourRate] = React.useState<number | ''>('');
   const [polishLabourRate, setPolishLabourRate] = React.useState<number | ''>('');
+  const [carpenterDeliveryDate, setCarpenterDeliveryDate] = React.useState(
+    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // default today + 7 days
+  );
+  const [polishDeliveryDate, setPolishDeliveryDate] = React.useState(
+    new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // default today + 10 days
+  );
 
   // --- STEP 5: REVIEW STATE ---
   const [orderDate, setOrderDate] = React.useState(new Date().toISOString().split('T')[0]);
@@ -474,8 +480,10 @@ export default function OrderForm({
       no_of_units: noOfUnits,
       carpenter_id: carpenterId,
       carpenter_labour_rate: carpenterLabourRate !== '' ? Number(carpenterLabourRate) : undefined,
+      carpenter_delivery_date: carpenterDeliveryDate,
       polish_person_id: polishPersonId || undefined,
       polish_labour_rate: polishLabourRate !== '' ? Number(polishLabourRate) : undefined,
+      polish_delivery_date: polishPersonId ? polishDeliveryDate : undefined,
       current_status: 'Pending',
       is_delayed: false,
       priority,
@@ -1088,22 +1096,36 @@ export default function OrderForm({
                   })}
                 </div>
 
-                {/* Labour Rate Input for selected Carpenter */}
-                <div className="mt-3 max-w-xs animate-in slide-in-from-top-1 duration-200">
-                  <label className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wide">
-                    Carpenter Labour Rate (₹)
-                  </label>
-                  <div className="relative rounded-xl shadow-xs">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                      <span className="text-stone-400 text-xs font-semibold">₹</span>
+                {/* Labour Rate Input and Delivery Date for selected Carpenter */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mt-3 animate-in slide-in-from-top-1 duration-200">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wide">
+                      Carpenter Labour Rate (₹)
+                    </label>
+                    <div className="relative rounded-xl shadow-xs">
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <span className="text-stone-400 text-xs font-semibold">₹</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={carpenterLabourRate}
+                        onChange={(e) => setCarpenterLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="Enter carpenter labour rate"
+                        className="w-full pl-7 pr-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
+                      />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wide">
+                      Carpenter Delivery Date
+                    </label>
                     <input
-                      type="number"
-                      min="0"
-                      value={carpenterLabourRate}
-                      onChange={(e) => setCarpenterLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="Enter carpenter labour rate"
-                      className="w-full pl-7 pr-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
+                      type="date"
+                      value={carpenterDeliveryDate}
+                      onChange={(e) => setCarpenterDeliveryDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
                     />
                   </div>
                 </div>
@@ -1147,22 +1169,36 @@ export default function OrderForm({
                   })}
                 </div>
 
-                {/* Labour Rate Input for selected Polish Person */}
-                <div className="mt-3 max-w-xs animate-in slide-in-from-top-1 duration-200">
-                  <label className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wide">
-                    Polish Person Labour Rate (₹)
-                  </label>
-                  <div className="relative rounded-xl shadow-xs">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                      <span className="text-stone-400 text-xs font-semibold">₹</span>
+                {/* Labour Rate Input and Delivery Date for selected Polish Person */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mt-3 animate-in slide-in-from-top-1 duration-200">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wide">
+                      Polish Person Labour Rate (₹)
+                    </label>
+                    <div className="relative rounded-xl shadow-xs">
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <span className="text-stone-400 text-xs font-semibold">₹</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={polishLabourRate}
+                        onChange={(e) => setPolishLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="Enter polish person labour rate"
+                        className="w-full pl-7 pr-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
+                      />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wide">
+                      Polish Person Delivery Date
+                    </label>
                     <input
-                      type="number"
-                      min="0"
-                      value={polishLabourRate}
-                      onChange={(e) => setPolishLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="Enter polish person labour rate"
-                      className="w-full pl-7 pr-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
+                      type="date"
+                      value={polishDeliveryDate}
+                      onChange={(e) => setPolishDeliveryDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
                     />
                   </div>
                 </div>
@@ -1198,6 +1234,20 @@ export default function OrderForm({
                     onChange={(e) => setDeliveryDate(e.target.value)}
                     className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 focus:outline-none focus:border-[#593622] rounded-xl text-xs font-semibold text-stone-850"
                   />
+                </div>
+              </div>
+
+              <div className="bg-amber-50/40 border border-amber-200/60 rounded-xl p-4 space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#593622]">Workshop Staff Delivery Schedule</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-white border border-stone-150 p-2.5 rounded-lg flex flex-col justify-center">
+                    <span className="text-stone-500 text-[10px] uppercase font-bold">Carpenter Delivery Date</span>
+                    <strong className="text-stone-800 mt-0.5">{carpenterDeliveryDate}</strong>
+                  </div>
+                  <div className="bg-white border border-stone-150 p-2.5 rounded-lg flex flex-col justify-center">
+                    <span className="text-stone-500 text-[10px] uppercase font-bold">Polish Person Delivery Date</span>
+                    <strong className="text-stone-800 mt-0.5">{polishPersonId ? polishDeliveryDate : 'Not delegated'}</strong>
+                  </div>
                 </div>
               </div>
 
@@ -1341,10 +1391,22 @@ export default function OrderForm({
                   <strong className="text-stone-900">₹{carpenterLabourRate}</strong>
                 </div>
               )}
+              {carpenterDeliveryDate && (
+                <div className="flex justify-between text-stone-500 text-[11px]">
+                  <span>Carpenter Target Date:</span>
+                  <strong>{carpenterDeliveryDate}</strong>
+                </div>
+              )}
               {polishLabourRate !== '' && (
                 <div className="flex justify-between">
                   <span>Polish Rate:</span>
                   <strong className="text-stone-900">₹{polishLabourRate}</strong>
+                </div>
+              )}
+              {polishPersonId && polishDeliveryDate && (
+                <div className="flex justify-between text-stone-500 text-[11px]">
+                  <span>Polish Target Date:</span>
+                  <strong>{polishDeliveryDate}</strong>
                 </div>
               )}
               {custName && (

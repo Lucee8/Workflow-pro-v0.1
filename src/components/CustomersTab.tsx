@@ -7,6 +7,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Customer, Order, Payment, User } from '../types';
 import { Search, Phone, MapPin, MessageSquare, CreditCard, CheckCircle, Clock, AlertTriangle, ChevronRight, User as UserIcon, Calendar, ArrowUpRight, Trash2 } from 'lucide-react';
+import { formatToDDMMYYYY } from '../utils';
 
 interface CustomersTabProps {
   customers: Customer[];
@@ -215,7 +216,7 @@ export default function CustomersTab({
                       {activeCustomer.name}
                     </h2>
                     <p className="text-stone-400 text-[10px] uppercase font-mono tracking-wider font-bold mt-1.5 flex items-center gap-1.5">
-                      <Calendar size={11} /> Registered: {new Date(activeCustomer.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      <Calendar size={11} /> Registered: {formatToDDMMYYYY(activeCustomer.created_at)}
                     </p>
                   </div>
                 </div>

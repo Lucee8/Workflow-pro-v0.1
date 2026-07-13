@@ -1,6 +1,7 @@
 import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
 import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat } from 'lucide-react';
+import { formatToDDMMYYYY } from '../utils';
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'Door Frames': ['Set', 'Mandir Room', 'Door', 'Christian Door', 'Frame'],
@@ -913,51 +914,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
           </div>
 
-          <div>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">IV. Polishing, Materials &amp; Mode</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Polish Shade</label>
-              <input
-                type="text"
-                value={polishShade}
-                onChange={(e) => setPolishShade(e.target.value)}
-                placeholder="e.g. Walnut, Natural Teak"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Payment Mode</label>
-              <select
-                value={paymentMode}
-                onChange={(e) => setPaymentMode(e.target.value as 'CASH' | 'BANK')}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-bold"
-              >
-                <option value="CASH">CASH</option>
-                <option value="BANK">BANK</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Polish Application Type</label>
-              <select
-                value={typeOfPolish}
-                onChange={(e) => setTypeOfPolish(e.target.value as 'HAND' | 'MACHINE')}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-bold"
-              >
-                <option value="HAND">HAND POLISH (Manual craft)</option>
-                <option value="MACHINE">MACHINE POLISH (Spray/Lacquer)</option>
-              </select>
-            </div>
-          </div>
-
           <div className="border-t border-stone-200 pt-5 space-y-4">
             <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              V. Customer WhatsApp &amp; PDF Transmission Flow
+              IV. Customer WhatsApp &amp; PDF Transmission Flow
             </h2>
             
             <p className="text-stone-500 text-xs leading-relaxed">
@@ -1149,8 +1109,8 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   {language === 'mr' ? 'भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म' : "BHISE'Z WORKSHOP - DETAIL ORDER FORM"}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate || '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate || '_________________'}</div>
+                  <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_________________'}</div>
+                  <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_________________'}</div>
                   <div><strong>{language === 'mr' ? 'ऑर्डर क्र.:' : 'ORDER NO:'}</strong> {orderNo || '_________________'}</div>
                   <div><strong>{language === 'mr' ? 'आर्टिकल क्र.:' : 'ARTICLE NO:'}</strong> {articleNo || '_________________'}</div>
                   <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_________________'}</div>
@@ -1362,8 +1322,8 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
 
             <div className="grid grid-cols-2 gap-4 text-xs font-mono border border-black p-4 rounded mb-6">
               <div className="space-y-1">
-                <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate || '_______________________'}</div>
+                <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_______________________'}</div>
+                <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_______________________'}</div>
                 <div><strong>{language === 'mr' ? 'ऑर्डर क्रमांक:' : 'ORDER NO:'}</strong> {orderNo || '_______________________'}</div>
                 <div><strong>{language === 'mr' ? 'आर्टिकल क्रमांक:' : 'ARTICLE NO:'}</strong> {articleNo || '_______________________'}</div>
                 <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_______________________'}</div>

@@ -43,6 +43,7 @@ import OrdersTab from './components/OrdersTab';
 import OrderForm from './components/OrderForm';
 import OrderDetailsView from './components/OrderDetailsView';
 import CalendarTab from './components/CalendarTab';
+import { formatToDDMMYYYY } from './utils';
 import UsersTab from './components/UsersTab';
 import WorkerDashboard from './components/WorkerDashboard';
 import NotificationCenter from './components/NotificationCenter';
@@ -163,7 +164,7 @@ export default function App() {
   // Trigger login from screen
   const handleLoginSuccess = (matched: User) => {
     const timeString = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    const dateString = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    const dateString = formatToDDMMYYYY(new Date());
     const updatedUser: User = {
       ...matched,
       last_seen: `Today, ${timeString} (${dateString})`

@@ -6,6 +6,7 @@
 import React from 'react';
 import { Order, User, Customer, OrderStage, OrderPriority, Payment } from '../types';
 import { Search, Eye, PlusCircle, AlertCircle, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, CreditCard, Trash2 } from 'lucide-react';
+import { formatToDDMMYYYY } from '../utils';
 
 interface OrdersTabProps {
   orders: Order[];
@@ -231,7 +232,7 @@ export default function OrdersTab({
                         )}
                       </td>
                       <td className="py-3.5 px-4 font-medium text-stone-600">
-                        {new Date(order.delivery_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {formatToDDMMYYYY(order.delivery_date)}
                       </td>
                       <td className="py-3.5 px-4">
                         {order.is_delayed ? (

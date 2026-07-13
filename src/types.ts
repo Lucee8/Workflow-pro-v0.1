@@ -78,8 +78,10 @@ export interface Order {
   no_of_units: number;
   carpenter_id: string; // FK to users (carpenter)
   carpenter_labour_rate?: number;
+  carpenter_delivery_date?: string; // Target delivery date for Carpenter
   polish_person_id?: string; // FK to users (polish_person)
   polish_labour_rate?: number;
+  polish_delivery_date?: string; // Target delivery date for Polish Person
   current_status: OrderStage;
   is_delayed: boolean;
   priority: OrderPriority;

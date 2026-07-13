@@ -7,6 +7,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Order, User, Customer, OrderStage, StatusLog, Payment } from '../types';
 import { generateUUID } from '../db/store';
+import { formatToDDMMYYYY, parseToInputDate } from '../utils';
 import { 
   ChevronLeft, 
   Edit, 
@@ -451,11 +452,11 @@ export default function OrderDetailsView({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-3 rounded-xl border border-stone-150 font-sans text-xs">
           <div>
             <span className="text-[10px] text-stone-400 font-bold block uppercase">Order Date</span>
-            <strong className="text-stone-850 mt-0.5 block">{order.order_date}</strong>
+            <strong className="text-stone-850 mt-0.5 block">{formatToDDMMYYYY(order.order_date)}</strong>
           </div>
           <div>
             <span className="text-[10px] text-stone-400 font-bold block uppercase">Delivery Target</span>
-            <strong className="text-stone-850 mt-0.5 block font-mono text-[11px] font-black">{order.delivery_date}</strong>
+            <strong className="text-stone-850 mt-0.5 block font-mono text-[11px] font-black">{formatToDDMMYYYY(order.delivery_date)}</strong>
           </div>
           <div>
             <span className="text-[10px] text-stone-400 font-bold block uppercase">Priority</span>
@@ -894,7 +895,7 @@ export default function OrderDetailsView({
                           <strong className="text-stone-900">{log.stage}</strong>
                           <span className="text-stone-400 text-[10px]">by {log.changed_by_name} ({log.changed_by_role.toUpperCase()})</span>
                           <span className="text-stone-400 text-[10px] font-mono shrink-0 ml-auto bg-stone-50 border p-0.5 px-2 rounded">
-                            {new Date(log.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            {formatToDDMMYYYY(log.timestamp)} {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                         {log.note && <p className="text-stone-600 mt-1 bg-stone-50/55 p-2 rounded-lg border border-stone-100 italic">{log.note}</p>}
@@ -931,6 +932,11 @@ export default function OrderDetailsView({
                       Labour Rate: <strong className="text-amber-800 font-black">₹{order.carpenter_labour_rate}</strong>
                     </span>
                   )}
+                  {order.carpenter_delivery_date && (
+                    <span className="text-[10px] text-stone-500 block mt-0.5">
+                      Delivery Target: <strong className="text-amber-950 font-bold">{order.carpenter_delivery_date}</strong>
+                    </span>
+                  )}
                   {carpenter?.phone && (
                     <a href={`tel:${carpenter.phone}`} className="inline-flex items-center gap-1 text-[10px] text-amber-700 hover:underline font-bold mt-1">
                       <Phone size={10} /> Call ({carpenter.phone})
@@ -950,6 +956,11 @@ export default function OrderDetailsView({
                   {order.polish_labour_rate !== undefined && (
                     <span className="text-[10px] text-stone-500 block mt-0.5">
                       Labour Rate: <strong className="text-teal-800 font-black">₹{order.polish_labour_rate}</strong>
+                    </span>
+                  )}
+                  {order.polish_delivery_date && (
+                    <span className="text-[10px] text-stone-500 block mt-0.5">
+                      Delivery Target: <strong className="text-teal-950 font-bold">{order.polish_delivery_date}</strong>
                     </span>
                   )}
                   {polish?.phone && (
@@ -1210,9 +1221,9 @@ export default function OrderDetailsView({
                 </div>
                 <div className="space-y-1 text-[11px] leading-relaxed text-stone-605 text-stone-650">
                   <p>• Receipt Reference ID: <strong className="font-mono text-stone-900">{existingPayment.id}</strong></p>
-                  <p>• Transacted Mode: <strong className="capitalize text-stone-900">{existingPayment.payment_mode}</strong> on <strong className="font-mono">{existingPayment.payment_date}</strong></p>
+                  <p>• Transacted Mode: <strong className="capitalize text-stone-900">{existingPayment.payment_mode}</strong> on <strong className="font-mono">{formatToDDMMYYYY(existingPayment.payment_date)}</strong></p>
                   {existingPayment.notes && <p>• Audited Notes: <span className="italic">"{existingPayment.notes}"</span></p>}
-                  <p className="text-[9px] text-stone-400 font-mono text-right mt-1.5">Last verified on {new Date(existingPayment.created_at).toLocaleString('en-GB')}</p>
+                  <p className="text-[9px] text-stone-400 font-mono text-right mt-1.5">Last verified on {formatToDDMMYYYY(existingPayment.created_at)} {new Date(existingPayment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             ) : (

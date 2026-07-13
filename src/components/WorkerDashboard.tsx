@@ -450,6 +450,18 @@ export default function WorkerDashboard({
                 <span className="text-[10px] text-stone-400 font-bold block uppercase">Goal Delivery deadline</span>
                 <strong className="text-stone-850 text-xs block font-mono mt-0.5">{activeOrder.delivery_date}</strong>
               </div>
+              {activeOrder.carpenter_delivery_date && (
+                <div>
+                  <span className="text-[10px] text-amber-800 font-bold block uppercase">Carpenter Delivery Date</span>
+                  <strong className="text-amber-950 text-xs block font-mono mt-0.5">{activeOrder.carpenter_delivery_date}</strong>
+                </div>
+              )}
+              {activeOrder.polish_delivery_date && (
+                <div>
+                  <span className="text-[10px] text-teal-800 font-bold block uppercase">Polish Delivery Date</span>
+                  <strong className="text-teal-950 text-xs block font-mono mt-0.5">{activeOrder.polish_delivery_date}</strong>
+                </div>
+              )}
               <div>
                 <span className="text-[10px] text-stone-400 font-bold block uppercase">Current workshop Stage</span>
                 <span className="px-2 py-0.5 mt-1 rounded bg-stone-150 text-stone-700 font-bold text-[10px] block border w-fit">
@@ -1135,7 +1147,15 @@ export default function WorkerDashboard({
                       <td className="py-3.5 px-4">
                         <span className="font-semibold text-stone-700">{ord.current_status}</span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-stone-500 font-semibold">{ord.delivery_date}</td>
+                      <td className="py-3.5 px-4 font-mono text-stone-500 font-semibold">
+                        <div>{ord.delivery_date}</div>
+                        {isCarpenter && ord.carpenter_delivery_date && (
+                          <div className="text-[10px] text-amber-700 font-bold mt-0.5">Carpenter target: {ord.carpenter_delivery_date}</div>
+                        )}
+                        {!isCarpenter && ord.polish_delivery_date && (
+                          <div className="text-[10px] text-teal-700 font-bold mt-0.5">Polish target: {ord.polish_delivery_date}</div>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4">
                         {isStagedMine ? (
                           <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
