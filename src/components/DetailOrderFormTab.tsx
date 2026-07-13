@@ -46,10 +46,49 @@ export default function DetailOrderFormTab({
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>('');
   const [language, setLanguage] = React.useState<'en' | 'mr'>('en');
 
+  function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders) {
+    const dateToUse = targetDate || new Date().toISOString().split('T')[0];
+    let yy = '';
+    let mm = '';
+    if (dateToUse && dateToUse.includes('-')) {
+      const parts = dateToUse.split('-');
+      if (parts[0] && parts[0].length === 4) {
+        yy = parts[0].slice(-2);
+      }
+      if (parts[1]) {
+        mm = parts[1].padStart(2, '0');
+      }
+    } else {
+      const d = new Date();
+      yy = d.getFullYear().toString().slice(-2);
+      mm = String(d.getMonth() + 1).padStart(2, '0');
+    }
+    const prefix = `ORD${yy}${mm}`;
+    
+    let maxSerial = 0;
+    if (orderList && orderList.length > 0) {
+      orderList.forEach((o) => {
+        const checkIds = [o.id || '', o.article_no || ''];
+        checkIds.forEach((id) => {
+          if (id.startsWith(prefix)) {
+            const serialPart = id.substring(prefix.length);
+            const serialNum = parseInt(serialPart, 10);
+            if (!isNaN(serialNum) && serialNum > maxSerial) {
+              maxSerial = serialNum;
+            }
+          }
+        });
+      });
+    }
+    const nextSerial = maxSerial + 1;
+    const sss = String(nextSerial).padStart(3, '0');
+    return `${prefix}${sss}`;
+  }
+
   // Form Fields - Page 1
-  const [orderDate, setOrderDate] = React.useState('');
+  const [orderDate, setOrderDate] = React.useState(() => new Date().toISOString().split('T')[0]);
   const [deliveryDate, setDeliveryDate] = React.useState('');
-  const [orderNo, setOrderNo] = React.useState('');
+  const [orderNo, setOrderNo] = React.useState(() => generateNewOrderNo());
   const [articleNo, setArticleNo] = React.useState('');
   const [toArticleNo, setToArticleNo] = React.useState('');
   const [customerName, setCustomerName] = React.useState('');
@@ -160,6 +199,12 @@ export default function DetailOrderFormTab({
     const descStr = `Structure: ${material}. Finish: ${finish}. Color: ${colorShade}. ${specialNotes}`;
     setItemDescription(descStr);
   }, [material, finish, colorShade, specialNotes]);
+
+  React.useEffect(() => {
+    if (!selectedOrderId && (!orderNo || orderNo.startsWith('ORD'))) {
+      setOrderNo(generateNewOrderNo(orderDate));
+    }
+  }, [orderDate, selectedOrderId, orders]);
 
   // Final Rate is calculated as: Quoted Rate + Cushion + Hardware - Discount
   const finalRate = React.useMemo(() => {
@@ -412,9 +457,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
 
   const clearForm = () => {
     setSelectedOrderId('');
-    setOrderDate(new Date().toISOString().split('T')[0]);
+    const today = new Date().toISOString().split('T')[0];
+    setOrderDate(today);
     setDeliveryDate('');
-    setOrderNo('');
+    setOrderNo(generateNewOrderNo(today));
     setArticleNo('');
     setToArticleNo('');
     setCustomerName('');
