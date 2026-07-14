@@ -186,6 +186,26 @@ export default function CRMTab({
   const [showAddFollowupModal, setShowAddFollowupModal] = React.useState(false);
   const [viewingEstimateQuote, setViewingEstimateQuote] = React.useState<CRMQuotation | null>(null);
 
+  const [quoteCustomerId, setQuoteCustomerId] = React.useState<string>('');
+  const [quoteItemName, setQuoteItemName] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (showAddQuoteModal) {
+      if (editingQuotation) {
+        setQuoteCustomerId(editingQuotation.customer_id || '');
+        setQuoteItemName(editingQuotation.items?.[0]?.furnitureItem || '');
+      } else {
+        const initialCustId = selectedCustomerId || '';
+        setQuoteCustomerId(initialCustId);
+        const customer = db.crmCustomers?.find(c => c.id === initialCustId);
+        setQuoteItemName(customer?.productRequirement || '');
+      }
+    } else {
+      setQuoteCustomerId('');
+      setQuoteItemName('');
+    }
+  }, [showAddQuoteModal, editingQuotation, selectedCustomerId, db.crmCustomers]);
+
   // Customized printable estimate asset states (stored in localStorage for persistence)
   const [customLogo, setCustomLogo] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_logo'));
   const [customQR, setCustomQR] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_qr'));
@@ -2327,7 +2347,17 @@ export default function CRMTab({
                 <select
                   required
                   name="customerId"
-                  defaultValue={editingQuotation ? editingQuotation.customer_id : (selectedCustomerId || '')}
+                  value={quoteCustomerId}
+                  onChange={(e) => {
+                    const custId = e.target.value;
+                    setQuoteCustomerId(custId);
+                    const customer = db.crmCustomers?.find(c => c.id === custId);
+                    if (customer && customer.productRequirement) {
+                      setQuoteItemName(customer.productRequirement);
+                    } else {
+                      setQuoteItemName('');
+                    }
+                  }}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
                   <option value="" disabled>-- Select Customer --</option>
@@ -2343,7 +2373,8 @@ export default function CRMTab({
                   required
                   type="text"
                   name="furnitureItem"
-                  defaultValue={editingQuotation ? editingQuotation.items?.[0]?.furnitureItem || '' : ''}
+                  value={quoteItemName}
+                  onChange={(e) => setQuoteItemName(e.target.value)}
                   placeholder="e.g. 6-Seater Teakwood Dining Table"
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-semibold"
                 />
