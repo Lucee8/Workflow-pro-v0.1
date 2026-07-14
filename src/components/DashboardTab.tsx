@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Order, User, Customer, OrderStage, Payment } from '../types';
-import { Eye, Clock, CheckCircle2, AlertTriangle, Briefcase, CalendarCheck, ArrowUpRight, PiggyBank, CreditCard, ShieldCheck, Boxes, Sparkles } from 'lucide-react';
+import { Eye, Clock, CheckCircle2, AlertTriangle, Briefcase, CalendarCheck, ArrowUpRight, PiggyBank, CreditCard, ShieldCheck, Boxes, Sparkles, UserPlus, Plus } from 'lucide-react';
 import { formatToDDMMYYYY } from '../utils';
 
 interface DashboardTabProps {
@@ -16,6 +16,7 @@ interface DashboardTabProps {
   payments: Payment[];
   onViewOrder: (orderId: string) => void;
   onNavigateTab: (tabId: string) => void;
+  onQuickCrmAction?: (action: 'add-customer' | 'new-quotation') => void;
 }
 
 export default function DashboardTab({
@@ -25,6 +26,7 @@ export default function DashboardTab({
   payments,
   onViewOrder,
   onNavigateTab,
+  onQuickCrmAction,
 }: DashboardTabProps) {
   // Stats Calculation
   const totalOrdersUrl = orders.length;
@@ -95,9 +97,27 @@ export default function DashboardTab({
   return (
     <div className="space-y-6">
       {/* Page Header Title */}
-      <div>
-        <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">Dashboard</h1>
-        <p className="text-stone-500 text-xs mt-1">Overview of all active orders, worker assignments and workshop activity</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">Dashboard</h1>
+          <p className="text-stone-500 text-xs mt-1">Overview of all active orders, worker assignments and workshop activity</p>
+        </div>
+        {onQuickCrmAction && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onQuickCrmAction('add-customer')}
+              className="bg-[#593622] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-[#4a2e1d] active:scale-95 transition duration-150 cursor-pointer"
+            >
+              <UserPlus size={14} /> Add Customer
+            </button>
+            <button
+              onClick={() => onQuickCrmAction('new-quotation')}
+              className="bg-amber-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-amber-700 active:scale-95 transition duration-150 cursor-pointer"
+            >
+              <Plus size={14} /> New Quotation
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Top Metric Stats Cards Grid */}

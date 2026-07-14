@@ -103,6 +103,8 @@ interface CRMTabProps {
   currentUser: User;
   users: User[];
   onApproveQuotation?: (quote: CRMQuotation) => void;
+  crmAction?: 'add-customer' | 'new-quotation' | null;
+  onResetCrmAction?: () => void;
 }
 
 export default function CRMTab({
@@ -124,6 +126,8 @@ export default function CRMTab({
   currentUser,
   users,
   onApproveQuotation,
+  crmAction,
+  onResetCrmAction,
 }: CRMTabProps) {
   const [subTab, setSubTab] = React.useState<'dashboard' | 'customers' | 'quotations' | 'followups'>('dashboard');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(null);
@@ -285,6 +289,24 @@ export default function CRMTab({
   const isManager = currentUser.role === 'manager';
   const isArtisan = currentUser.role === 'carpenter' || currentUser.role === 'polish_person';
   const hasWriteAccess = isAdmin || isManager;
+
+  // React on quick crm actions triggered externally
+  React.useEffect(() => {
+    if (crmAction && hasWriteAccess) {
+      if (crmAction === 'add-customer') {
+        setSubTab('customers');
+        setEditingCustomer(null);
+        setShowAddCustModal(true);
+      } else if (crmAction === 'new-quotation') {
+        setSubTab('quotations');
+        setEditingQuotation(null);
+        setShowAddQuoteModal(true);
+      }
+      if (onResetCrmAction) {
+        onResetCrmAction();
+      }
+    }
+  }, [crmAction, hasWriteAccess, onResetCrmAction]);
 
   // Initial customer selections
   React.useEffect(() => {

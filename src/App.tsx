@@ -62,6 +62,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = React.useState<string>('dashboard');
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
   const [preselectedQuotationId, setPreselectedQuotationId] = React.useState<string | null>(null);
+  const [crmAction, setCrmAction] = React.useState<'add-customer' | 'new-quotation' | null>(null);
   const [workOrderDraft, setWorkOrderDraft] = React.useState<any>(null);
 
   // Active simulated user session (start as null to show login page by default)
@@ -663,6 +664,10 @@ export default function App() {
                 payments={db.payments}
                 onNavigateTab={(tab) => setCurrentTab(tab)}
                 onViewOrder={handleViewOrder}
+                onQuickCrmAction={(action) => {
+                  setCrmAction(action);
+                  setCurrentTab('crm');
+                }}
               />
             </motion.div>
           )}
@@ -697,6 +702,8 @@ export default function App() {
                   setPreselectedQuotationId(quote.id);
                   setCurrentTab('detail_order_form');
                 }}
+                crmAction={crmAction}
+                onResetCrmAction={() => setCrmAction(null)}
               />
             </motion.div>
           )}
