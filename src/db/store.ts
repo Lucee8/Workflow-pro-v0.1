@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
+import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, CRMAgreement } from '../types';
 
 // Helper to generate UUIDs
 export function generateUUID(): string {
@@ -183,6 +183,7 @@ export interface AppState {
   crmNotes: CRMNote[];
   crmAttachments: CRMAttachment[];
   crmTimelineEvents: CRMTimelineEvent[];
+  crmAgreements: CRMAgreement[];
 }
 
 export function loadState(): AppState {
@@ -211,6 +212,7 @@ export function loadState(): AppState {
             crmNotes: parsed.crmNotes || [],
             crmAttachments: parsed.crmAttachments || [],
             crmTimelineEvents: parsed.crmTimelineEvents || [],
+            crmAgreements: parsed.crmAgreements || [],
           };
         }
       }
@@ -235,6 +237,7 @@ export function loadState(): AppState {
     crmNotes: [],
     crmAttachments: [],
     crmTimelineEvents: [],
+    crmAgreements: [],
   };
   saveState(state);
   return state;

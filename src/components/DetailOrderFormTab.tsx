@@ -1,6 +1,6 @@
 import React from 'react';
-import { Customer, Order, User, Payment } from '../types';
-import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat } from 'lucide-react';
+import { Customer, Order, User, Payment, CRMAgreement } from '../types';
+import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, Phone } from 'lucide-react';
 import { formatToDDMMYYYY } from '../utils';
 
 const CATEGORY_MAP: Record<string, string[]> = {
@@ -20,6 +20,35 @@ const CATEGORY_MAP: Record<string, string[]> = {
   'Diwans': ['Open Diwan', 'Box Diwan', 'Trolley Diwan', 'Bhaiyya Khat'],
 };
 
+interface AgreementProduct {
+  id: string;
+  quotationId?: string;
+  orderNo: string;
+  articleNo: string;
+  toArticleNo: string;
+  category: string;
+  subCategory: string;
+  size: string;
+  customSize: string;
+  designType: 'Standard' | 'Custom';
+  material: string;
+  finish: string;
+  colorShade: string;
+  qty: number;
+  quotedRate: number;
+  cushion: number;
+  hardware: number;
+  discount: number;
+  packingForwarding: number;
+  transportation: number;
+  advance: number;
+  specialNotes: string;
+  productName: string;
+  itemDescription: string;
+  amount: number;
+  refImages: Array<{ id: string; url: string; type: 'Design Reference' }>;
+}
+
 interface DetailOrderFormTabProps {
   orders: Order[];
   customers: Customer[];
@@ -27,47 +56,100 @@ interface DetailOrderFormTabProps {
   payments: Payment[];
   crmQuotations?: any[];
   crmCustomers?: any[];
+  crmAgreements?: CRMAgreement[];
   preselectedQuotationId?: string | null;
   onClearPreselectedQuotation?: () => void;
+  onSaveCRMAgreement?: (agreement: CRMAgreement) => void;
   onSendToWorkOrder?: (draft: any) => void;
 }
 
-export default function DetailOrderFormTab({ 
-  orders, 
-  customers, 
-  users, 
+export default function DetailOrderFormTab({
+  orders,
+  customers,
+  users,
   payments,
   crmQuotations = [],
   crmCustomers = [],
+  crmAgreements = [],
   preselectedQuotationId = null,
   onClearPreselectedQuotation,
+  onSaveCRMAgreement,
   onSendToWorkOrder
 }: DetailOrderFormTabProps) {
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>('');
   const [language, setLanguage] = React.useState<'en' | 'mr'>('en');
 
-  function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders) {
+  // Common Client Metadata
+  const [orderDate, setOrderDate] = React.useState(() => new Date().toISOString().split('T')[0]);
+  const [deliveryDate, setDeliveryDate] = React.useState('');
+  const [customerName, setCustomerName] = React.useState('');
+  const [whatsappNo, setWhatsappNo] = React.useState('');
+  const [address, setAddress] = React.useState('');
+
+  // Common Technical Specs
+  const [polishShade, setPolishShade] = React.useState('Walnut');
+  const [paymentMode, setPaymentMode] = React.useState('GPay');
+  const [typeOfPolish, setTypeOfPolish] = React.useState('PU Polish');
+
+  // Selected Quote items
+  const [selectedQuoteItemIds, setSelectedQuoteItemIds] = React.useState<string[]>([]);
+
+  const createEmptyProduct = (customId?: string): AgreementProduct => ({
+    id: customId || `prod_${Math.random().toString(36).substring(2, 9)}`,
+    orderNo: '',
+    articleNo: '',
+    toArticleNo: '',
+    category: 'Beds',
+    subCategory: '',
+    size: 'Custom',
+    customSize: '',
+    designType: 'Custom',
+    material: 'Plywood',
+    finish: 'hand polish',
+    colorShade: 'Walnut',
+    qty: 1,
+    quotedRate: 0,
+    cushion: 0,
+    hardware: 0,
+    discount: 0,
+    packingForwarding: 0,
+    transportation: 0,
+    advance: 0,
+    specialNotes: '',
+    productName: '',
+    itemDescription: '',
+    amount: 0,
+    refImages: []
+  });
+
+  // Dynamic products list
+  const [products, setProducts] = React.useState<AgreementProduct[]>([]);
+
+  // Make sure we have at least one product
+  React.useEffect(() => {
+    if (products.length === 0) {
+      setProducts([createEmptyProduct()]);
+    }
+  }, [products]);
+
+  // Generate unique order serial ref helper
+  function generateNewOrderNo(targetDate?: string) {
     const dateToUse = targetDate || new Date().toISOString().split('T')[0];
     let yy = '';
     let mm = '';
     if (dateToUse && dateToUse.includes('-')) {
       const parts = dateToUse.split('-');
-      if (parts[0] && parts[0].length === 4) {
-        yy = parts[0].slice(-2);
-      }
-      if (parts[1]) {
-        mm = parts[1].padStart(2, '0');
-      }
+      if (parts[0] && parts[0].length === 4) yy = parts[0].slice(-2);
+      if (parts[1]) mm = parts[1].padStart(2, '0');
     } else {
       const d = new Date();
       yy = d.getFullYear().toString().slice(-2);
       mm = String(d.getMonth() + 1).padStart(2, '0');
     }
     const prefix = `ORD${yy}${mm}`;
-    
     let maxSerial = 0;
-    if (orderList && orderList.length > 0) {
-      orderList.forEach((o) => {
+    if (orders && orders.length > 0) {
+      orders.forEach((o) => {
         const checkIds = [o.id || '', o.article_no || ''];
         checkIds.forEach((id) => {
           if (id.startsWith(prefix)) {
@@ -81,46 +163,278 @@ export default function DetailOrderFormTab({
       });
     }
     const nextSerial = maxSerial + 1;
-    const sss = String(nextSerial).padStart(3, '0');
-    return `${prefix}${sss}`;
+    return `${prefix}${String(nextSerial).padStart(3, '0')}`;
   }
 
-  // Form Fields - Page 1
-  const [orderDate, setOrderDate] = React.useState(() => new Date().toISOString().split('T')[0]);
-  const [deliveryDate, setDeliveryDate] = React.useState('');
-  const [orderNo, setOrderNo] = React.useState(() => generateNewOrderNo());
-  const [articleNo, setArticleNo] = React.useState('');
-  const [toArticleNo, setToArticleNo] = React.useState('');
-  const [customerName, setCustomerName] = React.useState('');
-  const [whatsappNo, setWhatsappNo] = React.useState('');
-  const [address, setAddress] = React.useState('');
+  // Preselected Quotation Auto-Fill trigger
+  React.useEffect(() => {
+    if (preselectedQuotationId && crmQuotations && crmQuotations.length > 0) {
+      const quote = crmQuotations.find(q => q.id === preselectedQuotationId);
+      if (quote) {
+        setSelectedOrderId(`quote_${preselectedQuotationId}`);
+        const crmCust = crmCustomers?.find((c) => c.id === quote.customer_id);
+        
+        setOrderDate(quote.created_at ? quote.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+        setDeliveryDate(quote.validUntil || '');
+        setCustomerName(quote.customer_name || crmCust?.name || '');
+        setWhatsappNo(crmCust?.phone || crmCust?.whatsappNumber || '');
+        setAddress(crmCust?.address || '');
+        
+        const quoteItems = quote.items || [];
+        const initialProducts: AgreementProduct[] = quoteItems.map((item: any, idx: number) => {
+          let matchedCat = 'Beds';
+          for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
+            if (subs.some((s) => item.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
+              matchedCat = cat;
+              break;
+            }
+          }
+          
+          return {
+            id: `${quote.id}_${item.id || idx}`,
+            quotationId: quote.id,
+            orderNo: quote.id,
+            articleNo: `QT/${quote.id.replace('QT-', '')}/${idx + 1}`,
+            toArticleNo: '',
+            category: matchedCat,
+            subCategory: item.furnitureItem,
+            size: 'Custom',
+            customSize: item.dimensions || 'Standard',
+            designType: 'Custom',
+            material: item.material || 'Plywood',
+            finish: 'hand polish',
+            colorShade: 'Walnut',
+            qty: item.quantity || 1,
+            quotedRate: item.unitPrice || 0,
+            cushion: 0,
+            hardware: 0,
+            discount: item.discount || 0,
+            packingForwarding: 0,
+            transportation: 0,
+            advance: 0,
+            specialNotes: quote.notes || '',
+            productName: item.furnitureItem,
+            itemDescription: item.dimensions || '',
+            amount: (item.unitPrice || 0) * (item.quantity || 1),
+            refImages: []
+          };
+        });
+        
+        const initialSelectedIds = quoteItems.map((item: any, idx: number) => `${quote.id}_${item.id || idx}`);
+        setSelectedQuoteItemIds(initialSelectedIds);
+        setProducts(initialProducts.length > 0 ? initialProducts : [createEmptyProduct()]);
+      }
+      if (onClearPreselectedQuotation) {
+        onClearPreselectedQuotation();
+      }
+    }
+  }, [preselectedQuotationId, crmQuotations, crmCustomers, onClearPreselectedQuotation]);
 
-  const [productName, setProductName] = React.useState('');
-  const [itemDescription, setItemDescription] = React.useState('');
-  const [qty, setQty] = React.useState<number>(1);
-  const [amount, setAmount] = React.useState<number>(0);
+  // Aggregate All Selectable Quote items for Multi-Selection
+  const getAllSelectableQuoteItems = () => {
+    const list: Array<{
+      id: string;
+      quoteId: string;
+      customerId: string;
+      customerName: string;
+      phone: string;
+      address: string;
+      furnitureItem: string;
+      dimensions: string;
+      quantity: number;
+      unitPrice: number;
+      totalAmount: number;
+      notes: string;
+      discount: number;
+      material?: string;
+      created_at?: string;
+      validUntil?: string;
+    }> = [];
 
-  const [quotedRate, setQuotedRate] = React.useState<number>(0);
-  const [cushion, setCushion] = React.useState<number>(0);
-  const [discount, setDiscount] = React.useState<number>(0);
-  const [hardware, setHardware] = React.useState<number>(0);
-  
-  // Product Configuration states
-  const [category, setCategory] = React.useState('Door Frames');
-  const [subCategory, setSubCategory] = React.useState('Set');
-  const [size, setSize] = React.useState('6ft');
-  const [customSize, setCustomSize] = React.useState('');
-  const [designType, setDesignType] = React.useState<'Standard' | 'Custom'>('Standard');
-  const [material, setMaterial] = React.useState('Plywood');
-  const [finish, setFinish] = React.useState('hand polish');
-  const [colorShade, setColorShade] = React.useState('Walnut');
-  const [specialNotes, setSpecialNotes] = React.useState('');
+    crmQuotations.forEach((q) => {
+      if (q.status === 'Approved' || q.status === 'Draft' || q.status === 'Sent') {
+        const crmCust = crmCustomers.find(c => c.id === q.customer_id);
+        const items = q.items || [];
+        items.forEach((item: any, idx: number) => {
+          list.push({
+            id: `${q.id}_${item.id || idx}`,
+            quoteId: q.id,
+            customerId: q.customer_id,
+            customerName: q.customer_name || crmCust?.name || 'Customer',
+            phone: crmCust?.phone || crmCust?.whatsappNumber || '',
+            address: crmCust?.address || '',
+            furnitureItem: item.furnitureItem,
+            dimensions: item.dimensions || '',
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice || 0,
+            totalAmount: (item.unitPrice || 0) * (item.quantity || 1) - (item.discount || 0),
+            notes: q.notes || '',
+            discount: item.discount || 0,
+            material: item.material,
+            created_at: q.created_at,
+            validUntil: q.validUntil
+          });
+        });
+      }
+    });
 
-  // Reference Images
-  const [refImages, setRefImages] = React.useState<Array<{ id: string; url: string; type: 'Design Reference' }>>([]);
-  const [imgUrlInput, setImgUrlInput] = React.useState('');
+    return list;
+  };
 
-  // Handle local image file load & compression to keep size optimal
+  // Group items by customer for checklist rendering
+  const selectableItemsByCustomer: Record<string, { customerName: string; items: any[] }> = {};
+  getAllSelectableQuoteItems().forEach((item) => {
+    if (!selectableItemsByCustomer[item.customerId]) {
+      selectableItemsByCustomer[item.customerId] = {
+        customerName: item.customerName,
+        items: []
+      };
+    }
+    selectableItemsByCustomer[item.customerId].items.push(item);
+  });
+
+  // Toggle quotation items multi-select
+  const handleToggleQuoteItem = (item: any) => {
+    const isSelected = selectedQuoteItemIds.includes(item.id);
+    if (!isSelected) {
+      // customer validation
+      const currentlySelectedItems = getAllSelectableQuoteItems().filter(x => selectedQuoteItemIds.includes(x.id));
+      if (currentlySelectedItems.length > 0 && currentlySelectedItems[0].customerId !== item.customerId) {
+        alert(`Only approved quotations belonging to the same customer (${currentlySelectedItems[0].customerName}) can be combined.`);
+        return;
+      }
+
+      const nextSelectedIds = [...selectedQuoteItemIds, item.id];
+      setSelectedQuoteItemIds(nextSelectedIds);
+
+      // Auto populate customer details if first selection
+      if (selectedQuoteItemIds.length === 0) {
+        setCustomerName(item.customerName);
+        setWhatsappNo(item.phone);
+        setAddress(item.address);
+        if (item.created_at) setOrderDate(item.created_at.split('T')[0]);
+        if (item.validUntil) setDeliveryDate(item.validUntil);
+      }
+
+      // Add to products array
+      let matchedCat = 'Beds';
+      for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
+        if (subs.some((s) => item.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
+          matchedCat = cat;
+          break;
+        }
+      }
+
+      const newProd: AgreementProduct = {
+        id: item.id,
+        quotationId: item.quoteId,
+        orderNo: item.quoteId,
+        articleNo: `QT/${item.quoteId.replace('QT-', '')}/${nextSelectedIds.length}`,
+        toArticleNo: '',
+        category: matchedCat,
+        subCategory: item.furnitureItem,
+        size: 'Custom',
+        customSize: item.dimensions || 'Standard',
+        designType: 'Custom',
+        material: item.material || 'Plywood',
+        finish: 'hand polish',
+        colorShade: 'Walnut',
+        qty: item.quantity || 1,
+        quotedRate: item.unitPrice || 0,
+        cushion: 0,
+        hardware: 0,
+        discount: item.discount || 0,
+        packingForwarding: 0,
+        transportation: 0,
+        advance: 0,
+        specialNotes: item.notes || '',
+        productName: item.furnitureItem,
+        itemDescription: item.dimensions || '',
+        amount: (item.unitPrice || 0) * (item.quantity || 1),
+        refImages: []
+      };
+
+      setProducts((prev) => {
+        const cleaned = prev.filter(p => !p.quotationId && p.productName === '' && p.amount === 0);
+        return [...cleaned, newProd];
+      });
+    } else {
+      const nextSelectedIds = selectedQuoteItemIds.filter(id => id !== item.id);
+      setSelectedQuoteItemIds(nextSelectedIds);
+
+      setProducts((prev) => {
+        const remaining = prev.filter(p => p.id !== item.id);
+        return remaining;
+      });
+    }
+  };
+
+  // Load standard active order details (single-product fallback)
+  const handleLoadActiveOrder = (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+
+    setSelectedOrderId(`order_${orderId}`);
+    setSelectedQuoteItemIds([]);
+
+    const cust = customers.find((c) => c.id === order.customer_id);
+    const orderPayment = payments ? payments.find((p) => p.order_id === order.id) : null;
+    const orderAdvance = orderPayment ? orderPayment.advance_paid : 0;
+
+    setOrderDate(order.order_date || new Date().toISOString().split('T')[0]);
+    setDeliveryDate(order.delivery_date || '');
+    setCustomerName(cust ? cust.name : '');
+    setWhatsappNo(cust ? cust.phone : '');
+    setAddress(cust && cust.address ? cust.address : '');
+
+    const activeProd: AgreementProduct = {
+      id: `order_${order.id}`,
+      orderNo: order.id,
+      articleNo: order.article_no || '',
+      toArticleNo: '',
+      category: order.category || 'Beds',
+      subCategory: order.sub_category || 'Custom',
+      size: order.size || 'Custom',
+      customSize: order.custom_size || '',
+      designType: 'Custom',
+      material: order.material || 'Plywood',
+      finish: order.finish_type || order.finish || 'hand polish',
+      colorShade: order.color_shade || 'Walnut',
+      qty: order.no_of_units || 1,
+      quotedRate: 15000,
+      cushion: 0,
+      hardware: 0,
+      discount: 0,
+      packingForwarding: 1200,
+      transportation: 1800,
+      advance: orderAdvance,
+      specialNotes: order.special_notes || '',
+      productName: order.sub_category || 'Handcrafted Furniture',
+      itemDescription: order.custom_size || '',
+      amount: 15000 * (order.no_of_units || 1),
+      refImages: order.images ? order.images.map(img => ({ id: img.id, url: img.url, type: 'Design Reference' })) : []
+    };
+
+    setProducts([activeProd]);
+  };
+
+  // State update helpers
+  const updateProduct = (index: number, fields: Partial<AgreementProduct>) => {
+    setProducts((prev) => prev.map((p, idx) => (idx === index ? { ...p, ...fields } : p)));
+  };
+
+  const handleAddProduct = () => {
+    setProducts((prev) => [...prev, createEmptyProduct()]);
+  };
+
+  const handleRemoveProductAt = (index: number) => {
+    setProducts((prev) => {
+      const filtered = prev.filter((_, idx) => idx !== index);
+      return filtered;
+    });
+  };
+
+  // Image Upload Compression
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -150,7 +464,7 @@ export default function DetailOrderFormTab({
     });
   };
 
-  const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProductFileUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     Array.from(files).forEach((file: any) => {
@@ -158,1475 +472,1091 @@ export default function DetailOrderFormTab({
       reader.onload = async (event) => {
         const rawUrl = event.target?.result as string;
         const compressedUrl = await compressImage(rawUrl);
-        setRefImages((prev) => [
-          ...prev,
-          {
-            id: `img_${Math.random().toString(36).substring(2, 9)}`,
-            url: compressedUrl,
-            type: 'Design Reference',
-          },
-        ]);
+        setProducts((prev) => prev.map((p, idx) => {
+          if (idx === index) {
+            return {
+              ...p,
+              refImages: [
+                ...p.refImages,
+                {
+                  id: `img_${Math.random().toString(36).substring(2, 9)}`,
+                  url: compressedUrl,
+                  type: 'Design Reference',
+                }
+              ]
+            };
+          }
+          return p;
+        }));
       };
       reader.readAsDataURL(file);
     });
     e.target.value = '';
   };
 
-  const handleAddImageUrl = () => {
-    if (!imgUrlInput.trim()) return;
-    setRefImages((prev) => [
-      ...prev,
-      {
-        id: `img_${Math.random().toString(36).substring(2, 9)}`,
-        url: imgUrlInput.trim(),
-        type: 'Design Reference',
-      },
-    ]);
-    setImgUrlInput('');
+  // Calculations across combined products
+  const totalInvoiced = products.reduce((sum, p) => {
+    const subtotal = (p.quotedRate * p.qty) + p.cushion + p.hardware + p.packingForwarding + p.transportation - p.discount;
+    return sum + subtotal;
+  }, 0);
+
+  const totalAdvancePaid = products.reduce((sum, p) => sum + p.advance, 0);
+  const outstandingBalance = totalInvoiced - totalAdvancePaid;
+
+  // Clear Form handler
+  const clearForm = () => {
+    setCustomerName('');
+    setWhatsappNo('');
+    setAddress('');
+    setProducts([createEmptyProduct()]);
+    setSelectedQuoteItemIds([]);
+    setSelectedOrderId('');
   };
 
-  const handleRemoveImage = (id: string) => {
-    setRefImages((prev) => prev.filter((img) => img.id !== id));
-  };
-
-  // Synchronize product name & item description dynamically
-  React.useEffect(() => {
-    const nameStr = `${category} › ${subCategory} (${size === 'Custom' ? customSize || 'Custom Size' : size})`;
-    setProductName(nameStr);
-  }, [category, subCategory, size, customSize]);
-
-  React.useEffect(() => {
-    const descStr = `Structure: ${material}. Finish: ${finish}. Color: ${colorShade}. ${specialNotes}`;
-    setItemDescription(descStr);
-  }, [material, finish, colorShade, specialNotes]);
-
-  React.useEffect(() => {
-    if (!selectedOrderId && (!orderNo || orderNo.startsWith('ORD'))) {
-      setOrderNo(generateNewOrderNo(orderDate));
-    }
-  }, [orderDate, selectedOrderId, orders]);
-
-  // Final Rate is calculated as: Quoted Rate + Cushion + Hardware - Discount
-  const finalRate = React.useMemo(() => {
-    return Math.max(0, Number(quotedRate) + Number(cushion) + Number(hardware) - Number(discount));
-  }, [quotedRate, cushion, hardware, discount]);
-
-  const [packingForwarding, setPackingForwarding] = React.useState<number>(0);
-  const [advance, setAdvance] = React.useState<number>(0);
-  const [transportation, setTransportation] = React.useState<number>(0);
-
-  // Balance is calculated as: (Final Rate * Qty) + Packing & Forwarding + Transportation - Advance
-  const balance = React.useMemo(() => {
-    const totalAmount = finalRate * Number(qty);
-    return Math.max(0, totalAmount + Number(packingForwarding) + Number(transportation) - Number(advance));
-  }, [finalRate, qty, packingForwarding, transportation, advance]);
-
-  const totalInvoiced = React.useMemo(() => {
-    return (finalRate * Number(qty)) + Number(packingForwarding) + Number(transportation);
-  }, [finalRate, qty, packingForwarding, transportation]);
-
-  const totalAdvancePaid = React.useMemo(() => {
-    return Number(advance);
-  }, [advance]);
-
-  const outstandingBalance = balance;
-
-  const [polishShade, setPolishShade] = React.useState('');
-  const [paymentMode, setPaymentMode] = React.useState<'CASH' | 'BANK'>('CASH');
-  const [typeOfPolish, setTypeOfPolish] = React.useState<'HAND' | 'MACHINE'>('HAND');
-
+  // Save Agreement and Delegate to Workshop
   const handleSendToWorkOrder = () => {
     if (!customerName.trim()) {
       alert('Please fill in the Customer Name.');
       return;
     }
     if (!whatsappNo.trim()) {
-      alert('Please fill in the WhatsApp Number.');
-      return;
-    }
-    if (size === 'Custom' && !customSize.trim()) {
-      alert('Please specify Custom Size details.');
+      alert('Please fill in WhatsApp Number.');
       return;
     }
 
-    const draft = {
-      category,
-      subCategory,
-      size,
-      customSize,
-      designType,
-      material,
-      finish,
-      colorShade,
-      qty,
-      specialNotes,
-      customerName,
-      whatsappNo,
-      address,
-      refImages,
-      quotedRate,
-      cushion,
-      discount,
-      hardware,
-      packingForwarding,
-      transportation,
-      advance,
-      orderDate,
-      deliveryDate,
-      productName,
-      itemDescription,
-      amount,
-      finalRate,
-      balance,
-      polishShade,
-      paymentMode,
-      typeOfPolish,
-      orderNo,
-      articleNo,
-      toArticleNo
+    const agreementId = `AGR-${new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2)}-${Math.floor(100 + Math.random() * 900)}`;
+    const agreement: CRMAgreement = {
+      id: agreementId,
+      customer_name: customerName,
+      whatsapp_no: whatsappNo,
+      address: address,
+      order_date: orderDate,
+      delivery_date: deliveryDate,
+      polish_shade: polishShade,
+      payment_mode: paymentMode,
+      type_of_polish: typeOfPolish,
+      products: products.map(p => ({
+        id: p.id,
+        quotation_id: p.quotationId,
+        order_no: p.orderNo,
+        article_no: p.articleNo,
+        to_article_no: p.toArticleNo,
+        category: p.category,
+        sub_category: p.subCategory,
+        size: p.size,
+        custom_size: p.customSize,
+        design_type: p.designType,
+        material: p.material,
+        finish_type: p.finish,
+        color_shade: p.colorShade,
+        quantity: p.qty,
+        quoted_rate: p.quotedRate,
+        cushion_cost: p.cushion,
+        hardware_additions: p.hardware,
+        discount_given: p.discount,
+        packing_forwarding: p.packingForwarding,
+        transportation_charges: p.transportation,
+        advance_received: p.advance,
+        special_notes: p.specialNotes,
+        product_name: p.productName,
+        item_description: p.itemDescription,
+        ref_images: p.refImages
+      })),
+      total_invoiced: totalInvoiced,
+      total_advance_paid: totalAdvancePaid,
+      outstanding_balance: outstandingBalance,
+      created_at: new Date().toISOString(),
+      created_by: 'Admin'
     };
 
-    if (onSendToWorkOrder) {
-      onSendToWorkOrder(draft);
-    }
-  };
-
-  // Load selection logic for either active workshop orders or approved quotations
-  const handleLoad = (combinedId: string) => {
-    if (!combinedId) {
-      clearForm();
-      return;
+    if (onSaveCRMAgreement) {
+      onSaveCRMAgreement(agreement);
     }
 
-    if (combinedId.startsWith('quote_')) {
-      const quoteId = combinedId.replace('quote_', '');
-      const quote = crmQuotations?.find((q) => q.id === quoteId);
-      if (!quote) return;
+    // Send the primary first product config to order creation draft
+    const firstProduct = products[0];
+    if (firstProduct) {
+      const draft = {
+        category: firstProduct.category,
+        subCategory: firstProduct.subCategory,
+        size: firstProduct.size,
+        customSize: firstProduct.customSize,
+        designType: firstProduct.designType,
+        material: firstProduct.material,
+        finish: firstProduct.finish,
+        colorShade: firstProduct.colorShade,
+        qty: firstProduct.qty,
+        specialNotes: firstProduct.specialNotes,
+        customerName,
+        whatsappNo,
+        address,
+        refImages: firstProduct.refImages,
+        quotedRate: firstProduct.quotedRate,
+        cushion: firstProduct.cushion,
+        discount: firstProduct.discount,
+        hardware: firstProduct.hardware,
+        packingForwarding: firstProduct.packingForwarding,
+        transportation: firstProduct.transportation,
+        advance: firstProduct.advance,
+        orderDate,
+        deliveryDate,
+        productName: firstProduct.productName,
+        itemDescription: firstProduct.itemDescription,
+        amount: firstProduct.amount,
+        finalRate: firstProduct.quotedRate + firstProduct.cushion + firstProduct.hardware - firstProduct.discount,
+        balance: (firstProduct.quotedRate + firstProduct.cushion + firstProduct.hardware - firstProduct.discount) * firstProduct.qty + firstProduct.packingForwarding + firstProduct.transportation - firstProduct.advance,
+        polishShade,
+        paymentMode,
+        typeOfPolish,
+        orderNo: firstProduct.orderNo,
+        articleNo: firstProduct.articleNo,
+        toArticleNo: firstProduct.toArticleNo,
+        combinedProducts: products
+      };
 
-      setSelectedOrderId(combinedId);
-
-      const crmCust = crmCustomers?.find((c) => c.id === quote.customer_id);
-
-      setOrderDate(quote.created_at ? quote.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
-      setDeliveryDate(quote.validUntil || '');
-      setOrderNo(quote.id);
-      setArticleNo(`QT/${quote.id.replace('QT-', '')}`);
-      setToArticleNo('');
-      setCustomerName(quote.customer_name || crmCust?.name || '');
-      setWhatsappNo(crmCust?.phone || crmCust?.whatsappNumber || '');
-      setAddress(crmCust?.address || '');
-
-      const firstItem = quote.items?.[0];
-      if (firstItem) {
-        let matchedCat = 'Beds';
-        for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
-          if (subs.some((s) => firstItem.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
-            matchedCat = cat;
-            break;
-          }
-        }
-        setCategory(matchedCat);
-        setSubCategory(firstItem.furnitureItem);
-        setSize('Custom');
-        setCustomSize(firstItem.dimensions || 'Standard');
-        setMaterial(firstItem.material || 'Plywood');
-        setQty(firstItem.quantity || 1);
-        setSpecialNotes(quote.notes || '');
-
-        setQuotedRate(firstItem.unitPrice || 0);
-        setAmount((firstItem.unitPrice || 0) * (firstItem.quantity || 1));
-        setDiscount(firstItem.discount || 0);
-      } else {
-        setCategory('Beds');
-        setSubCategory('Custom Bed');
-        setSize('6ft');
-        setCustomSize('');
-        setMaterial('Plywood');
-        setQty(1);
-        setSpecialNotes('');
-        setQuotedRate(quote.totalAmount || 0);
-        setAmount(quote.totalAmount || 0);
-        setDiscount(0);
-      }
-
-      setCushion(0);
-      setHardware(0);
-      setPackingForwarding(0);
-      setTransportation(0);
-      setAdvance(0);
-      setPolishShade('Walnut Finish');
-      setTypeOfPolish('HAND');
-      setRefImages([]);
-    } else if (combinedId.startsWith('order_')) {
-      const orderId = combinedId.replace('order_', '');
-      const order = orders.find((o) => o.id === orderId);
-      if (!order) return;
-
-      setSelectedOrderId(combinedId);
-
-      const cust = customers.find((c) => c.id === order.customer_id);
-      const orderPayment = payments ? payments.find((p) => p.order_id === order.id) : null;
-      const orderAdvance = orderPayment ? orderPayment.advance_paid : 0;
-
-      setOrderDate(order.order_date || new Date().toISOString().split('T')[0]);
-      setDeliveryDate(order.delivery_date || '');
-      setOrderNo(order.id);
-      setArticleNo(order.article_no || '');
-      setToArticleNo('');
-      setCustomerName(cust ? cust.name : '');
-      setWhatsappNo(cust ? cust.phone : '');
-      setAddress(cust && cust.address ? cust.address : '');
-
-      setCategory(order.category || 'Beds');
-      setSubCategory(order.sub_category || 'Custom');
-      setSize(order.size || 'Custom');
-      setCustomSize(order.custom_size || '');
-      setDesignType(order.design_type || 'Standard');
-      setMaterial(order.material || 'Plywood');
-      setFinish(order.finish_type || order.finish || 'hand polish');
-      setSpecialNotes(order.special_notes || '');
-      setQty(order.no_of_units || 1);
-      setColorShade(order.color_shade || 'Walnut');
-
-      setQuotedRate(15000);
-      setAmount(15000 * (order.no_of_units || 1));
-      setCushion(0);
-      setDiscount(0);
-      setHardware(0);
-      setPackingForwarding(1200);
-      setTransportation(1800);
-      setAdvance(orderAdvance);
-
-      setPolishShade(order.color_shade || 'Natural');
-      setTypeOfPolish((order.finish_type || order.finish || '').toLowerCase().includes('hand') ? 'HAND' : 'MACHINE');
-
-      if (order.images && order.images.length > 0) {
-        setRefImages(
-          order.images.map((img) => ({
-            id: img.id,
-            url: img.url,
-            type: 'Design Reference',
-          }))
-        );
-      } else {
-        setRefImages([]);
+      if (onSendToWorkOrder) {
+        onSendToWorkOrder(draft);
       }
     }
   };
 
-  React.useEffect(() => {
-    if (preselectedQuotationId && crmQuotations && crmQuotations.length > 0) {
-      handleLoad(`quote_${preselectedQuotationId}`);
-      if (onClearPreselectedQuotation) {
-        onClearPreselectedQuotation();
-      }
-    }
-  }, [preselectedQuotationId, crmQuotations]);
-
+  // Browser system print trigger
   const handlePrint = () => {
     window.print();
   };
 
+  // WhatsApp send trigger
   const getWhatsAppUrl = () => {
-    const cleanNumber = whatsappNo.replace(/\D/g, '');
-    const isMr = language === 'mr';
-    const text = isMr ? `*भिसेज् वुड वर्कशॉप (BHISE'Z WOOD WORKSHOP)*
-_ऑर्डर कराराची अधिकृत पुष्टी_
+    let rawPhone = whatsappNo.trim();
+    if (!rawPhone) return '#';
+    rawPhone = rawPhone.replace(/\D/g, '');
+    if (rawPhone.length === 10) rawPhone = '91' + rawPhone;
+    
+    const summaryLines = products.map((p, idx) => {
+      const subtotal = (p.quotedRate * p.qty) + p.cushion + p.hardware + p.packingForwarding + p.transportation - p.discount;
+      return `• Product #${idx + 1}: ${p.productName || 'Handcrafted Furniture'} (Qty: ${p.qty}) - ₹${subtotal.toLocaleString()}`;
+    }).join('\n');
 
-प्रिय *${customerName || 'ग्राहक'}*,
-
-कृपया आपल्या ऑर्डर *#${orderNo || 'N/A'}* साठी सोबत जोडलेला अधिकृत *Agreement Form.pdf* तपासा. (आर्टिकल क्रमांक: ${articleNo || 'N/A'})
-
-*उर्वरित शिल्लक रक्कम:* ₹${balance.toLocaleString()}
-
-भिसेज् वुड वर्कशॉप निवडल्याबद्दल धन्यवाद!`
-    : `*BHISE'Z WOOD WORKSHOP*
-_Order Agreement Confirmation_
-
-Dear *${customerName || 'Customer'}*,
-
-Please find attached the official *Agreement Form.pdf* for your order *#${orderNo || 'N/A'}*. (Article No: ${articleNo || 'N/A'})
-
-*Outstanding Balance:* ₹${balance.toLocaleString()}
-
-Thank you for choosing *Bhise'z Wood Workshop*!`;
-
-    const encodedText = encodeURIComponent(text);
-    return `https://wa.me/${cleanNumber}?text=${encodedText}`;
-  };
-
-  const clearForm = () => {
-    setSelectedOrderId('');
-    const today = new Date().toISOString().split('T')[0];
-    setOrderDate(today);
-    setDeliveryDate('');
-    setOrderNo(generateNewOrderNo(today));
-    setArticleNo('');
-    setToArticleNo('');
-    setCustomerName('');
-    setWhatsappNo('');
-    setAddress('');
-    setProductName('');
-    setItemDescription('');
-    setQty(1);
-    setAmount(0);
-    setQuotedRate(0);
-    setCushion(0);
-    setDiscount(0);
-    setHardware(0);
-    setPackingForwarding(0);
-    setTransportation(0);
-    setAdvance(0);
-    setPolishShade('');
-    setPaymentMode('CASH');
-    setTypeOfPolish('HAND');
+    const msgText = `Hello ${customerName || 'Customer'},\n\nYour Combined Purchase Agreement has been finalized!\n\n*SUMMARY OF ORDER PRODUCTS*:\n${summaryLines}\n\n*FINANCIAL SUMMARY*:\n- Consolidated Invoice Total: ₹${totalInvoiced.toLocaleString()}\n- Total Advance Deposited: ₹${totalAdvancePaid.toLocaleString()}\n- Outstanding Balance: ₹${outstandingBalance.toLocaleString()}\n\nThank you for choosing Shri Samarth Woodworks!\nWe will update you on manufacturing progress.`;
+    return `https://wa.me/${rawPhone}?text=${encodeURIComponent(msgText)}`;
   };
 
   return (
-    <div className="space-y-6 font-sans pb-16">
-      
-      {/* SCREEN COMPONENT: Tab Header & Form Loader */}
-      <div className="print:hidden space-y-4">
+    <div className="space-y-6">
+      {/* Tab Branding Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-stone-200/60 pb-5">
         <div>
-          <h1 className="text-2xl font-black text-stone-900 tracking-tight font-display flex items-center gap-2">
-            <FileText className="text-[#593622]" size={24} />
-            Detail Order & Print Agreement Form
+          <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Bespoke Contract Suite</span>
+          <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight mt-1">
+            Detail Order &amp; Combined Agreement Form
           </h1>
-          <p className="text-stone-500 text-xs">
-            Generate formal multi-page specification forms with itemized billing and integrated legal terms for clients.
+          <p className="text-stone-500 text-xs mt-1">
+            Combine multiple approved product requirements into a single customer contract with individual spec panels and shared calculations.
           </p>
         </div>
-
-        {/* Language Selection Card */}
-        <div className="bg-gradient-to-r from-amber-50 to-stone-100 p-4 rounded-2xl border border-stone-200/80 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="bg-[#593622] text-white p-2.5 rounded-xl flex items-center justify-center font-bold text-sm tracking-wide shadow-sm h-10 w-10 shrink-0">
-              {language === 'mr' ? 'म' : 'EN'}
-            </div>
-            <div>
-              <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider flex items-center gap-2">
-                Agreement Print Language / कराराची भाषा निवडा
-              </h3>
-              <p className="text-[11px] text-stone-500">
-                Switch language to instantly translate the printed pages and PDF document for customers.
-              </p>
-            </div>
-          </div>
-          <div className="flex bg-stone-200/60 p-1 rounded-xl border border-stone-300/40 w-full md:w-auto shrink-0 max-w-sm">
-            <button
-              onClick={() => setLanguage('en')}
-              className={`flex-1 md:flex-initial px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 ${
-                language === 'en'
-                  ? 'bg-white text-stone-900 shadow-sm'
-                  : 'text-stone-500 hover:text-stone-850'
-              }`}
-            >
-              <span>🇬🇧 English</span>
-            </button>
-            <button
-              onClick={() => setLanguage('mr')}
-              className={`flex-1 md:flex-initial px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 ${
-                language === 'mr'
-                  ? 'bg-[#593622] text-white shadow-sm'
-                  : 'text-stone-500 hover:text-stone-850'
-              }`}
-            >
-              <span>🇮🇳 मराठी (Marathi)</span>
-              <span className="bg-emerald-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold animate-pulse font-sans">90%</span>
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={clearForm}
+            className="px-3.5 py-1.5 border border-stone-300 rounded-xl text-stone-600 hover:bg-stone-50 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+          >
+            <RefreshCw size={13} /> Reset Form
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="px-3.5 py-1.5 bg-stone-900 text-amber-300 rounded-xl hover:bg-black text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+          >
+            <Printer size={13} /> Quick Print (A4)
+          </button>
         </div>
+      </div>
 
-        {/* Existing order selector toolbar */}
-        <div className="bg-[#fcfbfa]/80 p-4 rounded-2xl border border-stone-200/60 flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
-            <span className="text-xs font-bold text-stone-600 shrink-0">Auto-Fill:</span>
-            <select
-              value={selectedOrderId}
-              onChange={(e) => handleLoad(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#593622] text-stone-750 font-semibold w-full sm:w-64 max-w-sm"
-            >
-              <option value="">-- Select active order or approved quotation --</option>
-              <optgroup label="Approved Quotations (Pending Production)">
-                {crmQuotations?.filter((q) => q.status === 'Approved').map((quote) => (
-                  <option key={`quote_${quote.id}`} value={`quote_${quote.id}`}>
-                    {quote.id} • {quote.customer_name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Active Workshop Orders">
+      {/* Dynamic Multi-Select Dropdown Bento Panel */}
+      <div className="bg-white border border-stone-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="text-amber-600" size={16} />
+            <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider font-display">
+              Grouped Quotations Checklist &amp; Quick Load
+            </h3>
+          </div>
+          <span className="text-[10px] bg-amber-50 text-[#593622] border border-[#593622]/20 px-2.5 py-0.5 rounded-full font-bold font-mono">
+            Same-Customer Multi-Select Filter Enabled
+          </span>
+        </div>
+        
+        <p className="text-stone-500 text-[11px] leading-relaxed">
+          Select multiple approved quotations below belonging to the same customer to build a combined contract. To ensure agreement integrity, selections across different customers are locked automatically.
+        </p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {/* Approved Quotations Group List */}
+          <div className="border border-stone-200/80 rounded-xl p-3 bg-stone-50/50 max-h-56 overflow-y-auto space-y-3.5">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block border-b border-stone-200 pb-1 font-mono">
+              Approved Lead Quotations
+            </span>
+            {Object.keys(selectableItemsByCustomer).length === 0 ? (
+              <span className="text-xs text-stone-400 block py-6 text-center italic">No approved quotations found in CRM pipeline.</span>
+            ) : (
+              Object.entries(selectableItemsByCustomer).map(([custId, group]) => {
+                const isAnotherCustomerSelected = selectedQuoteItemIds.length > 0 && 
+                  getAllSelectableQuoteItems().find(x => selectedQuoteItemIds.includes(x.id))?.customerId !== custId;
+                  
+                return (
+                  <div key={custId} className={`space-y-1.5 ${isAnotherCustomerSelected ? 'opacity-40' : ''}`}>
+                    <span className="text-xs font-bold text-stone-800 flex items-center gap-1">
+                      👤 {group.customerName}
+                      {isAnotherCustomerSelected && <span className="text-[9px] font-semibold text-rose-600 font-sans ml-1">(Locked)</span>}
+                    </span>
+                    <div className="space-y-1 pl-1">
+                      {group.items.map((item) => {
+                        const isChecked = selectedQuoteItemIds.includes(item.id);
+                        return (
+                          <label 
+                            key={item.id} 
+                            className={`flex items-start gap-2 p-2 rounded-lg border text-xs transition cursor-pointer select-none ${
+                              isChecked 
+                                ? 'bg-amber-50/40 border-[#593622]/30 text-[#593622] font-bold' 
+                                : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isAnotherCustomerSelected}
+                              onChange={() => handleToggleQuoteItem(item)}
+                              className="mt-0.5 rounded text-[#593622] focus:ring-[#593622] h-3.5 w-3.5 cursor-pointer accent-[#593622]"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between font-mono text-[9px] text-stone-400">
+                                <span className="font-bold">{item.quoteId}</span>
+                                <span className="text-amber-800 font-black">₹{item.totalAmount.toLocaleString()}</span>
+                              </div>
+                              <p className="truncate mt-0.5 text-[11px] font-semibold text-stone-800">{item.furnitureItem} (Qty: {item.quantity})</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          
+          {/* Active Workshop Orders (Single Select) */}
+          <div className="border border-stone-200/80 rounded-xl p-3 bg-stone-50/50 max-h-56 overflow-y-auto space-y-2">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block border-b border-stone-200 pb-1 font-mono">
+              Active Workshop Orders (Load Spec)
+            </span>
+            {orders.length === 0 ? (
+              <span className="text-xs text-stone-400 block py-6 text-center italic">No active production orders found.</span>
+            ) : (
+              <div className="space-y-1">
                 {orders.map((ord) => {
                   const cust = customers.find((c) => c.id === ord.customer_id);
+                  const isLoaded = selectedOrderId === `order_${ord.id}`;
                   return (
-                    <option key={`order_${ord.id}`} value={`order_${ord.id}`}>
-                      {ord.article_no || ord.id} • {cust?.name || 'Unknown'} ({ord.sub_category})
-                    </option>
+                    <button
+                      key={ord.id}
+                      type="button"
+                      onClick={() => handleLoadActiveOrder(ord.id)}
+                      className={`w-full text-left p-2 rounded-lg border text-xs flex justify-between items-center transition ${
+                        isLoaded
+                          ? 'bg-amber-50/40 border-[#593622]/30 text-[#593622] font-bold'
+                          : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1 font-mono text-[9px] text-stone-400">
+                          <span className="font-bold text-stone-700">{ord.article_no || ord.id}</span>
+                          <span>•</span>
+                          <span className="truncate">{cust?.name || 'Walk-in'}</span>
+                        </div>
+                        <p className="truncate mt-0.5 text-stone-700 font-semibold">{ord.category} › {ord.sub_category}</p>
+                      </div>
+                      {isLoaded && <span className="text-[9px] bg-[#593622] text-white px-1.5 py-0.5 rounded-md font-black shrink-0 font-mono">Loaded</span>}
+                    </button>
                   );
                 })}
-              </optgroup>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <button
-              onClick={clearForm}
-              className="px-3 py-1.5 border border-stone-200 text-stone-600 hover:bg-stone-50 text-xs font-bold rounded-lg flex items-center gap-1 transition"
-            >
-              <RefreshCw size={13} />
-              Reset Form
-            </button>
-            <button
-              onClick={handlePrint}
-              className="px-4 py-1.5 bg-[#593622] hover:bg-[#402414] text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition"
-            >
-              <Printer size={13} />
-              Print Agreement Papers
-            </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* DYNAMIC FORM GRID (SCREEN VIEW ONLY) */}
-      <div className="print:hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* EDIT FORM COLUMN */}
-        <div className="lg:col-span-12 xl:col-span-7 bg-white rounded-2xl border border-stone-200 p-6 space-y-6 shadow-xs">
-          
-          <div>
-            <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase block w-max mb-1.5">Page 1 Specifications</span>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">I. Client &amp; Metadata Parameters</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Order Date</label>
-              <input
-                type="date"
-                value={orderDate}
-                onChange={(e) => setOrderDate(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
+      {/* Main Column Grid (Form Left, Live A4 Preview Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Form Panel */}
+        <div className="lg:col-span-6 space-y-5">
+          {/* I. Client & Metadata block */}
+          <div className="bg-white border border-stone-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="border-b pb-2">
+              <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">Section I</span>
+              <h2 className="text-xs font-black text-[#593622] uppercase tracking-wider font-display mt-1">Client Metadata &amp; Delivery</h2>
             </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Delivery Date</label>
-              <input
-                type="date"
-                value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Order No</label>
-              <input
-                type="text"
-                value={orderNo}
-                onChange={(e) => setOrderNo(e.target.value)}
-                placeholder="e.g. ord_a901"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Article No</label>
-              <input
-                type="text"
-                value={articleNo}
-                onChange={(e) => setArticleNo(e.target.value)}
-                placeholder="e.g. D-2605-S-01"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">To Article No</label>
-              <input
-                type="text"
-                value={toArticleNo}
-                onChange={(e) => setToArticleNo(e.target.value)}
-                placeholder="Alternative/Pair Ref"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">WhatsApp No</label>
-              <input
-                type="text"
-                value={whatsappNo}
-                onChange={(e) => setWhatsappNo(e.target.value)}
-                placeholder="+91 XXXXX XXXXX"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Customer Name</label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Client Name"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div className="md:col-span-3">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Customer Address</label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Shipping/Billing complete address"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">II. Product Configuration &amp; Specs</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Category</label>
-              <select
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setSubCategory(CATEGORY_MAP[e.target.value]?.[0] || 'Custom');
-                }}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              >
-                {Object.keys(CATEGORY_MAP).map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Sub-Category</label>
-              <select
-                value={subCategory}
-                onChange={(e) => setSubCategory(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              >
-                {CATEGORY_MAP[category]?.map((sub) => (
-                  <option key={sub} value={sub}>{sub}</option>
-                )) || <option value="Custom">Custom</option>}
-                <option value="Custom">Other / Custom</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Size</label>
-              <select
-                value={size}
-                onChange={(e) => setSize(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              >
-                <option value="3ft">3ft (Single)</option>
-                <option value="4ft">4ft (Medium)</option>
-                <option value="6ft">6ft (King/Double)</option>
-                <option value="Custom">Custom Size</option>
-              </select>
-            </div>
-
-            {size === 'Custom' && (
-              <div className="md:col-span-6">
-                <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Custom Size Specifications</label>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Contract Order Date *</label>
                 <input
-                  type="text"
-                  value={customSize}
-                  onChange={(e) => setCustomSize(e.target.value)}
-                  placeholder="e.g. 78in x 72in x 18in"
-                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-bold"
                 />
               </div>
-            )}
-
-            <div className={size === 'Custom' ? 'md:col-span-6' : 'md:col-span-4'}>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Design Type</label>
-              <select
-                value={designType}
-                onChange={(e) => setDesignType(e.target.value as 'Standard' | 'Custom')}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              >
-                <option value="Standard">Standard Catalog Design</option>
-                <option value="Custom">Bespoke / Custom Sketch</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Material Structure</label>
-              <select
-                value={material}
-                onChange={(e) => setMaterial(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              >
-                <option value="Plywood">Commercial Plywood</option>
-                <option value="Teak Wood">Premium Teak Wood</option>
-                <option value="Solid Wood">Solid Local Wood</option>
-                <option value="MDF">MDF / Engineered Wood</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Finish Type</label>
-              <select
-                value={finish}
-                onChange={(e) => setFinish(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              >
-                <option value="hand polish">Hand Wax / Polish</option>
-                <option value="PU polish">Polyurethane (PU) Polish</option>
-                <option value="Laminate finish">Decorative Laminate</option>
-                <option value="Deco Paint">Duco Paint Glossy/Matte</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Color / Shade</label>
-              <input
-                type="text"
-                value={colorShade}
-                onChange={(e) => setColorShade(e.target.value)}
-                placeholder="e.g. Dark Walnut / Walnut Finish"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div className="md:col-span-4 text-xs">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Quantity</label>
-              <input
-                type="number"
-                min="1"
-                value={qty}
-                onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div className="md:col-span-4 text-xs">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Quoted Rate Per Unit (₹)</label>
-              <input
-                type="number"
-                value={quotedRate}
-                onChange={(e) => {
-                  setQuotedRate(Number(e.target.value));
-                  setAmount(Number(e.target.value) * qty);
-                }}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div className="md:col-span-12">
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Special / Manufacturing Notes</label>
-              <textarea
-                value={specialNotes}
-                onChange={(e) => setSpecialNotes(e.target.value)}
-                rows={2}
-                placeholder="Add special requests, internal parameters, or edge banding details..."
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div className="md:col-span-6">
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Auto-Generated Product Name (Printed)</label>
-              <input
-                type="text"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
-              />
-            </div>
-
-            <div className="md:col-span-6">
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Auto-Generated Specifications (Printed)</label>
-              <input
-                type="text"
-                value={itemDescription}
-                onChange={(e) => setItemDescription(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
-              />
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">III. Rates, Extras &amp; Calculations</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Cushion Cost (₹)</label>
-              <input
-                type="number"
-                value={cushion}
-                onChange={(e) => setCushion(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Hardware Additions (₹)</label>
-              <input
-                type="number"
-                value={hardware}
-                onChange={(e) => setHardware(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Discount Given (₹)</label>
-              <input
-                type="number"
-                value={discount}
-                onChange={(e) => setDiscount(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold text-rose-600 font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-700 uppercase tracking-wider mb-1">Computed Final Rate (₹)</label>
-              <div className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 rounded-lg text-xs text-[#593622] font-black">
-                ₹{finalRate.toLocaleString()}
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Target Delivery Date *</label>
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-bold"
+                />
               </div>
             </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Packing &amp; Forwarding (₹)</label>
-              <input
-                type="number"
-                value={packingForwarding}
-                onChange={(e) => setPackingForwarding(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Transportation Charges (₹)</label>
-              <input
-                type="number"
-                value={transportation}
-                onChange={(e) => setTransportation(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Advance Received (₹)</label>
-              <input
-                type="number"
-                value={advance}
-                onChange={(e) => setAdvance(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 bg-green-50/55 border border-green-250 focus:border-green-600 rounded-lg text-xs focus:outline-none focus:ring-0 text-green-800 font-black"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-stone-700 uppercase tracking-wider mb-1">Computed Balance (₹)</label>
-              <div className="w-full px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 font-black">
-                ₹{balance.toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          {/* Gorgeous highlighted Totals card section */}
-          <div className="bg-gradient-to-r from-stone-50 to-stone-100 border border-stone-200/80 rounded-xl p-4 mt-2">
-            <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase block w-max mb-3">
-              Summary of Accounts &amp; Totals
-            </span>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white border border-stone-150 rounded-xl p-3.5 shadow-xs transition hover:border-[#593622]/30">
-                <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Total Invoiced</span>
-                <span className="text-xl font-black text-stone-900">₹{totalInvoiced.toLocaleString()}</span>
-                <span className="block text-[9px] text-stone-400 mt-1 font-mono">Formula: (Final Rate × Qty) + Extras</span>
-              </div>
-
-              <div className="bg-white border border-stone-150 rounded-xl p-3.5 shadow-xs transition hover:border-emerald-500/30">
-                <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Total Advance Paid</span>
-                <span className="text-xl font-black text-emerald-600">₹{totalAdvancePaid.toLocaleString()}</span>
-                <span className="block text-[9px] text-stone-400 mt-1 font-mono">Paid advance amount received</span>
-              </div>
-
-              <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3.5 shadow-xs transition hover:border-[#593622]/50">
-                <span className="block text-[10px] font-bold text-[#593622] uppercase tracking-wider mb-1">Outstanding Balance</span>
-                <span className="text-xl font-black text-[#593622]">₹{outstandingBalance.toLocaleString()}</span>
-                <span className="block text-[9px] text-amber-700/80 mt-1 font-mono">Net remaining due for dispatch</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-stone-200 pt-5 space-y-4">
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              IV. Customer WhatsApp &amp; PDF Transmission Flow
-            </h2>
-            
-            <p className="text-stone-500 text-xs leading-relaxed">
-              To send this agreement directly to the customer's WhatsApp in professional PDF format, follow these quick steps:
-            </p>
-
-            {/* Gorgeous Interactive Step Guides */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="bg-stone-50 border border-stone-200 p-3.5 rounded-xl space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-stone-900 text-white font-mono text-[10px] flex items-center justify-center font-bold">1</span>
-                  <span className="text-[11px] font-black text-stone-900 uppercase tracking-wider">Save Agreement PDF</span>
-                </div>
-                <p className="text-[10px] text-stone-500 leading-normal">
-                  Click the brown <strong>"Print Agreement Papers"</strong> button above or in the preview panel, and choose <strong>"Save as PDF"</strong> in your print destination.
-                </p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 p-3.5 rounded-xl space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#593622] text-white font-mono text-[10px] flex items-center justify-center font-bold">2</span>
-                  <span className="text-[11px] font-black text-[#593622] uppercase tracking-wider">Start WhatsApp Chat</span>
-                </div>
-                <p className="text-[10px] text-stone-500 leading-normal">
-                  Click the green <strong>"Send WhatsApp Specification"</strong> button below. It will open active chat with <strong>{whatsappNo || 'the saved customer WP details'}</strong> with pre-filled summary.
-                </p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 p-3.5 rounded-xl space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-mono text-[10px] flex items-center justify-center font-bold">3</span>
-                  <span className="text-[11px] font-black text-emerald-800 uppercase tracking-wider">Attach Saved PDF</span>
-                </div>
-                <p className="text-[10px] text-stone-500 leading-normal">
-                  Once the WhatsApp interface opens, simply <strong>drag and drop or attach the saved PDF agreement</strong> file directly into the message box!
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-emerald-50/50 rounded-2xl border border-emerald-100 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 mt-2">
-              <div className="w-full sm:w-auto">
-                <span className="block text-[10px] font-bold text-emerald-800 uppercase tracking-widest mb-1">Target WhatsApp Recipient</span>
-                <div className="text-sm font-extrabold text-stone-850 flex items-center gap-1.5">
-                  <span className="bg-emerald-150 text-emerald-800 px-2.5 py-1 rounded text-xs font-mono font-bold border border-emerald-250/20">
-                    {whatsappNo ? `${whatsappNo}` : 'No phone number set'}
-                  </span>
-                  {customerName && <span className="text-stone-550 text-xs font-normal">({customerName})</span>}
-                </div>
-              </div>
-
-              {whatsappNo ? (
-                <a
-                  href={getWhatsAppUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl inline-flex items-center justify-center gap-2 shadow-sm transition hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <svg className="w-4.5 h-4.5 fill-current shrink-0" viewBox="0 0 24 24">
-                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.966a9.9 9.9 0 00-6.98-2.879c-5.443 0-9.87 4.37-9.874 9.8.001 1.745.467 3.45 1.348 4.96l-.993 3.626 3.72-.942zm11.104-3.56c-.301-.15-1.78-.878-2.056-.978-.275-.1-.476-.15-.675.15-.199.3-.77.978-.944 1.178-.173.2-.347.225-.648.075-.3-.15-1.266-.467-2.41-1.488-.89-.794-1.49-1.774-1.664-2.074-.174-.3-.019-.462.13-.611.135-.134.301-.35.452-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.675-1.625-.925-2.225-.244-.589-.493-.51-.675-.52-.174-.01-.374-.012-.574-.012s-.525.075-.8.375c-.275.3-1.05 1.025-1.05 2.5s1.075 2.9 1.225 3.1c.15.2 2.11 3.224 5.112 4.521.714.31 1.272.495 1.708.634.717.228 1.37.196 1.885.12.574-.085 1.78-.727 2.03-1.43.25-.702.25-1.303.175-1.43-.075-.125-.275-.2-.575-.35z"/>
-                  </svg>
-                  Send WhatsApp Specification
-                </a>
-              ) : (
-                <button
-                  disabled
-                  className="w-full sm:w-auto px-5 py-2.5 bg-stone-100 text-stone-400 font-bold text-xs uppercase tracking-wider rounded-xl inline-flex items-center justify-center gap-2 cursor-not-allowed border border-stone-200"
-                >
-                  <AlertCircle size={14} className="text-stone-400" />
-                  No Active Number
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Section V: Reference Drawings & Images */}
-          <div className="border-t border-stone-200 pt-5 space-y-4">
-            <div>
-              <span className="bg-amber-600/10 text-amber-850 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase block w-max mb-1.5">Custom reference drawings</span>
-              <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">V. Reference Drawings &amp; Blueprints</h2>
-            </div>
-
-            <p className="text-stone-500 text-xs leading-relaxed">
-              Upload client-approved furniture sketches, material catalogs, or dynamic reference blueprints. These images will render perfectly on page 3 of the printed agreement.
-            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Local File Upload Picker */}
-              <div className="border-2 border-dashed border-stone-200 hover:border-[#593622] rounded-xl p-4 flex flex-col items-center justify-center text-center transition cursor-pointer relative bg-stone-50/50 min-h-[100px]">
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Customer Full Name *</label>
                 <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleLocalFileUpload}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  type="text"
+                  placeholder="e.g. Bhavesh K."
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
                 />
-                <UploadCloud size={28} className="text-stone-400 mb-1.5" />
-                <span className="text-[11px] font-black text-stone-850 uppercase tracking-wider block">Upload Files</span>
-                <span className="text-[9px] text-stone-400 block mt-0.5">Supports PNG, JPG, GIF (Max 5MB)</span>
               </div>
-
-              {/* URL Import */}
-              <div className="border border-stone-200 rounded-xl p-4 flex flex-col justify-between bg-stone-50/30 gap-3">
-                <div>
-                  <span className="text-[10px] font-bold text-stone-600 uppercase tracking-wider block mb-1">Import from URL</span>
-                  <input
-                    type="url"
-                    value={imgUrlInput}
-                    onChange={(e) => setImgUrlInput(e.target.value)}
-                    placeholder="https://example.com/furniture-photo.jpg"
-                    className="w-full px-2.5 py-1.5 bg-white border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddImageUrl}
-                  className="px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-white text-[11px] font-bold uppercase tracking-wider rounded-lg self-end"
-                >
-                  Add URL Image
-                </button>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">WhatsApp / Contact No *</label>
+                <input
+                  type="text"
+                  placeholder="10 digit mobile"
+                  value={whatsappNo}
+                  onChange={(e) => setWhatsappNo(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                />
               </div>
             </div>
 
-            {/* Uploaded Reference Images grid */}
-            {refImages.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 border border-stone-150 p-2.5 rounded-xl bg-stone-50/50">
-                {refImages.map((img) => (
-                  <div key={img.id} className="relative group border border-stone-200 rounded-lg overflow-hidden aspect-square bg-white flex items-center justify-center">
-                    <img src={img.url} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(img.id)}
-                      className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-rose-700 shadow"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div>
+              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Shipping &amp; Installation Address *</label>
+              <textarea
+                rows={2}
+                placeholder="Complete site delivery location..."
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+              />
+            </div>
           </div>
 
-          {/* Section VI: Send to Workshop */}
-          <div className="border-t-2 border-[#593622]/25 pt-5 space-y-4 bg-gradient-to-br from-amber-50/30 to-stone-50 p-4 rounded-2xl border border-stone-200">
+          {/* II. Shared Polish & Payment Specifications */}
+          <div className="bg-white border border-stone-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="border-b pb-2">
+              <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">Section II</span>
+              <h2 className="text-xs font-black text-[#593622] uppercase tracking-wider font-display mt-1">Shared Finish &amp; Payment Details</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Polish Shade Selection</label>
+                <input
+                  type="text"
+                  value={polishShade}
+                  onChange={(e) => setPolishShade(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Payment Channel / Mode</label>
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                >
+                  <option value="GPay">Google Pay (GPay)</option>
+                  <option value="PhonePe">PhonePe / UPI</option>
+                  <option value="Bank Transfer">NEFT / RTGS / IMPS</option>
+                  <option value="Cash">Liquid Cash</option>
+                  <option value="Cheque">Local Cheque Deposit</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Polish Standard Type</label>
+                <select
+                  value={typeOfPolish}
+                  onChange={(e) => setTypeOfPolish(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                >
+                  <option value="PU Polish">PU Polish (Glossy/Matte)</option>
+                  <option value="Melamine Polish">Melamine Polish Coating</option>
+                  <option value="Natural Hand Polish">Natural Wax/French Hand Polish</option>
+                  <option value="Laminate Overlay">Laminate/Mica Paste</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* III. Combined Products Specs Panels List */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h2 className="text-xs font-black text-stone-900 uppercase tracking-wider font-display">
+                Section III: Agreement Product List ({products.length})
+              </h2>
+              <button
+                type="button"
+                onClick={handleAddProduct}
+                className="bg-stone-100 hover:bg-[#593622] text-[#593622] hover:text-white px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={14} /> Add Manual Product
+              </button>
+            </div>
+
+            {products.map((prod, index) => (
+              <div key={prod.id || index} className="bg-white border border-stone-200/85 rounded-2xl p-5 space-y-4 shadow-xs relative">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-[#593622] text-white rounded-full h-5 w-5 flex items-center justify-center font-mono text-[10px] font-black">
+                      {index + 1}
+                    </span>
+                    <h3 className="text-xs font-black text-stone-800 uppercase tracking-wider font-display">
+                      {prod.productName || 'Handcrafted Furniture item'}
+                    </h3>
+                  </div>
+                  {products.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveProductAt(index)}
+                      className="text-stone-400 hover:text-rose-600 p-1 rounded-lg transition cursor-pointer"
+                      title="Remove Product"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Item Title *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bed, Premium Dining Table"
+                      value={prod.productName}
+                      onChange={(e) => updateProduct(index, { productName: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Quotation ID / Ref</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. QT-XX-XX-XXX"
+                      value={prod.orderNo}
+                      onChange={(e) => updateProduct(index, { orderNo: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Contract Article No *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ORD2607001-A"
+                      value={prod.articleNo}
+                      onChange={(e) => updateProduct(index, { articleNo: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-bold font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">To Article No (Ref)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Pair unit Ref"
+                      value={prod.toArticleNo}
+                      onChange={(e) => updateProduct(index, { toArticleNo: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Item Category</label>
+                    <select
+                      value={prod.category}
+                      onChange={(e) => updateProduct(index, { category: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    >
+                      {Object.keys(CATEGORY_MAP).map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Sub-Category</label>
+                    <input
+                      type="text"
+                      value={prod.subCategory}
+                      onChange={(e) => updateProduct(index, { subCategory: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Size Selection</label>
+                    <select
+                      value={prod.size}
+                      onChange={(e) => updateProduct(index, { size: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    >
+                      <option value="6ft">6ft (Premium Standard)</option>
+                      <option value="4ft">4ft (Single size)</option>
+                      <option value="3ft">3ft (Compact size)</option>
+                      <option value="Custom">Custom Dimensions Specification</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Material Structure</label>
+                    <input
+                      type="text"
+                      value={prod.material}
+                      onChange={(e) => updateProduct(index, { material: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {prod.size === 'Custom' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Custom Size Details *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 78x60x18 inches"
+                      value={prod.customSize}
+                      onChange={(e) => updateProduct(index, { customSize: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Brief Item Description</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Hand carved premium teakwood borders..."
+                      value={prod.itemDescription}
+                      onChange={(e) => updateProduct(index, { itemDescription: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">Special Manufacturing Notes</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Specific requests, alignment details..."
+                      value={prod.specialNotes}
+                      onChange={(e) => updateProduct(index, { specialNotes: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:bg-white focus:border-[#593622] rounded-lg text-xs focus:outline-none text-stone-750 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Product specific design images */}
+                <div className="border border-stone-200/80 rounded-xl p-3 bg-stone-50/50 space-y-2">
+                  <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block font-mono">Reference Images / Sketches ({prod.refImages.length})</span>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {prod.refImages.map((img) => (
+                      <div key={img.id} className="relative h-14 w-14 border border-stone-200 rounded-lg overflow-hidden group shadow-xs shrink-0 bg-white">
+                        <img src={img.url} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const remaining = prod.refImages.filter(i => i.id !== img.id);
+                            updateProduct(index, { refImages: remaining });
+                          }}
+                          className="absolute top-0.5 right-0.5 bg-rose-600 hover:bg-rose-700 text-white p-0.5 rounded-full shadow-xs transition"
+                        >
+                          <Trash2 size={9} />
+                        </button>
+                      </div>
+                    ))}
+                    <label className="h-14 w-14 border-dashed border-2 border-stone-300 hover:border-[#593622] rounded-lg flex flex-col items-center justify-center text-stone-400 hover:text-[#593622] cursor-pointer bg-white transition shrink-0">
+                      <UploadCloud size={16} />
+                      <span className="text-[8px] font-black uppercase mt-1">Upload</span>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={(e) => handleProductFileUpload(index, e)}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Pricing Fields panel */}
+                <div className="bg-amber-50/20 border border-amber-200/40 rounded-xl p-4 space-y-3">
+                  <span className="text-[10px] font-bold text-[#593622] uppercase tracking-wider block font-display">Pricing &amp; Itemized Calculations</span>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Quantity *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={prod.qty}
+                        onChange={(e) => {
+                          const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                          updateProduct(index, { qty: val, amount: prod.quotedRate * val });
+                        }}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Quoted Rate (₹) *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.quotedRate}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          updateProduct(index, { quotedRate: val, amount: val * prod.qty });
+                        }}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Cushion Cost (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.cushion}
+                        onChange={(e) => updateProduct(index, { cushion: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Discount (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.discount}
+                        onChange={(e) => updateProduct(index, { discount: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Hardware Add (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.hardware}
+                        onChange={(e) => updateProduct(index, { hardware: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Packing/Fwd (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.packingForwarding}
+                        onChange={(e) => updateProduct(index, { packingForwarding: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Transportation (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.transportation}
+                        onChange={(e) => updateProduct(index, { transportation: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Advance Received (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={prod.advance}
+                        onChange={(e) => updateProduct(index, { advance: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="w-full px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs text-stone-800 font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-dashed border-amber-200/60 flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs gap-1">
+                    <div className="font-mono text-stone-500">
+                      Product Subtotal: <strong className="text-stone-800">₹{((prod.quotedRate * prod.qty) + prod.cushion + prod.hardware + prod.packingForwarding + prod.transportation - prod.discount).toLocaleString()}</strong>
+                    </div>
+                    <div className="font-mono text-[#593622] font-extrabold sm:text-right">
+                      Agreed Net Rate: ₹{(prod.quotedRate + prod.cushion + prod.hardware - prod.discount).toLocaleString()} / unit
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* VI. Workshop delegation action panel */}
+          <div className="bg-amber-50/10 border-2 border-amber-500/25 rounded-2xl p-5 space-y-4 shadow-sm">
             <div>
               <span className="bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase block w-max mb-1.5">Launch Manufacturing Line</span>
               <h2 className="text-sm font-black text-[#593622] uppercase tracking-wider font-display">VI. Workshop Delegation</h2>
             </div>
-
+            
             <p className="text-stone-500 text-xs leading-relaxed">
-              Ready to begin carpentry production? Clicking the button below validates all product dimensions, saves this draft state, and directs you immediately to the <strong>Work Order Assignment step</strong>, skipping manual repetitive input screens!
+              Confirm agreement terms? Clicking the button below generates one common database agreement, validates all specifications, and navigates to the <strong>Work Order Assignment tab</strong>, skipping manual inputs!
             </p>
 
             <button
               type="button"
               onClick={handleSendToWorkOrder}
-              className="w-full py-3 bg-[#593622] hover:bg-[#402414] text-amber-300 font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-md transition hover:scale-[1.01] active:scale-[0.99] border-2 border-amber-500/20"
+              className="w-full py-3 bg-[#593622] hover:bg-[#452717] text-amber-300 font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-md transition duration-150 cursor-pointer"
             >
-              <HardHat size={16} className="stroke-[2.5]" />
+              <HardHat size={16} />
               Send to Work Order Flow
             </button>
           </div>
-
         </div>
 
-        {/* DYNAMIC AGREEMENT PAGES PREVIEW PANEL (SCREEN VIEW CONTAINER WITH LIVE RENDER) */}
-        <div className="lg:col-span-12 xl:col-span-5 space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3 text-stone-700">
-            <Sparkles size={18} className="text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <strong className="block text-amber-900 font-bold">Print Preview Mode Ready!</strong>
-              <span>Any modifications made on the left form update the agreement pages in real-time. Use the button below to execute printing to PDF or standard physical paper.</span>
+        {/* Right Column: Live A4 Preview */}
+        <div className="lg:col-span-6 space-y-4 lg:sticky lg:top-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider font-display flex items-center gap-1.5">
+              <FileText size={14} className="text-[#593622]" /> Live Preview (A4 Proportion)
+            </h3>
+            
+            <div className="flex bg-stone-100 p-1 rounded-lg gap-1 border border-stone-200">
               <button
-                onClick={handlePrint}
-                className="mt-2 px-3 py-1 bg-[#593622] text-white font-bold rounded-lg hover:bg-[#402414] text-[10px] inline-flex items-center gap-1 shadow-sm transition"
+                onClick={() => setLanguage('en')}
+                className={`px-2 py-1 text-[10px] font-black rounded transition cursor-pointer ${language === 'en' ? 'bg-[#593622] text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'}`}
               >
-                <Printer size={10} />
-                Trigger Print Mode
+                ENGLISH
+              </button>
+              <button
+                onClick={() => setLanguage('mr')}
+                className={`px-2 py-1 text-[10px] font-black rounded transition cursor-pointer ${language === 'mr' ? 'bg-[#593622] text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'}`}
+              >
+                मराठी
               </button>
             </div>
           </div>
 
-          <div className="border border-stone-300 rounded-2xl bg-[#eee]/65 p-4 space-y-4 max-h-[85vh] overflow-y-auto shadow-inner">
-            <span className="text-[10px] font-bold text-stone-450 uppercase tracking-wider block text-center">Live Preview of Document Pages (A4 Proportion)</span>
-            
-            {/* MINIFIED PAGE 1 */}
-            <div className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[11px] leading-snug font-mono text-black select-none max-w-full">
-              <div className="border-2 border-black p-4 space-y-4">
-                <div className="text-center font-bold tracking-wider text-sm border-b pb-2 select-none uppercase">
-                  {language === 'mr' ? 'भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म' : "BHISE'Z WORKSHOP - DETAIL ORDER FORM"}
+          <div className="bg-white border border-stone-300 shadow-xl rounded-2xl overflow-hidden p-6 aspect-[1/1.41] flex flex-col justify-between font-serif relative max-w-lg mx-auto text-stone-850 text-xs leading-relaxed">
+            {/* Header branding info */}
+            <div>
+              <div className="flex justify-between items-start border-b-2 border-[#593622] pb-3">
+                <div>
+                  <h1 className="text-sm font-black text-[#593622] tracking-wider uppercase font-sans">
+                    SHRI SAMARTH WOODWORKS
+                  </h1>
+                  <p className="text-[9px] font-sans text-stone-500 uppercase font-semibold">
+                    Premium Teakwood &amp; Bespoke Furniture Manufacturers
+                  </p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'ऑर्डर क्र.:' : 'ORDER NO:'}</strong> {orderNo || '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'आर्टिकल क्र.:' : 'ARTICLE NO:'}</strong> {articleNo || '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'व्हॉट्सॲप क्र.:' : 'WHATSAPP NO:'}</strong> {whatsappNo || '_________________'}</div>
-                  <div className="col-span-2"><strong>{language === 'mr' ? 'ग्राहकाचे नाव:' : 'CUSTOMER NAME:'}</strong> {customerName || '_________________'}</div>
-                  <div className="col-span-2"><strong>{language === 'mr' ? 'पत्ता:' : 'ADDRESS:'}</strong> {address || '__________________________________________________'}</div>
+                <div className="text-right text-[10px] font-mono">
+                  <p className="font-bold text-stone-950">AGREEMENT</p>
+                  <p className="text-stone-500">Date: {formatToDDMMYYYY(orderDate)}</p>
                 </div>
+              </div>
 
-                <div className="border-t border-b border-black py-2 my-2">
-                  <div className="font-bold underline mb-1 uppercase text-[10px]">{language === 'mr' ? 'उत्पादनाचा तपशील:' : 'Product details:'}</div>
-                  <div><strong>{language === 'mr' ? 'उत्पादनाचे नाव:' : 'PRODUCT NAME:'}</strong> {productName || '_________________________________'}</div>
-                  <div><strong>{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'ITEM DESCRIPTION:'}</strong> {itemDescription || '_________________________________'}</div>
-                  <div className="flex gap-4 mt-1">
-                    <div><strong>{language === 'mr' ? 'नग:' : 'QTY:'}</strong> {qty}</div>
-                    <div><strong>{language === 'mr' ? 'प्रति नग दर:' : 'UNIT RATE:'}</strong> ₹{quotedRate.toLocaleString()}</div>
-                    <div><strong>{language === 'mr' ? 'एकूण रक्कम:' : 'AMOUNT:'}</strong> ₹{(quotedRate * qty).toLocaleString()}</div>
-                  </div>
+              {/* Client specifications panel */}
+              <div className="grid grid-cols-2 gap-4 py-4 border-b border-stone-100 font-sans text-[11px]">
+                <div>
+                  <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Customer Details:</span>
+                  <p className="font-extrabold text-stone-950 mt-0.5">{customerName || '_______________________'}</p>
+                  <p className="text-stone-600 mt-1 flex items-center gap-1 font-semibold">
+                    <Phone size={10} /> {whatsappNo || '___________________'}
+                  </p>
+                  <p className="text-stone-500 mt-1 italic text-[10px] whitespace-pre-wrap">{address || 'No address added yet.'}</p>
                 </div>
+                <div className="text-right">
+                  <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Delivery Schedule &amp; Specs:</span>
+                  <p className="font-extrabold text-amber-900 mt-0.5">Delivery: {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_______________________'}</p>
+                  <p className="text-stone-600 mt-1 text-[10px] font-semibold">Polish Shade: <span className="text-stone-950">{polishShade}</span></p>
+                  <p className="text-stone-600 mt-0.5 text-[10px] font-semibold">Polish Standard: <span className="text-stone-950">{typeOfPolish}</span></p>
+                </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-1.5 text-[9px]">
-                  <div><strong>{language === 'mr' ? 'मूळ दर:' : 'QUOTED RATE:'}</strong> ₹{quotedRate.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'कुशन किंमत:' : 'CUSHION:'}</strong> ₹{cushion.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'सवलत (डिस्काउंट):' : 'DISCOUNT:'}</strong> ₹{discount.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'हार्डवेअर खर्च:' : 'HARDWARE:'}</strong> ₹{hardware.toLocaleString()}</div>
-                  <div className="font-bold"><strong>{language === 'mr' ? 'अंतिम दर:' : 'FINAL RATE:'}</strong> ₹{finalRate.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING & FORWARDING:'}</strong> ₹{packingForwarding.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION:'}</strong> ₹{transportation.toLocaleString()}</div>
-                  <div className="font-bold col-span-2 text-[9.5px] border-t border-dashed border-stone-300 pt-1 flex justify-between">
-                    <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED:'}</span>
+              {/* Itemized product list table */}
+              <div className="py-4">
+                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-2 font-sans">Combined Order Items ({products.length}):</span>
+                <table className="w-full text-[11px] font-mono text-left">
+                  <thead>
+                    <tr className="border-b border-stone-300 text-[10px] text-stone-400">
+                      <th className="py-1">PRODUCT SPECIFICATIONS</th>
+                      <th className="py-1 text-center">QTY</th>
+                      <th className="py-1 text-right">RATE</th>
+                      <th className="py-1 text-right">SUBTOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p, idx) => {
+                      const pSub = (p.quotedRate * p.qty) + p.cushion + p.hardware + p.packingForwarding + p.transportation - p.discount;
+                      return (
+                        <tr key={p.id || idx} className="border-b border-stone-100">
+                          <td className="py-1.5 font-sans">
+                            <span className="font-black text-stone-950 block text-[11.5px]">#{idx + 1}: {p.productName || 'Handcrafted Furniture'}</span>
+                            <span className="text-[9.5px] text-stone-500 uppercase font-semibold block mt-0.5 font-mono">
+                              {p.category} • {p.subCategory || 'Bespoke'} • Size: {p.size === 'Custom' ? p.customSize : p.size} • Polish: {p.finish}
+                            </span>
+                          </td>
+                          <td className="py-1.5 text-center font-bold">{p.qty}</td>
+                          <td className="py-1.5 text-right">₹{p.quotedRate.toLocaleString()}</td>
+                          <td className="py-1.5 text-right font-bold text-stone-950">₹{pSub.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Calculations & signatures block */}
+            <div className="border-t border-stone-200 pt-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1 font-sans text-[10px] text-stone-500">
+                  <p className="font-semibold text-[9px] uppercase text-stone-400 tracking-wider">Payment Structure:</p>
+                  <p>Channel / Mode: <span className="font-extrabold text-stone-900">{paymentMode}</span></p>
+                  <p className="text-[9px] leading-relaxed italic mt-1 text-stone-400">Please clear all pending outstanding balances at delivery validation step.</p>
+                </div>
+                <div className="space-y-1.5 font-mono text-xs">
+                  <div className="flex justify-between text-stone-600">
+                    <span>Invoice Value:</span>
                     <span>₹{totalInvoiced.toLocaleString()}</span>
                   </div>
-                  <div className="font-bold col-span-2 text-[9.5px] flex justify-between">
-                    <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
-                    <span>₹{totalAdvancePaid.toLocaleString()}</span>
+                  <div className="flex justify-between text-emerald-800 font-bold border-b border-stone-100 pb-1">
+                    <span>Total Advance:</span>
+                    <span>- ₹{totalAdvancePaid.toLocaleString()}</span>
                   </div>
-                  <div className="font-bold text-amber-900 col-span-2 text-xs border-t border-stone-400 pt-1 flex justify-between">
-                    <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'OUTSTANDING BALANCE:'}</span>
+                  <div className="flex justify-between font-black text-[#593622] text-[13px] uppercase pt-1">
+                    <span>Balance Due:</span>
                     <span>₹{outstandingBalance.toLocaleString()}</span>
                   </div>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-1.5 text-[10px] pt-2 border-t border-dashed">
-                  <div><strong>{language === 'mr' ? 'पॉलिश शेड:' : 'POLISH SHADE:'}</strong> {polishShade || '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</strong> {paymentMode}</div>
-                  <div className="col-span-2"><strong>{language === 'mr' ? 'पॉलिशचा प्रकार:' : 'TYPE OF POLISH:'}</strong> {typeOfPolish} ({language === 'mr' ? 'हात पॉलिश / मशीन पॉलिश' : 'HAND / MACHINE'})</div>
+              {/* Legal Signatures */}
+              <div className="flex justify-between items-end pt-8 font-sans text-[9px] font-bold text-stone-400">
+                <div className="text-center w-28 border-t border-stone-300 pt-1 uppercase">
+                  Customer Seal/Sign
                 </div>
-
-                <div className="grid grid-cols-2 gap-8 text-center pt-8 border-t border-black">
-                  <div className="border-t border-stone-350 pt-1"><strong>{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}</strong></div>
-                  <div className="border-t border-stone-350 pt-1"><strong>{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}</strong></div>
+                <div className="text-center text-[#593622] font-mono text-[10px] font-black italic">
+                  Shri Samarth Woodworks
+                </div>
+                <div className="text-center w-28 border-t border-stone-300 pt-1 uppercase">
+                  Authorized Admin Sign
                 </div>
               </div>
             </div>
-
-            {/* MINIFIED PAGE 2 */}
-            <div className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[9.5px] leading-normal font-sans text-stone-850 select-none max-w-full">
-              <div className="border-2 border-black p-4 space-y-2">
-                <div className="text-center font-extrabold tracking-wider border-b pb-1 flex justify-between items-center text-stone-900">
-                  <span>{language === 'mr' ? 'पान २' : 'PAGE 2'}</span>
-                  <span>{language === 'mr' ? 'नियम आणि अटी' : 'TERMS AND CONDITIONS'}</span>
-                  <span>{language === 'mr' ? 'भिसेज् वर्कशॉप' : "BHISE'Z WORKSHOP"}</span>
-                </div>
-                <ol className="list-decimal list-outside pl-4 space-y-1 text-justify text-stone-700">
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '१. ॲडव्हान्स पेमेंटची आवश्यकता :' : '1. Advance Payment Requirement:'}</strong>
-                    {language === 'mr' ? (
-                      <>काम सुरू करण्यापूर्वी मी एकूण ऑर्डरच्या खर्चाच्या <span className="underline font-bold">₹{advance.toLocaleString() || '_______'}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. ॲडव्हान्स पेमेंटची रक्कम <span className="underline font-bold">₹{advance.toLocaleString() || '_______________________'}</span> आहे.</>
-                    ) : (
-                      <>I agree to pay an advance payment amounting <span className="underline font-bold">₹{advance.toLocaleString() || '_______'}</span> of the total order cost prior to the commencement of work. The advance payment amount is <span className="underline font-bold">₹{advance.toLocaleString() || '_______________________'}</span>.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '२. पेमेंट वेळापत्रक (पेमेंट शेड्युल) :' : '2. Payment Schedule:'}</strong>
-                    {language === 'mr' ? (
-                      <>करार किंवा करारावर स्वाक्षरी केल्यावर लगेचच ॲडव्हान्स पेमेंट भरणे आवश्यक आहे. पुढील देयके मुख्य करारामध्ये नमूद केलेल्या पेमेंट वेळापत्रकानुसार केली जातील. माल पाठवण्यापूर्वी पूर्ण पेमेंट मिळणे अनिवार्य आहे.</>
-                    ) : (
-                      <>The advance payment is due immediately upon signing the contract or agreement. Subsequent payments will be made as per the agreed payment schedule outlined in the main contract. Full payment must be received before the dispatch of goods.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '३. रिफंड न मिळण्याबाबतची अट :' : '3. Non-Refundable Clause:'}</strong>
-                    {language === 'mr' ? (
-                      <>सर्व्हिस प्रोव्हायडरकडून कराराचा भंग झाल्याशिवाय ॲडव्हान्स पेमेंट परत केले जाणार नाही. २४ तासांनंतर ॲडव्हान्स पेमेंट कोणत्याही परिस्थितीत परत केले जाणार नाही.</>
-                    ) : (
-                      <>The advance payment is non-refundable except in the event of a breach of contract by the Service Provider. Advance payment will not be refunded after 24 hours.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '४. काम सुरू करणे :' : '4. Service Commencement:'}</strong>
-                    {language === 'mr' ? (
-                      <>ॲडव्हान्स पेमेंट आणि तुमच्या आवश्यकतेबद्दल आवश्यक ती कागदपत्रे किंवा माहिती मिळाल्यानंतरच काम सुरू होईल. ॲडव्हान्स पेमेंटला विलंब झाल्यास उत्पादन सुरू होण्यास तोच समान विलंब होऊ शकतो.</>
-                    ) : (
-                      <>Work will commence upon receipt of the advance payment and any required documentation or information from you about your requirement. Any delay in the advance payment may result in a corresponding delay in the commencement of manufacturing.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '५. कामाची व्याप्ती :' : '5. Scope of Work:'}</strong>
-                    {language === 'mr' ? (
-                      <>मूळ ऑर्डरमधील कोणतेही अतिरिक्त काम किंवा बदलांसाठी अतिरिक्त शुल्क लागू होईल.</>
-                    ) : (
-                      <>Any additional work or changes to the initial order will be subject to additional charges.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '६. डिलिव्हरी (वितरण) :' : '6. Delivery:'}</strong>
-                    {language === 'mr' ? (
-                      <>डिलिव्हरीची अचूक माहिती देण्याची जबाबदारी माझी आहे. माझ्याकडून चुकीची किंवा अपूर्ण माहिती दिल्यामुळे डिलिव्हरी यशस्वी न झाल्यास विक्रेता जबाबदार राहणार नाही. डिलिव्हरीची तारीख २-३ दिवसांनी बदलू शकते.</>
-                    ) : (
-                      <>I am responsible for providing accurate delivery information. The Seller is not liable for delivery failures due to incorrect or incomplete information provided by me. The delivery date may vary by 2-3 days.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '७. वस्तू परत मिळणे आणि रिफंड :' : '7. Returns and Refunds:'}</strong>
-                    {language === 'mr' ? (
-                      <>डिलिव्हरी मिळाल्यापासून २ दिवसांच्या आत मी कोणत्याही सदोष किंवा चुकीच्या वस्तूची माहिती विक्रेत्याला देईन. वस्तू सदोष किंवा चुकीची असल्याशिवाय वस्तू परत करण्याच्या वाहतूक खर्चासाठी मी स्वतः जबाबदार असेन.</>
-                    ) : (
-                      <>I will notify the Seller of any defective or incorrect items within 2 days of delivery. I am responsible for return shipping costs unless the item is defective or incorrect.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '८. ऑर्डर रद्द करणे :' : '8. Order Cancellation:'}</strong>
-                    {language === 'mr' ? (
-                      <>खरेदीदार ऑर्डर दिल्यानंतर २४ तासांच्या आत विक्रेत्याशी संपर्क साधून आपली ऑर्डर रद्द करू शकतात. गैरवापर, दुर्लक्ष किंवा अनधिकृत दुरुस्तीमुळे वस्तू खराब झाल्यास विक्रेता जबाबदार नाही.</>
-                    ) : (
-                      <>The Buyer may cancel their order within 24 hours of placing it by contacting the Seller. The Seller is not liable if the product is damaged due to misuse, neglect, or unauthorized repair.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '९. अंशतः डिलिव्हरी (पार्ट डिलिव्हरी) :' : '9. Part Delivery:'}</strong>
-                    {language === 'mr' ? (
-                      <>अंशतः डिलिव्हरीच्या बाबतीत (पार्ट डिलिव्हरी), मी डिलिव्हरी चार्जेस तसेच इन्स्टॉलेशन चार्जेस भरण्यास सहमत आहे. ज्या उत्पादनांची डिलिव्हरी होणार आहे त्यांची पूर्ण रक्कम आणि भविष्यात डिलीव्हर होणाऱ्या उर्वरित उत्पादनांचे ४०% ॲडव्हान्स देण्यास मी सहमत आहे.</>
-                    ) : (
-                      <>In case of part delivery, I agree to pay the delivery charges as well as installation charges. I agree to pay the full amount of the products which are to be delivered and 40% Advance of the remaining products which will be delivered in future.</>
-                    )}
-                  </li>
-                  <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '१०. नियमांची स्वीकृती :' : '10. Acceptance of Terms:'}</strong>
-                    {language === 'mr' ? (
-                      <>ॲडव्हान्स पेमेंट करून, मी कबूल करतो की मी हे नियम आणि अटी वाचल्या आहेत, समजून घेतल्या आहेत आणि मी त्यांच्याशी सहमत आहे.</>
-                    ) : (
-                      <>By making the advance payment, I acknowledge that I have read, understood, and agree to these terms and conditions.</>
-                    )}
-                  </li>
-                </ol>
-                <div className="pt-4 flex justify-between text-center font-bold">
-                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'Manager Signature'}</span></div>
-                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'Customer Signature'}</span></div>
-                </div>
-              </div>
-            </div>
-
-
-
           </div>
-        </div>
 
+          {/* Quick actions box */}
+          {whatsappNo && (
+            <a
+              href={getWhatsAppUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+            >
+              <Phone size={14} /> Send Agreement Summary to WhatsApp
+            </a>
+          )}
+        </div>
       </div>
 
-      {/* PRINT-ONLY EMBEDDED AREA (Forces visibility in system window print and structures into clean pages) */}
-      <div className="hidden print:block fixed inset-0 bg-white text-black font-sans z-50 p-0 m-0">
-        
-        {/* PAGE 1 CONTENT */}
-        <div className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between" style={{ pageBreakAfter: 'always' }}>
+      {/* HTML PRINT TEMPLATE (Pure Printable layout, visible only during print stylesheet trigger) */}
+      <div id="print-area" className="hidden print:block p-10 font-serif text-xs text-black bg-white space-y-10 leading-relaxed">
+        {/* Printable Page 1 */}
+        <div className="h-[297mm] flex flex-col justify-between p-8 bg-white border border-transparent">
           <div>
-            <div className="flex justify-between items-start border-b-2 border-black pb-3 mb-6">
+            {/* Header branding */}
+            <div className="flex justify-between items-start border-b-2 border-black pb-4">
               <div>
-                <h1 className="text-2xl font-black tracking-tighter uppercase font-sans text-stone-950">
-                  {language === 'mr' ? 'भिसेज् वुड वर्कशॉप' : "BHISE'Z WOOD WORKSHOP"}
+                <h1 className="text-xl font-extrabold uppercase font-sans tracking-wide">
+                  SHRI SAMARTH WOODWORKS
                 </h1>
-                <p className="text-[9px] uppercase tracking-widest font-mono text-stone-600">
-                  {language === 'mr' ? 'उत्कृष्ट फर्निचर उत्पादक आणि कारागीर' : 'Elite Furniture Manufacturers & Custom Wood Crafters'}
+                <p className="text-[10px] text-stone-600 font-semibold font-sans">
+                  Premium Custom Teakwood Manufacturers &amp; Carpentry
+                </p>
+                <p className="text-[9px] text-stone-500 font-sans mt-0.5">
+                  Workshop Address: Gat No 182, Woodworks Line, Maharashtra, India
                 </p>
               </div>
-              <div className="text-right">
-                <span className="text-sm font-black border border-black px-2 py-1 uppercase tracking-wide">
-                  {language === 'mr' ? 'सविस्तर ऑर्डर फॉर्म' : 'Detail Order Form'}
-                </span>
-                <p className="text-[9px] mt-1 text-stone-600 font-mono">{language === 'mr' ? 'संदर्भ क्र.:' : 'Invoice Ref:'} #{orderNo || 'MANUAL'}</p>
+              <div className="text-right font-mono text-[10px]">
+                <h2 className="text-sm font-bold tracking-widest uppercase">Purchase Contract</h2>
+                <p className="mt-1">Order Ref: AGR-{new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2)}</p>
+                <p className="mt-0.5">Date: {formatToDDMMYYYY(orderDate)}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs font-mono border border-black p-4 rounded mb-6">
+            {/* Metadata information */}
+            <div className="grid grid-cols-2 gap-8 py-5 border-b border-stone-200 text-[11px] font-sans">
               <div className="space-y-1">
-                <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'ऑर्डर क्रमांक:' : 'ORDER NO:'}</strong> {orderNo || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'आर्टिकल क्रमांक:' : 'ARTICLE NO:'}</strong> {articleNo || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_______________________'}</div>
+                <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block font-mono">DELIVERY DESTINATION</span>
+                <p className="font-extrabold text-base text-black">{customerName || 'Walk-in Client'}</p>
+                <p className="font-bold mt-1 text-stone-700">WhatsApp: {whatsappNo || 'Not provided'}</p>
+                <p className="text-stone-600 mt-1 italic whitespace-pre-wrap">{address || 'No shipping location added.'}</p>
               </div>
-              <div className="space-y-1 border-l border-stone-300 pl-4">
-                <div><strong>{language === 'mr' ? 'ग्राहकाचे नाव:' : 'CUSTOMER NAME:'}</strong> {customerName || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'व्हॉट्सॲप क्र.:' : 'WHATSAPP NO:'}</strong> {whatsappNo || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'पत्ता:' : 'ADDRESS:'}</strong> <span className="text-[11px] font-sans">{address || '__________________________________________________'}</span></div>
+              <div className="text-right space-y-1 font-medium">
+                <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block font-mono">SPECIFICATION CODES</span>
+                <p className="font-bold text-stone-900 text-[12px]">Delivery Schedule: <span className="font-extrabold text-red-900 underline">{deliveryDate ? formatToDDMMYYYY(deliveryDate) : 'Not specified'}</span></p>
+                <p className="mt-1 text-stone-700">Polish Tone Shade: <strong className="text-black">{polishShade}</strong></p>
+                <p className="text-stone-700">Polish Treatment: <strong className="text-black">{typeOfPolish}</strong></p>
+                <p className="text-stone-700">Agreement ID: <strong className="text-black font-mono">AGR-{new Date().toISOString().split('T')[0].replace(/-/g, '').slice(4)}</strong></p>
               </div>
             </div>
 
-            {/* PRODUCT SPECIFICATION BLOCK */}
-            <div className="border border-black rounded p-4 mb-6">
-              <h2 className="text-[10px] font-black uppercase tracking-widest border-b pb-1 mb-2">
-                {language === 'mr' ? 'वस्तूंचे तपशील आणि प्रमाण' : 'Item Specifications & Quantity'}
-              </h2>
+            {/* Products specifications table */}
+            <div className="py-6 space-y-3">
+              <h3 className="text-[10px] font-black uppercase tracking-wider font-sans text-stone-800">
+                Schedule of Ordered Products &amp; Components:
+              </h3>
               <table className="w-full text-xs font-mono text-left">
                 <thead>
-                  <tr className="border-b border-stone-400">
-                    <th className="py-1">{language === 'mr' ? 'उत्पादनाचे नाव' : 'PRODUCT NAME'}</th>
-                    <th className="py-1 text-center">{language === 'mr' ? 'नग' : 'QTY'}</th>
-                    <th className="py-1 text-right">{language === 'mr' ? 'दर प्रति नग (₹)' : 'UNIT RATE (₹)'}</th>
-                    <th className="py-1 text-right">{language === 'mr' ? 'एकूण रक्कम (₹)' : 'SUBTOTAL (₹)'}</th>
+                  <tr className="border-b-2 border-black text-stone-500 text-[10px]">
+                    <th className="py-2">DETAILED TECHNICAL COMPONENT SPECIFICATION</th>
+                    <th className="py-2 text-center">QUANTITY</th>
+                    <th className="py-2 text-right">UNIT RATE</th>
+                    <th className="py-2 text-right">SUBTOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="py-2.5 font-bold">{productName || 'Custom Engineered Furniture Unit'}</td>
-                    <td className="py-2.5 text-center">{qty}</td>
-                    <td className="py-2.5 text-right">₹{quotedRate.toLocaleString()}</td>
-                    <td className="py-2.5 text-right font-bold">₹{(quotedRate * qty).toLocaleString()}</td>
-                  </tr>
-                  <tr className="border-t border-dashed border-stone-300">
-                    <td colSpan={4} className="py-2 text-[10px] text-stone-700 italic">
-                      <strong>{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'Item Spec/Description:'}</strong> {itemDescription || 'Standard handcrafted woodwork structure with premium selected materials.'}
-                    </td>
-                  </tr>
+                  {products.map((p, idx) => {
+                    const itemSub = (p.quotedRate * p.qty) + p.cushion + p.hardware + p.packingForwarding + p.transportation - p.discount;
+                    return (
+                      <tr key={p.id || idx} className="border-b border-stone-200">
+                        <td className="py-3 font-sans">
+                          <span className="text-[13px] font-black text-black block">#{idx + 1}: {p.productName || 'Custom Carpentry'}</span>
+                          <span className="text-[10px] text-stone-600 block mt-1 font-mono leading-relaxed">
+                            Category: {p.category} | Sub: {p.subCategory} | Size: {p.size === 'Custom' ? p.customSize : p.size} | Material: {p.material} | Finish: {p.finish}
+                          </span>
+                          {p.specialNotes && (
+                            <span className="text-[9.5px] text-stone-500 italic block mt-1.5 font-sans">
+                              * Notes: {p.specialNotes}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 text-center font-bold text-black font-mono">{p.qty}</td>
+                        <td className="py-3 text-right font-mono">₹{p.quotedRate.toLocaleString()}</td>
+                        <td className="py-3 text-right font-bold text-black font-mono">₹{itemSub.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+          </div>
 
-            {/* FINANCIAL CALCULATIONS SECTION */}
-            <div className="border border-black rounded p-4 mb-6">
-              <h2 className="text-[10px] font-black uppercase tracking-widest border-b pb-1 mb-2">
-                {language === 'mr' ? 'वित्तीय कपातीचा सविस्तर गोषवारा' : 'Detailed Financial Specification'}
-              </h2>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs font-mono">
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'मूळ दर:' : 'QUOTED BASE RATE:'}</span>
-                  <span>₹{quotedRate.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'कुशन किंमत:' : 'CUSHION COST:'}</span>
-                  <span>₹{cushion.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'हार्डवेअर खर्च:' : 'HARDWARE CHARGES:'}</span>
-                  <span>₹{hardware.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5 text-rose-750 font-bold">
-                  <span>{language === 'mr' ? '(-) सवलत (डिस्काउंट):' : '(-) DISCOUNT ALLOWED:'}</span>
-                  <span>₹{discount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b-2 border-black pb-0.5 font-black text-stone-900">
-                  <span>{language === 'mr' ? 'अंतिम दर:' : 'FINAL AGREED RATE:'}</span>
-                  <span>₹{finalRate.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING / FORWARDING:'}</span>
-                  <span>₹{packingForwarding.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION FEE:'}</span>
-                  <span>₹{transportation.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? '(-) ऍडव्हान्स पेमेंट:' : '(-) ADVANCE DEPOSITED:'}</span>
-                  <span>₹{advance.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-stone-900">
-                  <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED AMOUNT:'}</span>
+          {/* Financial summary aggregation & signatures */}
+          <div className="border-t-2 border-black pt-4">
+            <div className="grid grid-cols-2 gap-8 font-sans">
+              <div className="space-y-1 text-[10px] text-stone-600 font-medium">
+                <span className="text-[9px] font-bold text-stone-400 block font-mono">PAYMENT MODE TERMS:</span>
+                <p>Deposit Mode Selected: <span className="font-extrabold text-black">{paymentMode}</span></p>
+                <p className="mt-1 leading-normal italic text-stone-400">All materials remain the sole property of Shri Samarth Woodworks until full clearance of the consolidated balance due amount.</p>
+              </div>
+              <div className="space-y-2 font-mono text-xs">
+                <div className="flex justify-between text-stone-600">
+                  <span>Gross Invoice Value:</span>
                   <span>₹{totalInvoiced.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-emerald-800">
-                  <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
-                  <span>₹{totalAdvancePaid.toLocaleString()}</span>
+                <div className="flex justify-between text-stone-900 border-b border-stone-300 pb-1.5">
+                  <span>Less Total Advance Deposited:</span>
+                  <span className="font-bold">- ₹{totalAdvancePaid.toLocaleString()}</span>
                 </div>
-                <div className="col-span-2 flex justify-between pt-1 font-black text-[#593622] text-sm border-t border-black uppercase mt-1">
-                  <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'Outstanding Balance:'}</span>
+                <div className="flex justify-between font-black text-black text-sm uppercase pt-1 tracking-wider">
+                  <span>Balance Due Amount:</span>
                   <span>₹{outstandingBalance.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            {/* TEHNICAL POLISH SPEC */}
-            <div className="border border-black rounded p-4 mb-4 grid grid-cols-3 gap-4 text-xs font-mono">
-              <div>
-                <strong>{language === 'mr' ? 'पॉलिश शेड:' : 'POLISH SHADE:'}</strong>
-                <p className="mt-0.5 font-bold uppercase">{polishShade || (language === 'mr' ? 'नैसर्गिक लाकूड' : 'Natural Lacquer')}</p>
+            {/* Signature Area */}
+            <div className="flex justify-between items-end pt-12 font-sans text-[10px] font-bold text-stone-400">
+              <div className="text-center w-36 border-t border-black pt-1 uppercase">
+                Customer Signature &amp; Date
               </div>
-              <div>
-                <strong>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</strong>
-                <p className="mt-0.5 font-bold uppercase">{paymentMode}</p>
+              <div className="text-center text-black font-mono text-[11px] font-bold">
+                For Shri Samarth Woodworks
               </div>
-              <div>
-                <strong>{language === 'mr' ? 'पॉलिशचा प्रकार:' : 'TYPE OF POLISH:'}</strong>
-                <p className="mt-0.5 font-bold uppercase">{typeOfPolish} POLISH ({language === 'mr' ? 'हात / मशीन' : 'HAND/MACHINE'})</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-12 text-center text-xs font-mono border-t pt-8">
-            <div className="space-y-12">
-              <span className="text-stone-400 block font-light">{language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "Bhise'z Workshop Management"}</span>
-              <div>
-                <div className="h-0.5 w-40 bg-black mx-auto" />
-                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}</span>
-              </div>
-            </div>
-            <div className="space-y-12">
-              <span className="text-stone-400 block font-light">{language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'Client Confirmation Acceptance'}</span>
-              <div>
-                <div className="h-0.5 w-40 bg-black mx-auto" />
-                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}</span>
+              <div className="text-center w-36 border-t border-black pt-1 uppercase">
+                Authorized Executive Signature
               </div>
             </div>
           </div>
         </div>
 
-        {/* PAGE 2 CONTENT (TERMS & CONDITIONS) */}
-        <div className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between" style={{ pageBreakBefore: 'always' }}>
-          <div>
-            <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-4">
-              <span className="text-xs font-bold font-mono tracking-widest text-stone-500 uppercase">
-                {language === 'mr' ? 'कराराचे पान २' : 'PAGE 2 OF AGREEMENT'}
-              </span>
-              <span className="text-xs font-black font-mono tracking-widest text-[#593622] uppercase">
-                {language === 'mr' ? 'नियम आणि अटी' : 'TERMS AND CONDITIONS'}
-              </span>
+        {/* Printable Page 2: Terms & Conditions */}
+        <div className="h-[297mm] flex flex-col justify-between p-8 bg-white border border-transparent font-sans">
+          <div className="space-y-4">
+            <div className="border-b-2 border-black pb-2">
+              <h2 className="text-sm font-black uppercase tracking-wider text-black">
+                {language === 'mr' ? 'करार आणि अटी' : 'TERMS & CONDITIONS OF SALE'}
+              </h2>
+              <p className="text-[9px] text-stone-500 uppercase">Shri Samarth Woodworks Standard Purchase Contract Terms</p>
             </div>
 
-            <div className="space-y-2.5 text-[10px] leading-relaxed text-stone-800 text-justify">
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '१. ॲडव्हान्स पेमेंटची आवश्यकता :-' : '1. ADVANCE PAYMENT REQUIREMENT :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>काम सुरू करण्यापूर्वी मी एकूण आदेशाच्या / ऑर्डरच्या मुल्याच्या <span className="underline font-extrabold text-stone-950">₹{advance.toLocaleString() || '_______'}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. ॲडव्हान्स पेमेंटची एकूण रक्कम <span className="underline font-extrabold text-stone-950">₹{advance.toLocaleString() || '_______________________'}</span> आहे.</p>
-                ) : (
-                  <p>I agree to pay an advance payment amounting <span className="underline font-extrabold text-stone-950">₹{advance.toLocaleString() || '_______'}</span> of the total order cost prior to the commencement of work. The advance payment amount is <span className="underline font-extrabold text-stone-950">₹{advance.toLocaleString() || '_______________________'}</span>.</p>
-                )}
+            {language === 'mr' ? (
+              <div className="text-[10px] space-y-3 text-stone-800 leading-relaxed">
+                <p className="font-bold">१. पेमेंट शेड्युल आणि देय रक्कम:</p>
+                <p>काम सुरू करण्यापूर्वी मी एकूण आदेशाच्या / ऑर्डरच्या मुल्याच्या <span className="underline font-extrabold text-stone-950">₹{totalAdvancePaid.toLocaleString()}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. उर्वरित शिल्लक रक्कम <span className="underline font-extrabold text-stone-950">₹{outstandingBalance.toLocaleString()}</span> डिलिव्हरीपूर्वी अथवा डिलिव्हरीच्या दिवशीच रोख अथवा युपीआय स्वरूपात संपूर्ण भरणे बंधनकारक असेल.</p>
+                
+                <p className="font-bold">२. डिलिव्हरी मुदत आणि डिझाईन बदल:</p>
+                <p>ऑर्डर निश्चित केल्यानंतर डिझाईनमध्ये कोणताही बदल ग्राहकाकडून स्वीकारला जाणार नाही. जर बदल करणे अत्यंत गरजेचे असेल तर त्यासाठी लागणारा जादा साहित्य व मजुरी खर्च ग्राहकास स्वतंत्रपणे द्यावा लागेल. अंदाजे डिलिव्हरी तारीख ही कच्च्या मालाच्या उपलब्धतेवर अवलंबून असते.</p>
+                
+                <p className="font-bold">३. मालाची मालकी व अधिकार:</p>
+                <p>ऑर्डरचे सर्व साहित्य जोपर्यंत पूर्ण देय रक्कम भरली जात नाही, तोपर्यंत ती श्री समर्थ वुडवर्क्स यांच्या अधिकारांतर्गत मालकीची राहील.</p>
+                
+                <p className="font-bold">४. लाकूड गुणवत्ता व नैसर्गिक छटा:</p>
+                <p>सागवानी लाकूड किंवा इतर लाकूड प्रकार हे नैसर्गिक असल्यामुळे त्यावरील डिझाईन किंवा रंगाची छटा काही प्रमाणात नैसर्गिक घटकांनुसार भिन्न असू शकते.</p>
               </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '२. पेमेंट वेळापत्रक (पेमेंट शेड्युल) :-' : '2. PAYMENT SCHEDULE :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>करार किंवा करारावर स्वाक्षरी केल्यावर लगेचच ॲडव्हान्स पेमेंट भरणे आवश्यक आहे. पुढील देयके मुख्य करारामध्ये नमूद केलेल्या पेमेंट वेळापत्रकानुसार केली जातील. माल पाठवण्यापूर्वी पूर्ण पेमेंट मिळणे अनिवार्य आहे.</p>
-                ) : (
-                  <p>The advance payment is due immediately upon signing the contract or agreement. Subsequent payments will be made as per the agreed payment schedule outlined in the main contract. Full payment must be received before the dispatch of goods.</p>
-                )}
+            ) : (
+              <div className="text-[10.5px] space-y-3.5 text-stone-800 leading-relaxed">
+                <p className="font-semibold text-black">1. Payment &amp; Retainage Terms:</p>
+                <p>The purchaser agrees to pay an advance sum of <span className="underline font-extrabold text-stone-950">₹{totalAdvancePaid.toLocaleString()}</span> prior to the initiation of any custom fabrication work. The remaining outstanding balance of <span className="underline font-extrabold text-stone-950">₹{outstandingBalance.toLocaleString()}</span> must be cleared in full on or prior to the date of shipping / site delivery validation.</p>
+                
+                <p className="font-semibold text-black">2. Specification Modifiability:</p>
+                <p>No design alterations, structural changes, or dimension adjustments will be accommodated once the raw material cutting phase has commenced. Any critical requested adjustments thereafter will attract a surcharge covering material waste and additional labor overheads.</p>
+                
+                <p className="font-semibold text-black">3. Title of Ownership:</p>
+                <p>The legal title and ownership of all fabricated furniture, fixtures, and materials detailed in this contract shall remain exclusively with Shri Samarth Woodworks until all payments, including transit charges, are cleared in full.</p>
+                
+                <p className="font-semibold text-black">4. Natural Material Disclaimer:</p>
+                <p>Teakwood and natural woods exhibit organic characteristics such as varying grain structures, knots, and shade patterns. Such variation is a mark of authenticity and shall not constitute a defect or grounds for contract rejection.</p>
               </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '३. रिफंड न मिळण्याबाबतची अट (नॉन-रिफंडेबल) :-' : '3. NON-REFUNDABLE CLAUSE :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>सर्व्हिस प्रोव्हायडरकडून कराराचा भंग झाल्याशिवाय ॲडव्हान्स पेमेंट परत केले जाणार नाही. २४ तासांनंतर ॲडव्हान्स पेमेंट कोणत्याही परिस्थितीत परत केले जाणार नाही.</p>
-                ) : (
-                  <p>The advance payment is non-refundable except in the event of a breach of contract by the Service Provider. Advance payment will not be refunded after 24 hours.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '४. काम सुरू करणे :-' : '4. SERVICE COMMENCEMENT :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>ॲडव्हान्स पेमेंट आणि तुमच्या आवश्यकतेबद्दल आवश्यक ती कागदपत्रे किंवा माहिती मिळाल्यानंतरच काम सुरू होईल. ॲडव्हान्स पेमेंटला विलंब झाल्यास उत्पादन सुरू होण्यास तोच समान विलंब होऊ शकतो.</p>
-                ) : (
-                  <p>Work will commence upon receipt of the advance payment and any required documentation or information from you about your requirement. Any delay in the advance payment may result in a corresponding delay in the commencement of manufacturing.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '५. कामाची व्याप्ती :-' : '5. SCOPE OF WORK :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>मूळ ऑर्डरमधील कोणतेही अतिरिक्त काम किंवा बदलांसाठी अतिरिक्त शुल्क लागू होईल.</p>
-                ) : (
-                  <p>Any additional work or changes to the initial order will be subject to additional charges.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '६. डिलिव्हरी (वितरण) :-' : '6. DELIVERY :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>डिलिव्हरीची अचूक माहिती देण्याची जबाबदारी माझी आहे. माझ्याकडून चुकीची किंवा अपूर्ण माहिती दिल्यामुळे डिलिव्हरी यशस्वी न झाल्यास विक्रेता जबाबदार राहणार नाही. डिलिव्हरीची तारीख २-३ दिवसांनी बदलू शकते.</p>
-                ) : (
-                  <p>I am responsible for providing accurate delivery information. The Seller is not liable for delivery failures due to incorrect or incomplete information provided by me. The delivery date may vary by 2-3 days.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '७. वस्तू परत मिळणे आणि रिफंड :-' : '7. RETURNS AND REFUNDS :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>डिलिव्हरी मिळाल्यापासून २ दिवसांच्या आत मी कोणत्याही सदोष किंवा चुकीच्या वस्तूची माहिती विक्रेत्याला देईन. वस्तू सदोष किंवा चुकीची असल्याशिवाय वस्तू परत करण्याच्या वाहतूक खर्चासाठी मी स्वतः जबाबदार असेन.</p>
-                ) : (
-                  <p>I will notify the Seller of any defective or incorrect items within 2 days of delivery. I am responsible for return shipping costs unless the item is defective or incorrect.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '८. ऑर्डर रद्द करणे :-' : '8. ORDER CANCELLATION :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>खरेदीदार ऑर्डर दिल्यानंतर २४ तासांच्या आत विक्रेत्याशी संपर्क साधून आपली ऑर्डर रद्द करू शकतात. गैरवापर, दुर्लक्ष किंवा अनधिकृत दुरुस्तीमुळे वस्तू खराब झाल्यास विक्रेता जबाबदार नाही.</p>
-                ) : (
-                  <p>The Buyer may cancel their order within 24 hours of placing it by contacting the Seller. The Seller is not liable if the product is damaged due to misuse, neglect, or unauthorized repair.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '९. अंशतः डिलिव्हरी (पार्ट डिलिव्हरी) :-' : '9. PART DELIVERY :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>अंशतः डिलिव्हरीच्या बाबतीत (पार्ट डिलिव्हरी), मी डिलिव्हरी चार्जेस तसेच इन्स्टॉलेशन चार्जेस भरण्यास सहमत आहे. ज्या उत्पादनांची डिलिव्हरी होणार आहे त्यांची पूर्ण रक्कम आणि भविष्यात डिलीव्हर होणाऱ्या उर्वरित उत्पादनांचे ४०% ॲडव्हान्स देण्यास मी सहमत आहे.</p>
-                ) : (
-                  <p>In case of part delivery, I agree to pay the delivery charges as well as installation charges. I agree to pay the full amount of the products which are to be delivered and 40% Advance of the remaining products which will be delivered in future.</p>
-                )}
-              </div>
-
-              <div>
-                <strong className="block text-stone-900 border-b pb-0.5 mb-1 text-[11px] uppercase">
-                  {language === 'mr' ? '१०. नियमांची स्वीकृती :-' : '10. ACCEPTANCE OF TERMS :-'}
-                </strong>
-                {language === 'mr' ? (
-                  <p>ॲडव्हान्स पेमेंट करून, मी कबूल करतो की मी हे नियम आणि अटी वाचल्या आहेत, समजून घेतल्या आहेत आणि मी त्यांच्याशी सहमत आहे.</p>
-                ) : (
-                  <p>By making the advance payment, I acknowledge that I have read, understood, and agree to these terms and conditions.</p>
-                )}
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-12 text-center text-xs font-mono border-t pt-8 mt-4">
-            <div className="space-y-12">
-              <span className="text-stone-400 block font-light">
-                {language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "Bhise'z Workshop Management"}
-              </span>
-              <div>
-                <div className="h-0.5 w-40 bg-black mx-auto" />
-                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">
-                  {language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}
-                </span>
+          <div className="border-t border-stone-300 pt-6">
+            <p className="text-[9px] text-stone-400 leading-normal mb-8">
+              {language === 'mr' ? 'हा करार डिजिटल स्वरूपात जतन केला गेला आहे आणि कायदेशीररित्या दोन्ही बाजूंना बांधील आहे.' : 'This agreement is logged electronically and is legally binding upon both signing parties.'}
+            </p>
+            <div className="flex justify-between items-end font-sans text-[10px] font-bold text-stone-400">
+              <div className="text-center w-36 border-t border-black pt-1 uppercase">
+                Customer Signature
               </div>
-            </div>
-            <div className="space-y-12">
-              <span className="text-stone-450 block font-light">
-                {language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'Client Confirmation Acceptance'}
-              </span>
-              <div>
-                <div className="h-0.5 w-40 bg-black mx-auto" />
-                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">
-                  {language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}
-                </span>
+              <div className="text-center text-black font-mono text-[11px] font-bold">
+                Shri Samarth Woodworks Seal
+              </div>
+              <div className="text-center w-36 border-t border-black pt-1 uppercase">
+                Admin Signature
               </div>
             </div>
           </div>
         </div>
-
-
-
       </div>
-
     </div>
   );
 }

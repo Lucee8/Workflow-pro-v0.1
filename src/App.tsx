@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, CRMAgreement } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -31,7 +31,8 @@ import {
   deleteCRMNoteFromFirebase,
   saveCRMAttachmentToFirebase,
   deleteCRMAttachmentFromFirebase,
-  saveCRMTimelineEventToFirebase
+  saveCRMTimelineEventToFirebase,
+  saveCRMAgreementToFirebase
 } from './db/firebaseService';
 
 // Component imports
@@ -464,6 +465,15 @@ export default function App() {
     saveCRMTimelineEventToFirebase(item);
   };
 
+  const handleSaveCRMAgreement = (item: CRMAgreement) => {
+    const exists = db.crmAgreements.some(a => a.id === item.id);
+    const updated = exists
+      ? db.crmAgreements.map(a => a.id === item.id ? item : a)
+      : [item, ...db.crmAgreements];
+    updateDbState({ ...db, crmAgreements: updated });
+    saveCRMAgreementToFirebase(item);
+  };
+
   // Nav to specific order details tab
   const handleViewOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -889,8 +899,10 @@ export default function App() {
                 payments={db.payments}
                 crmQuotations={db.crmQuotations}
                 crmCustomers={db.crmCustomers}
+                crmAgreements={db.crmAgreements}
                 preselectedQuotationId={preselectedQuotationId}
                 onClearPreselectedQuotation={() => setPreselectedQuotationId(null)}
+                onSaveCRMAgreement={handleSaveCRMAgreement}
                 onSendToWorkOrder={(draft) => {
                   setWorkOrderDraft(draft);
                   setCurrentTab('create_order');

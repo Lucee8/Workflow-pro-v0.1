@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, CRMAgreement } from '../types';
 
 // Connect with proper authentication securely or fall back to unauthenticated guest mode if Auth is not enabled in Firebase Console
 export async function authenticateFirebase(): Promise<boolean> {
@@ -120,6 +120,7 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
     await syncCollectionToFirestore('crmNotes', seedData.crmNotes || []);
     await syncCollectionToFirestore('crmAttachments', seedData.crmAttachments || []);
     await syncCollectionToFirestore('crmTimelineEvents', seedData.crmTimelineEvents || []);
+    await syncCollectionToFirestore('crmAgreements', seedData.crmAgreements || []);
 
     console.log("Database initialization and synchronization sync phase complete.");
   } catch (error) {
@@ -163,6 +164,7 @@ export function syncFirestore(
   listenCollection('crmNotes', (docs) => onUpdate({ crmNotes: docs as CRMNote[] }));
   listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
   listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
+  listenCollection('crmAgreements', (docs) => onUpdate({ crmAgreements: docs as CRMAgreement[] }));
 
   return () => {
     unsubscribers.forEach(unsub => unsub());
@@ -387,4 +389,23 @@ export async function saveCRMTimelineEventToFirebase(item: CRMTimelineEvent): Pr
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
+
+export async function saveCRMAgreementToFirebase(item: CRMAgreement): Promise<void> {
+  const path = `crmAgreements/${item.id}`;
+  try {
+    await setDoc(doc(db, 'crmAgreements', item.id), cleanUndefined(item));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCRMAgreementFromFirebase(id: string): Promise<void> {
+  const path = `crmAgreements/${id}`;
+  try {
+    await deleteDoc(doc(db, 'crmAgreements', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
 

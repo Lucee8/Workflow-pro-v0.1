@@ -311,4 +311,50 @@ export interface CRMTimelineEvent {
   operator: string;
 }
 
+export interface CRMAgreement {
+  id: string;
+  customer_id?: string;
+  customer_name: string;
+  whatsapp_no: string;
+  address: string;
+  order_date: string;
+  delivery_date: string;
+  polish_shade: string;
+  payment_mode: 'CASH' | 'BANK';
+  type_of_polish: 'HAND' | 'MACHINE';
+  products: {
+    id: string;
+    quotation_id?: string;
+    order_no: string;
+    article_no: string;
+    to_article_no?: string;
+    category: string;
+    sub_category: string;
+    size: string;
+    custom_size: string;
+    design_type: 'Standard' | 'Custom';
+    material: string;
+    finish_type: string;
+    color_shade: string;
+    quantity: number;
+    quoted_rate: number;
+    cushion_cost: number;
+    hardware_additions: number;
+    discount_given: number;
+    packing_forwarding: number;
+    transportation_charges: number;
+    advance_received: number;
+    special_notes: string;
+    product_name: string;
+    item_description: string;
+    ref_images: Array<{ id: string; url: string; type: 'Design Reference' }>;
+  }[];
+  total_invoiced: number;
+  total_advance_paid: number;
+  outstanding_balance: number;
+  created_at: string;
+  created_by: string;
+}
+
+
 
