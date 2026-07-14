@@ -248,7 +248,7 @@ export function saveState(state: AppState) {
   }
 }
 
-// Generate serial formula: YY/MM/BH(1st 2 chars of name)/0000(sr.no. in series)
+// Generate serial formula: YY/MM/IK(1st char of 1st name and 1st char of last name)/0000(sr.no. in series)
 export function generateArticleNumber(
   category: string,
   carpenterId: string,
@@ -260,7 +260,20 @@ export function generateArticleNumber(
   const mm = String(date.getMonth() + 1).padStart(2, '0');
 
   const carpenter = allUsers.find(u => u.id === carpenterId);
-  const namePart = carpenter ? carpenter.name.substring(0, 2).toUpperCase() : 'XX';
+  let namePart = 'XX';
+  if (carpenter) {
+    const parts = carpenter.name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      namePart = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    } else if (parts.length === 1 && parts[0]) {
+      namePart = parts[0].substring(0, 2).toUpperCase();
+      if (namePart.length < 2) {
+        namePart = (namePart + 'X').substring(0, 2);
+      }
+    } else {
+      namePart = carpenter.initials || 'XX';
+    }
+  }
 
   // Count existing orders globally as series count
   const nextSerial = allOrders.length + 1;

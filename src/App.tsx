@@ -51,6 +51,7 @@ import CustomersTab from './components/CustomersTab';
 import DetailOrderFormTab from './components/DetailOrderFormTab';
 import MaterialRequirementPlanning from './components/MaterialRequirementPlanning';
 import CRMTab from './components/CRMTab';
+import CarpenterReportsTab from './components/CarpenterReportsTab';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2 } from 'lucide-react';
@@ -109,6 +110,19 @@ export default function App() {
         unsubscribe();
       }
     };
+  }, []);
+
+  // Handle direct url access for /carpenter-reports
+  React.useEffect(() => {
+    const handlePathname = () => {
+      const path = window.location.pathname;
+      if (path === '/carpenter-reports') {
+        setCurrentTab('carpenter-reports');
+      }
+    };
+    handlePathname();
+    window.addEventListener('popstate', handlePathname);
+    return () => window.removeEventListener('popstate', handlePathname);
   }, []);
 
   // Save database shifts on mutations
@@ -789,26 +803,16 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: REPORTS GRAPHS VIEW (Simulated, Admin Only) */}
-          {currentTab === 'reports' && isAdmin && (
+          {/* TAB: CARPENTER REPORTS VIEW (Admin / Manager Only) */}
+          {currentTab === 'carpenter-reports' && (isAdmin || isManager) && (
             <motion.div
-              key="reports"
+              key="carpenter-reports"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
               className="space-y-6"
             >
-              <div>
-                <h1 className="text-2xl font-black text-stone-900 tracking-tight font-display">Workshop Reports</h1>
-                <p className="text-stone-500 text-xs">Deep dive monthly volume logs and staff workload capacities</p>
-              </div>
-              <div className="bg-white p-12 text-center rounded-2xl border border-stone-200">
-                <SlidersHorizontal size={28} className="mx-auto text-stone-300 mb-2" />
-                <p className="text-xs font-bold text-stone-550">Analytical dashboards are loaded automatically inside the workshop database.</p>
-                <button onClick={() => setCurrentTab('dashboard')} className="mt-4 px-4 py-1.5 bg-[#593622] hover:bg-[#402414] text-white font-bold text-xs rounded-xl">
-                  Go back to Dashboard
-                </button>
-              </div>
+              <CarpenterReportsTab db={db} currentUser={currentUser!} />
             </motion.div>
           )}
 

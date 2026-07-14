@@ -82,6 +82,7 @@ import {
   Pie, 
   Cell 
 } from 'recharts';
+import { formatToDDMMYYYY } from '../utils';
 
 interface CRMTabProps {
   db: AppState;
@@ -126,6 +127,52 @@ export default function CRMTab({
 }: CRMTabProps) {
   const [subTab, setSubTab] = React.useState<'dashboard' | 'customers' | 'quotations' | 'followups'>('dashboard');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(null);
+
+  function generateCRMCustomerId(allCustomers: CRMCustomer[]): string {
+    const d = new Date();
+    const yy = d.getFullYear().toString().slice(-2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const prefix = `CRM-${yy}-${mm}-`;
+
+    let maxSerial = 0;
+    if (allCustomers && allCustomers.length > 0) {
+      allCustomers.forEach((c) => {
+        if (c.id && c.id.startsWith(prefix)) {
+          const serialPart = c.id.substring(prefix.length);
+          const serialNum = parseInt(serialPart, 10);
+          if (!isNaN(serialNum) && serialNum > maxSerial) {
+            maxSerial = serialNum;
+          }
+        }
+      });
+    }
+    const nextSerial = maxSerial + 1;
+    const sss = String(nextSerial).padStart(3, '0');
+    return `${prefix}${sss}`;
+  }
+
+  function generateCRMQuotationId(allQuotations: CRMQuotation[]): string {
+    const d = new Date();
+    const yy = d.getFullYear().toString().slice(-2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const prefix = `QT-${yy}-${mm}-`;
+
+    let maxSerial = 0;
+    if (allQuotations && allQuotations.length > 0) {
+      allQuotations.forEach((q) => {
+        if (q.id && q.id.startsWith(prefix)) {
+          const serialPart = q.id.substring(prefix.length);
+          const serialNum = parseInt(serialPart, 10);
+          if (!isNaN(serialNum) && serialNum > maxSerial) {
+            maxSerial = serialNum;
+          }
+        }
+      });
+    }
+    const nextSerial = maxSerial + 1;
+    const sss = String(nextSerial).padStart(3, '0');
+    return `${prefix}${sss}`;
+  }
   
   // Dialog States
   const [showAddCustModal, setShowAddCustModal] = React.useState(false);
@@ -496,7 +543,7 @@ export default function CRMTab({
     if (!hasWriteAccess) return;
     const formData = new FormData(e.currentTarget);
     
-    const custId = editingCustomer ? editingCustomer.id : `CRM-C-${Math.floor(10000 + Math.random() * 90000)}`;
+    const custId = editingCustomer ? editingCustomer.id : generateCRMCustomerId(db.crmCustomers || []);
     const newCust: CRMCustomer = {
       id: custId,
       name: formData.get('name') as string,
@@ -697,7 +744,7 @@ export default function CRMTab({
       return;
     }
 
-    const quoteId = `QT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const quoteId = generateCRMQuotationId(db.crmQuotations || []);
     const nextEstimateNo = (db.crmQuotations && db.crmQuotations.length > 0) 
       ? Math.max(0, ...db.crmQuotations.map(q => q.estimateNo || 0)) + 1 
       : 1;
@@ -729,7 +776,7 @@ export default function CRMTab({
       customer_id: custId,
       type: 'quotation_sent',
       title: 'Quotation Sent to Client',
-      description: `Created quotation ${quoteId} for customized "${item.furnitureItem}" valued at ₹${finalAmount.toLocaleString('en-IN')}. Sent with validity until ${newQuote.validUntil}.`,
+      description: `Created quotation ${quoteId} for customized "${item.furnitureItem}" valued at ₹${finalAmount.toLocaleString('en-IN')}. Sent with validity until ${formatToDDMMYYYY(newQuote.validUntil)}.`,
       timestamp: new Date().toISOString(),
       operator: currentUser.name
     });
@@ -767,7 +814,7 @@ export default function CRMTab({
   const filteredCustomersList = (db.crmCustomers || []).filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
       c.phone.includes(custSearch) ||
-      (c.companyName && c.companyName.toLowerCase().includes(custSearch.toLowerCase())) ||
+      (c.productRequirement && c.productRequirement.toLowerCase().includes(custSearch.toLowerCase())) ||
       (c.city && c.city.toLowerCase().includes(custSearch.toLowerCase())) ||
       c.id.toLowerCase().includes(custSearch.toLowerCase());
 
@@ -1078,7 +1125,7 @@ export default function CRMTab({
                       </div>
                       <p className="text-[11px] text-stone-600">{act.description}</p>
                       <div className="text-[9px] text-stone-400 font-mono uppercase tracking-wider">
-                        BY {act.operator} | STAMP: {new Date(act.timestamp).toLocaleDateString()}
+                        BY {act.operator} | STAMP: {formatToDDMMYYYY(act.timestamp)}
                       </div>
                     </div>
                   ))
@@ -1115,7 +1162,7 @@ export default function CRMTab({
                         type="text"
                         value={custSearch}
                         onChange={(e) => setCustSearch(e.target.value)}
-                        placeholder="Search by name, company, city, mobile..."
+                        placeholder="Search by name, requirement, city, mobile..."
                         className="w-full pl-9 pr-4 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-[#593622] transition"
                       />
                     </div>
@@ -1263,7 +1310,7 @@ export default function CRMTab({
                               <th className="p-4">Journey Status</th>
                               <th className="p-4">Source</th>
                               <th className="p-4">Budget</th>
-                              <th className="p-4">Company</th>
+                              <th className="p-4">Product Requirement</th>
                               <th className="p-4">Mobile Number</th>
                               <th className="p-4">Location</th>
                               <th className="p-4">Preferred Reach</th>
@@ -1295,7 +1342,7 @@ export default function CRMTab({
                                   <td className="p-4 font-mono font-bold text-stone-900">
                                     {cust.budget ? `₹${Number(cust.budget).toLocaleString('en-IN')}` : '-'}
                                   </td>
-                                  <td className="p-4 text-stone-500">{cust.companyName || '-'}</td>
+                                  <td className="p-4 text-stone-500 max-w-xs truncate" title={cust.productRequirement}>{cust.productRequirement || '-'}</td>
                                   <td className="p-4 font-mono">{cust.phone}</td>
                                   <td className="p-4">{cust.city ? `${cust.city}, ${cust.state || ''}` : '-'}</td>
                                   <td className="p-4">
@@ -1460,7 +1507,7 @@ export default function CRMTab({
                         )}
 
                         <div className="border-t border-stone-100 pt-3 text-[10px] text-stone-400 font-bold font-mono">
-                          RECORD CREATED: {new Date(selectedCustomer.created_at).toLocaleDateString()}
+                          RECORD CREATED: {formatToDDMMYYYY(selectedCustomer.created_at)}
                         </div>
                       </div>
 
@@ -1645,7 +1692,7 @@ export default function CRMTab({
                                 <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                   <div>
                                     <strong className="text-xs text-stone-950 font-bold block">{q.id}</strong>
-                                    <span className="text-[10px] text-stone-500">₹{(q.totalAmount ?? 0).toLocaleString('en-IN')} | Valid: {q.validUntil}</span>
+                                    <span className="text-[10px] text-stone-500">₹{(q.totalAmount ?? 0).toLocaleString('en-IN')} | Valid: {formatToDDMMYYYY(q.validUntil)}</span>
                                   </div>
                                   <div className="flex items-center gap-1.5">
                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
@@ -1777,7 +1824,7 @@ export default function CRMTab({
                                   <p className="text-xs text-stone-800 leading-snug">{n.note}</p>
                                   <div className="flex justify-between items-center text-[9px] text-stone-400 font-mono mt-2 font-bold uppercase">
                                     <span>{n.author}</span>
-                                    <span>{new Date(n.timestamp).toLocaleDateString()}</span>
+                                    <span>{formatToDDMMYYYY(n.timestamp)}</span>
                                   </div>
                                   {hasWriteAccess && (
                                     <button
@@ -1811,7 +1858,7 @@ export default function CRMTab({
                                   <strong className="text-stone-900 block font-bold leading-tight">{evt.title}</strong>
                                   <p className="text-stone-600 text-[11px] leading-snug">{evt.description}</p>
                                   <span className="text-[9px] text-stone-400 font-mono block">
-                                    {new Date(evt.timestamp).toLocaleDateString()} | BY: {evt.operator}
+                                    {formatToDDMMYYYY(evt.timestamp)} | BY: {evt.operator}
                                   </span>
                                 </div>
                               ))
@@ -1856,7 +1903,7 @@ export default function CRMTab({
                   <tr>
                     <th className="p-4">Quotation ID</th>
                     <th className="p-4">Customer Lead</th>
-                    <th className="p-4">Furniture Scope</th>
+                    <th className="p-4">Item Name</th>
                     <th className="p-4">Valid Until</th>
                     <th className="p-4">Material Specified</th>
                     <th className="p-4">Estimated Value</th>
@@ -1873,7 +1920,7 @@ export default function CRMTab({
                           <td className="p-4 font-mono font-bold text-[#593622]">{quote.id}</td>
                           <td className="p-4 text-stone-900 font-bold">{quote.customer_name}</td>
                           <td className="p-4">{firstItem?.furnitureItem || 'Custom scope'}</td>
-                          <td className="p-4 font-mono">{quote.validUntil}</td>
+                          <td className="p-4 font-mono">{formatToDDMMYYYY(quote.validUntil)}</td>
                           <td className="p-4 text-stone-500 text-[11px]">{firstItem?.material || '-'}</td>
                           <td className="p-4 font-mono font-bold text-stone-950">₹{(quote.totalAmount ?? 0).toLocaleString('en-IN')}</td>
                           <td className="p-4">
@@ -2007,7 +2054,7 @@ export default function CRMTab({
 
                     <div className="space-y-1 pt-2.5 border-t border-stone-100 text-[11px] text-stone-500 font-medium">
                       <p className="flex items-center gap-1.5">
-                        <Calendar size={12} className="text-stone-400" /> Date: <span className="text-stone-800 font-mono font-bold">{f.date}</span>
+                        <Calendar size={12} className="text-stone-400" /> Date: <span className="text-stone-800 font-mono font-bold">{formatToDDMMYYYY(f.date)}</span>
                       </p>
                       <p className="flex items-center gap-1.5">
                         <Clock size={12} className="text-stone-400" /> Time: <span className="text-stone-800 font-mono font-bold">{f.time}</span>
@@ -2717,7 +2764,9 @@ export default function CRMTab({
           return helper(Math.round(num)).trim() + ' Rupees Only';
         };
 
-        const shareText = `Hello ${customer?.name || viewingEstimateQuote.customer_name},\n\nPlease find the custom price Estimate from *Bhisez Furniture*:\n\n*Estimate No:* QT-${viewingEstimateQuote.id}\n*Date:* ${new Date(viewingEstimateQuote.created_at).toLocaleDateString('en-GB')}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Price/Unit:* ₹${(firstItem?.unitPrice || 0).toLocaleString('en-IN')}\n*Discount:* ₹${itemDiscount.toLocaleString('en-IN')}\n*GST (${itemGstPercent}%):* ₹${itemGstAmount.toLocaleString('en-IN')}\n*Net Total:* ₹${viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}\n\nThank you for choosing Bhisez Furniture!`;
+        const quoteDisplayId = viewingEstimateQuote.id.startsWith('QT-') ? viewingEstimateQuote.id : `QT-${viewingEstimateQuote.id}`;
+
+        const shareText = `Hello ${customer?.name || viewingEstimateQuote.customer_name},\n\nPlease find the custom price Estimate from *Bhisez Furniture*:\n\n*Estimate No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(viewingEstimateQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Price/Unit:* ₹${(firstItem?.unitPrice || 0).toLocaleString('en-IN')}\n*Discount:* ₹${itemDiscount.toLocaleString('en-IN')}\n*GST (${itemGstPercent}%):* ₹${itemGstAmount.toLocaleString('en-IN')}\n*Net Total:* ₹${viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}\n\nThank you for choosing Bhisez Furniture!`;
         const phoneForWa = customer?.phone ? customer.phone.replace(/\D/g, '') : '';
         const whatsappUrl = phoneForWa
           ? `https://api.whatsapp.com/send?phone=${phoneForWa}&text=${encodeURIComponent(shareText)}`
@@ -2728,7 +2777,7 @@ export default function CRMTab({
           if (!printContent) return;
           const printWindow = window.open('', '_blank');
           if (printWindow) {
-            const htmlString = '<html><head><title>Estimate_QT-' + viewingEstimateQuote.id + '</title>' +
+            const htmlString = '<html><head><title>Estimate_' + quoteDisplayId + '</title>' +
               '<script src="https://cdn.tailwindcss.com"></script>' +
               '<style>' +
               '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
@@ -3032,7 +3081,7 @@ export default function CRMTab({
                           <div className="flex items-center gap-1">
                             <span className="text-slate-600">Date:</span>
                             <span className="hidden print:inline font-bold text-slate-900 font-mono">
-                              {new Date(viewingEstimateQuote.created_at).toLocaleDateString('en-GB')}
+                              {formatToDDMMYYYY(viewingEstimateQuote.created_at)}
                             </span>
                             <input
                               type="date"

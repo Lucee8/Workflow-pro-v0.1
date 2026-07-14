@@ -117,8 +117,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
       }, 500);
 
     } catch (err: any) {
-      console.error("Firebase Google Auth exception:", err);
-      let friendlyMessage = err.message || String(err);
+      const friendlyMessage = err?.message || String(err);
       const isPopupError = 
         friendlyMessage.includes('popup-closed-by-user') || 
         err?.code === 'auth/popup-closed-by-user' ||
@@ -128,13 +127,16 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
         err?.code === 'auth/popup-blocked';
 
       if (isPopupError) {
+        console.warn("Google Auth popup cancelled or blocked by user:", friendlyMessage);
         setErrorMessage('Google Authentication popup was closed or blocked. In an embedded development sandbox (such as these virtual iframes), browsers often block popups or restrict third-party authentication cookies.');
         setIsPopupBlockedError(true);
-      } else if (friendlyMessage.includes('auth/unauthorized-domain')) {
-        setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings. Please authorize this domain in your Firebase console.');
-        setIsPopupBlockedError(false);
       } else {
-        setErrorMessage(`Google Auth Error: ${friendlyMessage}. Please verify your network and credentials and try again.`);
+        console.error("Firebase Google Auth exception:", err);
+        if (friendlyMessage.includes('auth/unauthorized-domain')) {
+          setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings. Please authorize this domain in your Firebase console.');
+        } else {
+          setErrorMessage(`Google Auth Error: ${friendlyMessage}. Please verify your network and credentials and try again.`);
+        }
         setIsPopupBlockedError(false);
       }
     }
