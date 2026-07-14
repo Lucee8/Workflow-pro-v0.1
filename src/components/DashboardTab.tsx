@@ -183,71 +183,7 @@ export default function DashboardTab({
         </motion.div>
       </div>
 
-      {/* Workspace Quick Access Panels */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 font-mono">Workspace Quick Access Panels</h2>
-          <span className="text-[10px] text-amber-700 font-mono font-bold flex items-center gap-1.5 bg-amber-50/50 border border-amber-200/40 px-2 py-0.5 rounded-lg">
-            <span className="h-1.5 w-1.5 bg-amber-500 rounded-full animate-ping shrink-0" />
-            External Active Channels
-          </span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          <motion.a
-            href="https://bhisez-furniture.vercel.app/?view=admin"
-            target="_blank"
-            rel="noopener noreferrer"
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.2, type: 'spring', stiffness: 260, damping: 20 }}
-            whileHover={{ scale: 1.015, y: -2, borderColor: '#593622' }}
-            className="bg-gradient-to-br from-white to-[#fcf8f2] p-4 rounded-2xl border border-stone-200 shadow-xs hover:shadow-md transition-all flex items-start gap-4 cursor-pointer group"
-          >
-            <div className="bg-[#593622] text-amber-300 p-3 rounded-xl shadow-inner shrink-0 text-xl">
-              🪑
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h4 className="font-display font-black text-stone-900 text-sm tracking-tight">Bhise’z Furniture Admin</h4>
-                <ArrowUpRight size={14} className="text-stone-400 group-hover:text-[#593622] transition-colors shrink-0" />
-              </div>
-              <p className="text-stone-550 text-[11px] font-medium leading-relaxed mt-1">
-                Access full inventory controls, custom wood curation, order dispatch requests, and high-fidelity customer proposals for the main furniture division.
-              </p>
-              <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[#593622] mt-3 group-hover:underline">
-                Launch Workspace Panel &rarr;
-              </div>
-            </div>
-          </motion.a>
 
-          <motion.a
-            href="https://geetas-s-masale-v0-1.onrender.com/admin"
-            target="_blank"
-            rel="noopener noreferrer"
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.24, type: 'spring', stiffness: 260, damping: 20 }}
-            whileHover={{ scale: 1.015, y: -2, borderColor: '#d97706' }}
-            className="bg-gradient-to-br from-white to-[#fffbeb] p-4 rounded-2xl border border-stone-200 shadow-xs hover:shadow-md transition-all flex items-start gap-4 cursor-pointer group"
-          >
-            <div className="bg-amber-600 text-amber-50 p-3 rounded-xl shadow-inner shrink-0 text-xl">
-              🌶️
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h4 className="font-display font-black text-stone-900 text-sm tracking-tight">Geeta’s Masale Admin</h4>
-                <ArrowUpRight size={14} className="text-stone-400 group-hover:text-amber-600 transition-colors shrink-0" />
-              </div>
-              <p className="text-stone-550 text-[11px] font-medium leading-relaxed mt-1">
-                Access spice inventory metrics, wholesale batch dispatch orders, manufacturing tracking, and premium pricing sheets for Geeta's Masale.
-              </p>
-              <div className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 mt-3 group-hover:underline">
-                Launch Workspace Panel &rarr;
-              </div>
-            </div>
-          </motion.a>
-        </div>
-      </div>
 
       {/* Financial & Payment Overview Row */}
       <div className="space-y-3.5">
