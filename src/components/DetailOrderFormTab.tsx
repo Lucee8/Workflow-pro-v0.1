@@ -1208,6 +1208,156 @@ export default function DetailOrderFormTab({
             ))}
           </div>
 
+          {/* IV. CUSTOMER WHATSAPP & PDF TRANSMISSION FLOW */}
+          <div className="bg-white border border-stone-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="border-b pb-2">
+              <span className="bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase font-mono">Section IV</span>
+              <h2 className="text-xs font-black text-emerald-800 uppercase tracking-wider font-display mt-1">IV. Customer WhatsApp &amp; PDF Transmission Flow</h2>
+            </div>
+            
+            <p className="text-stone-500 text-[11px] leading-relaxed">
+              To send this agreement directly to the customer's WhatsApp in professional PDF format, follow these quick steps:
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-stone-50/60 p-3 rounded-xl border border-stone-200 text-center">
+                <span className="inline-flex items-center justify-center bg-stone-200 text-stone-850 h-5 w-5 rounded-full font-bold text-[10px] mb-1.5">1</span>
+                <h4 className="text-[10px] font-bold text-stone-850 uppercase tracking-wider">Save Agreement PDF</h4>
+                <p className="text-[9px] text-stone-500 mt-1 leading-relaxed">Click the brown 'Print Agreement' button in the preview panel, and choose 'Save as PDF' in your print destination.</p>
+              </div>
+              
+              <div className="bg-stone-50/60 p-3 rounded-xl border border-stone-200 text-center">
+                <span className="inline-flex items-center justify-center bg-stone-200 text-stone-850 h-5 w-5 rounded-full font-bold text-[10px] mb-1.5">2</span>
+                <h4 className="text-[10px] font-bold text-stone-850 uppercase tracking-wider">Start WhatsApp Chat</h4>
+                <p className="text-[9px] text-stone-500 mt-1 leading-relaxed">Click the green 'Send WhatsApp' button. It opens active chat with the saved customer WP details with pre-filled summary.</p>
+              </div>
+
+              <div className="bg-stone-50/60 p-3 rounded-xl border border-stone-200 text-center">
+                <span className="inline-flex items-center justify-center bg-stone-200 text-stone-850 h-5 w-5 rounded-full font-bold text-[10px] mb-1.5">3</span>
+                <h4 className="text-[10px] font-bold text-stone-850 uppercase tracking-wider">Attach Saved PDF</h4>
+                <p className="text-[9px] text-stone-500 mt-1 leading-relaxed">Once the WhatsApp interface opens, simply drag and drop or attach the saved PDF agreement file directly into the message box!</p>
+              </div>
+            </div>
+
+            <div className="border border-emerald-100 bg-emerald-50/25 rounded-xl p-3 flex items-center justify-between">
+              <div>
+                <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider block font-mono">Target WhatsApp Recipient</span>
+                <strong className="text-stone-800 text-xs mt-0.5 block">{whatsappNo ? `+91 ${whatsappNo}` : 'No phone number set'}</strong>
+              </div>
+              {whatsappNo ? (
+                <a
+                  href={getWhatsAppUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] uppercase py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-xs"
+                >
+                  <Phone size={10} /> Start Chat
+                </a>
+              ) : (
+                <span className="bg-stone-100 text-stone-500 border border-stone-200 text-[9px] font-mono font-bold uppercase py-1 px-2 rounded-lg flex items-center gap-1">
+                  ⚠️ No Active Number
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* V. REFERENCE DRAWINGS & BLUEPRINTS */}
+          <div className="bg-white border border-stone-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="border-b pb-2">
+              <span className="bg-amber-50 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase font-mono">Section V</span>
+              <h2 className="text-xs font-black text-amber-800 uppercase tracking-wider font-display mt-1">V. Reference Drawings &amp; Blueprints</h2>
+            </div>
+
+            <p className="text-stone-500 text-[11px] leading-relaxed">
+              Upload client-approved furniture sketches, material catalogs, or dynamic reference blueprints. These images will render perfectly on page 3 of the printed agreement.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="border border-dashed border-stone-300 rounded-xl p-4 flex flex-col items-center justify-center bg-stone-50 hover:bg-stone-100/50 cursor-pointer transition min-h-[100px]">
+                <UploadCloud size={24} className="text-[#593622] mb-1.5" />
+                <span className="text-xs font-bold text-stone-850">Upload Files</span>
+                <span className="text-[9px] text-stone-400 mt-0.5 font-mono">Supports PNG, JPG, GIF (Max 5MB)</span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (!files) return;
+                    Array.from(files).forEach((file: any) => {
+                      const reader = new FileReader();
+                      reader.onload = async (event) => {
+                        const rawUrl = event.target?.result as string;
+                        const compressedUrl = rawUrl; // Use directly
+                        setProducts((prev) => {
+                          const updated = [...prev];
+                          if (updated[0]) {
+                            updated[0].refImages = [
+                              ...(updated[0].refImages || []),
+                              {
+                                id: `img_${Math.random().toString(36).substring(2, 9)}`,
+                                url: compressedUrl,
+                                type: 'Design Reference',
+                              }
+                            ];
+                          }
+                          return updated;
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                />
+              </label>
+
+              <div className="border border-stone-200 rounded-xl p-4 bg-stone-50/50 space-y-3 flex flex-col justify-between">
+                <div>
+                  <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block font-mono">Import from URL</span>
+                  <p className="text-[9px] text-stone-500 mt-0.5">Paste a remote image address/link directly to render it.</p>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    id="url-import-input-main"
+                    placeholder="https://example.com/furniture-photo.jpg"
+                    className="flex-1 px-2 py-1.5 bg-white border border-stone-200 focus:outline-none focus:border-[#593622] rounded-lg text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById('url-import-input-main') as HTMLInputElement;
+                      if (input && input.value.trim().startsWith('http')) {
+                        setProducts((prev) => {
+                          const updated = [...prev];
+                          if (updated[0]) {
+                            updated[0].refImages = [
+                              ...(updated[0].refImages || []),
+                              {
+                                id: `img_${Math.random().toString(36).substring(2, 9)}`,
+                                url: input.value.trim(),
+                                type: 'Design Reference',
+                              }
+                            ];
+                          }
+                          return updated;
+                        });
+                        input.value = '';
+                        alert('URL Image added to Page 3 Reference Gallery!');
+                      } else {
+                        alert('Please enter a valid image URL link starting with http/https.');
+                      }
+                    }}
+                    className="bg-[#593622] hover:bg-[#402414] text-white text-[9px] font-bold uppercase px-3 py-1.5 rounded-lg transition"
+                  >
+                    Add URL
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* VI. Workshop delegation action panel */}
           <div className="bg-amber-50/10 border-2 border-amber-500/25 rounded-2xl p-5 space-y-4 shadow-sm">
             <div>
@@ -1253,306 +1403,514 @@ export default function DetailOrderFormTab({
             </div>
           </div>
 
-          <div className="bg-white border border-stone-300 shadow-xl rounded-2xl overflow-hidden p-6 aspect-[1/1.41] flex flex-col justify-between font-serif relative max-w-lg mx-auto text-stone-850 text-xs leading-relaxed">
-            {/* Header branding info */}
-            <div>
-              <div className="flex justify-between items-start border-b-2 border-[#593622] pb-3">
-                <div>
-                  <h1 className="text-sm font-black text-[#593622] tracking-wider uppercase font-sans">
-                    SHRI SAMARTH WOODWORKS
-                  </h1>
-                  <p className="text-[9px] font-sans text-stone-500 uppercase font-semibold">
-                    Premium Teakwood &amp; Bespoke Furniture Manufacturers
-                  </p>
-                </div>
-                <div className="text-right text-[10px] font-mono">
-                  <p className="font-bold text-stone-950">AGREEMENT</p>
-                  <p className="text-stone-500">Date: {formatToDDMMYYYY(orderDate)}</p>
-                </div>
-              </div>
+          <div className="max-h-[85vh] overflow-y-auto pr-2 space-y-6 no-scrollbar border border-stone-200 rounded-2xl bg-stone-100 p-4">
+            <div className="text-center font-bold text-stone-900 text-[10px] tracking-wider uppercase pt-2">
+              LIVE PREVIEW OF DOCUMENT PAGES (A4 PROPORTION)
+            </div>
 
-              {/* Client specifications panel */}
-              <div className="grid grid-cols-2 gap-4 py-4 border-b border-stone-100 font-sans text-[11px]">
+            {/* Page 1: Detail Order Form */}
+            <div className="bg-white border border-stone-300 shadow-md rounded-xl p-5 aspect-[1/1.41] flex flex-col justify-between font-mono relative text-stone-900 text-[9px] leading-relaxed">
+              <div className="border-[2px] border-black p-4 flex flex-col justify-between h-full">
                 <div>
-                  <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Customer Details:</span>
-                  <p className="font-extrabold text-stone-950 mt-0.5">{customerName || '_______________________'}</p>
-                  <p className="text-stone-600 mt-1 flex items-center gap-1 font-semibold">
-                    <Phone size={10} /> {whatsappNo || '___________________'}
-                  </p>
-                  <p className="text-stone-500 mt-1 italic text-[10px] whitespace-pre-wrap">{address || 'No address added yet.'}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Delivery Schedule &amp; Specs:</span>
-                  <p className="font-extrabold text-amber-900 mt-0.5">Delivery: {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_______________________'}</p>
-                  <p className="text-stone-600 mt-1 text-[10px] font-semibold">Polish Shade: <span className="text-stone-950">{polishShade}</span></p>
-                  <p className="text-stone-600 mt-0.5 text-[10px] font-semibold">Polish Standard: <span className="text-stone-950">{typeOfPolish}</span></p>
-                </div>
-              </div>
+                  <div className="text-center font-bold text-[11px] tracking-wider uppercase py-1">
+                    BHISE'Z WORKSHOP - DETAIL ORDER FORM
+                  </div>
+                  <hr className="border-t-2 border-black my-2" />
 
-              {/* Itemized product list table */}
-              <div className="py-4">
-                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-2 font-sans">Combined Order Items ({products.length}):</span>
-                <table className="w-full text-[11px] font-mono text-left">
-                  <thead>
-                    <tr className="border-b border-stone-300 text-[10px] text-stone-400">
-                      <th className="py-1">PRODUCT SPECIFICATIONS</th>
-                      <th className="py-1 text-center">QTY</th>
-                      <th className="py-1 text-right">RATE</th>
-                      <th className="py-1 text-right">SUBTOTAL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p, idx) => {
-                      const pSub = (p.quotedRate * p.qty) + p.cushion + p.hardware + p.packingForwarding + p.transportation - p.discount;
-                      return (
-                        <tr key={p.id || idx} className="border-b border-stone-100">
-                          <td className="py-1.5 font-sans">
-                            <span className="font-black text-stone-950 block text-[11.5px]">#{idx + 1}: {p.productName || 'Handcrafted Furniture'}</span>
-                            <span className="text-[9.5px] text-stone-500 uppercase font-semibold block mt-0.5 font-mono">
-                              {p.category} • {p.subCategory || 'Bespoke'} • Size: {p.size === 'Custom' ? p.customSize : p.size} • Polish: {p.finish}
-                            </span>
-                          </td>
-                          <td className="py-1.5 text-center font-bold">{p.qty}</td>
-                          <td className="py-1.5 text-right">₹{p.quotedRate.toLocaleString()}</td>
-                          <td className="py-1.5 text-right font-bold text-stone-950">₹{pSub.toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[9px] uppercase">
+                    <div>ORDER DATE: {orderDate ? formatToDDMMYYYY(orderDate) : '___________'}</div>
+                    <div>DELIVERY DATE: {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '___________'}</div>
+                    <div>ORDER NO: {products[0]?.orderNo || '___________'}</div>
+                    <div>ARTICLE NO: {products[0]?.articleNo || '___________'}</div>
+                    <div>TO ARTICLE NO: {products[0]?.toArticleNo || '___________'}</div>
+                    <div>WHATSAPP NO: {whatsappNo || '___________'}</div>
+                  </div>
+
+                  <hr className="border-t border-black my-2" />
+
+                  <div className="font-mono text-[9px] space-y-1 uppercase">
+                    <div>CUSTOMER NAME: <span className="font-bold">{customerName || '___________'}</span></div>
+                    <div>ADDRESS: <span className="whitespace-pre-wrap">{address || '___________'}</span></div>
+                  </div>
+
+                  <hr className="border-t border-black my-2.5" />
+
+                  {/* Products map */}
+                  <div className="space-y-4">
+                    {products.map((p, idx) => (
+                      <div key={p.id || idx} className="space-y-1 font-mono text-[9px] uppercase">
+                        {idx === 0 && <span className="font-bold underline block mb-1">PRODUCT DETAILS:</span>}
+                        <div>PRODUCT NAME: {p.productName || p.category} {p.size && `(${p.size === 'Custom' ? p.customSize : p.size})`}</div>
+                        <div className="normal-case">ITEM DESCRIPTION: {p.itemDescription || `Structure: Solid wood. Finish: ${p.finish}. Color: ${p.colorShade}.`}</div>
+                        <div>QTY: {p.qty} &nbsp;&nbsp; UNIT RATE: ₹{p.quotedRate.toLocaleString()} &nbsp;&nbsp; AMOUNT: ₹{(p.quotedRate * p.qty).toLocaleString()}</div>
+                        
+                        <hr className="border-t border-black my-2" />
+                        
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[8.5px]">
+                          <div>QUOTED RATE: ₹{p.quotedRate.toLocaleString()}</div>
+                          <div>CUSHION: ₹{p.cushion.toLocaleString()}</div>
+                          <div>DISCOUNT: ₹{p.discount.toLocaleString()}</div>
+                          <div>HARDWARE: ₹{p.hardware.toLocaleString()}</div>
+                          <div>FINAL RATE: ₹{(p.quotedRate - p.discount).toLocaleString()}</div>
+                          <div>PACKING &amp; FORWARDING: ₹{p.packingForwarding.toLocaleString()}</div>
+                          <div>ADVANCE: ₹{p.advance.toLocaleString()}</div>
+                          <div>TRANSPORTATION: ₹{p.transportation.toLocaleString()}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <hr className="border-t border-dashed border-stone-400 my-2" />
+
+                  <div className="space-y-1 text-[9px] font-mono uppercase">
+                    <div className="flex justify-between">
+                      <span>TOTAL INVOICED:</span>
+                      <span>₹{totalInvoiced.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>TOTAL ADVANCE PAID:</span>
+                      <span>₹{totalAdvancePaid.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-amber-800 text-[10px] border-t border-stone-200 pt-0.5 mt-0.5">
+                      <span>OUTSTANDING BALANCE:</span>
+                      <span>₹{outstandingBalance.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <hr className="border-t border-dashed border-stone-400 my-2" />
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[8.5px] uppercase font-mono">
+                    <div>POLISH SHADE: {polishShade} Finish</div>
+                    <div>PAYMENT MODE: {paymentMode}</div>
+                    <div className="col-span-2">TYPE OF POLISH: {typeOfPolish} ({typeOfPolish === 'HAND' ? 'HAND' : 'MACHINE'})</div>
+                  </div>
+
+                  <hr className="border-t border-black my-3" />
+
+                  <div className="flex justify-between items-end pt-4 text-[8.5px] font-bold font-mono">
+                    <div className="text-center w-36">
+                      <div className="border-b border-black h-1 w-full mb-1"></div>
+                      MANAGER SIGN
+                    </div>
+                    <div className="text-center w-36">
+                      <div className="border-b border-black h-1 w-full mb-1"></div>
+                      CUSTOMER SIGN
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Calculations & signatures block */}
-            <div className="border-t border-stone-200 pt-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1 font-sans text-[10px] text-stone-500">
-                  <p className="font-semibold text-[9px] uppercase text-stone-400 tracking-wider">Payment Structure:</p>
-                  <p>Channel / Mode: <span className="font-extrabold text-stone-900">{paymentMode}</span></p>
-                  <p className="text-[9px] leading-relaxed italic mt-1 text-stone-400">Please clear all pending outstanding balances at delivery validation step.</p>
+            {/* Page 2: Terms & Conditions */}
+            <div className="bg-white border border-stone-300 shadow-md rounded-xl p-5 aspect-[1/1.41] flex flex-col justify-between font-mono relative text-stone-900 text-[9px] leading-relaxed">
+              <div className="border-[2px] border-black p-4 flex flex-col justify-between h-full">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <span>PAGE 2</span>
+                    <span>TERMS AND CONDITIONS</span>
+                    <span>BHISE'Z WORKSHOP</span>
+                  </div>
+                  <hr className="border-t-2 border-black my-2" />
+
+                  {language === 'mr' ? (
+                    <div className="space-y-2 text-[8.5px] leading-relaxed">
+                      <p className="font-bold">१. १. ॲडव्हान्स पेमेंटची आवश्यकता:</p>
+                      <p>काम सुरू करण्यापूर्वी मी एकूण खरेदी खर्चाच्या <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. ॲडव्हान्स पेमेंट रक्कम <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span> आहे.</p>
+                      
+                      <p className="font-bold">२. २. पेमेंट शेड्युल:</p>
+                      <p>करारावर स्वाक्षरी केल्यानंतर लगेचच पेमेंट देय आहे. करारामध्ये नमूद केलेल्या देयक वेळापत्रकानुसार उर्वरित देयके दिली जातील. माल पाठविण्यापूर्वी पूर्ण पेमेंट मिळणे आवश्यक आहे.</p>
+                      
+                      <p className="font-bold">३. ३. नॉन-रिफंडेबल क्लॉज:</p>
+                      <p>सेवा प्रदात्याकडून कराराचा भंग झाल्यास वगळता ॲडव्हान्स पेमेंट नॉन-रिफंडेबल असेल. २४ तासानंतर ॲडव्हान्स पेमेंट परत केले जाणार नाही.</p>
+                      
+                      <p className="font-bold">४. ४. सेवा सुरू करणे:</p>
+                      <p>ॲडव्हान्स पेमेंट मिळाल्यानंतर आणि आवश्यक कागदपत्रे किंवा माहिती मिळाल्यानंतर काम सुरू होईल. पेमेंटला विलंब झाल्यास उत्पादनास विलंब होऊ शकतो.</p>
+                      
+                      <p className="font-bold">५. ५. कामाची व्याप्ती:</p>
+                      <p>मूळ ऑर्डरमधील कोणतेही अतिरिक्त बदल किंवा काम अतिरिक्त शुल्कास अधीन असेल.</p>
+                      
+                      <p className="font-bold">६. ६. डिलिव्हरी:</p>
+                      <p>अचूक डिलिव्हरी माहिती प्रदान करण्यास मी जबाबदार आहे. पुरवलेली माहिती चुकीची किंवा अपूर्ण असल्यास डिलिव्हरीच्या अपयशासाठी विक्रेता जबाबदार नाही. डिलिव्हरी तारीख २-३ दिवसांनी बदलू शकते.</p>
+
+                      <p className="font-bold">७. ७. परतावा आणि रीफंड:</p>
+                      <p>डिलिव्हरीच्या २ दिवसांच्या आत मी कोणत्याही सदोष किंवा चुकीच्या वस्तूंची माहिती विक्रेत्याला देईन. वस्तू सदोष असल्याशिवाय रिटर्न शिपिंगच्या खर्चासाठी मी जबाबदार राहीन.</p>
+
+                      <p className="font-bold">८. ८. ऑर्डर रद्द करणे:</p>
+                      <p>ऑर्डर दिल्यानंतर २४ तासांच्या आत ग्राहक ती रद्द करू शकतात. गैरवापर किंवा चुकीच्या दुरुस्तीमुळे नुकसान झाल्यास विक्रेता जबाबदार नाही.</p>
+
+                      <p className="font-bold">९. ९. अंशतः डिलिव्हरी:</p>
+                      <p>अंशतः डिलिव्हरी झाल्यास, मी डिलिव्हरी आणि इन्स्टॉलेशन खर्च देण्यास सहमत आहे. डिलिव्हरी होणाऱ्या वस्तूंची पूर्ण रक्कम आणि भविष्यात डिलिव्हरी होणाऱ्या उर्वरित वस्तूंच्या ४०% रक्कम मी देईन.</p>
+
+                      <p className="font-bold">१०. १०. अटींची स्वीकृती:</p>
+                      <p>ॲडव्हान्स पेमेंट करून, मी कबूल करतो की मी या अटी आणि शर्ती वाचल्या, समजल्या ​​आणि त्यांच्याशी सहमत आहे.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 text-[7.5px] leading-tight">
+                      <div>
+                        <strong className="block">1. 1. ADVANCE PAYMENT REQUIREMENT:</strong>
+                        <span>I agree to pay an advance payment amounting <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span> of the total order cost prior to the commencement of work. The advance payment amount is <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span>.</span>
+                      </div>
+                      <div>
+                        <strong className="block">2. 2. PAYMENT SCHEDULE:</strong>
+                        <span>The advance payment is due immediately upon signing the contract or agreement. Subsequent payments will be made as per the agreed payment schedule outlined in the main contract. Full payment must be received before the dispatch of goods.</span>
+                      </div>
+                      <div>
+                        <strong className="block">3. 3. NON-REFUNDABLE CLAUSE:</strong>
+                        <span>The advance payment is non-refundable except in the event of a breach of contract by the Service Provider. Advance payment will not be refunded after 24 hours.</span>
+                      </div>
+                      <div>
+                        <strong className="block">4. 4. SERVICE COMMENCEMENT:</strong>
+                        <span>Work will commence upon receipt of the advance payment and any required documentation or information from you about your requirement. Any delay in the advance payment may result in a corresponding delay in the commencement of manufacturing.</span>
+                      </div>
+                      <div>
+                        <strong className="block">5. 5. SCOPE OF WORK:</strong>
+                        <span>Any additional work or changes to the initial order will be subject to additional charges.</span>
+                      </div>
+                      <div>
+                        <strong className="block">6. 6. DELIVERY:</strong>
+                        <span>I am responsible for providing accurate delivery information. The Seller is not liable for delivery failures due to incorrect or incomplete information provided by me. The delivery date may vary by 2-3 days.</span>
+                      </div>
+                      <div>
+                        <strong className="block">7. 7. RETURNS AND REFUNDS:</strong>
+                        <span>I will notify the Seller of any defective or incorrect items within 2 days of delivery. I am responsible for return shipping costs unless the item is defective or incorrect.</span>
+                      </div>
+                      <div>
+                        <strong className="block">8. 8. ORDER CANCELLATION:</strong>
+                        <span>The Buyer may cancel their order within 24 hours of placing it by contacting the Seller. The Seller is not liable if the product is damaged due to misuse, neglect, or unauthorized repair.</span>
+                      </div>
+                      <div>
+                        <strong className="block">9. 9. PART DELIVERY:</strong>
+                        <span>In case of part delivery, I agree to pay the delivery charges as well as installation charges. I agree to pay the full amount of the products which are to be delivered and 40% Advance of the remaining products which will be delivered in future.</span>
+                      </div>
+                      <div>
+                        <strong className="block">10. 10. ACCEPTANCE OF TERMS:</strong>
+                        <span>By making the advance payment, I acknowledge that I have read, understood, and agree to these terms and conditions.</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1.5 font-mono text-xs">
-                  <div className="flex justify-between text-stone-600">
-                    <span>Invoice Value:</span>
-                    <span>₹{totalInvoiced.toLocaleString()}</span>
+
+                <div className="flex justify-between items-end pt-4 text-[8.5px] font-bold mt-auto">
+                  <div className="text-center w-36">
+                    <div className="border-b border-black h-1 w-full mb-1"></div>
+                    MANAGER SIGNATURE
                   </div>
-                  <div className="flex justify-between text-emerald-800 font-bold border-b border-stone-100 pb-1">
-                    <span>Total Advance:</span>
-                    <span>- ₹{totalAdvancePaid.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between font-black text-[#593622] text-[13px] uppercase pt-1">
-                    <span>Balance Due:</span>
-                    <span>₹{outstandingBalance.toLocaleString()}</span>
+                  <div className="text-center w-36">
+                    <div className="border-b border-black h-1 w-full mb-1"></div>
+                    CUSTOMER SIGNATURE
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Legal Signatures */}
-              <div className="flex justify-between items-end pt-8 font-sans text-[9px] font-bold text-stone-400">
-                <div className="text-center w-28 border-t border-stone-300 pt-1 uppercase">
-                  Customer Seal/Sign
+            {/* Page 3: Reference Images */}
+            <div className="bg-white border border-stone-300 shadow-md rounded-xl p-5 aspect-[1/1.41] flex flex-col justify-between font-mono relative text-stone-900 text-[9px] leading-relaxed">
+              <div className="border-[2px] border-black p-4 flex flex-col justify-between h-full">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <span>PAGE 3</span>
+                    <span>REFERENCE IMAGES</span>
+                    <span>BHISE'Z WORKSHOP</span>
+                  </div>
+                  <hr className="border-t-2 border-black my-2" />
+
+                  {products.flatMap(p => p.refImages || []).length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                      {products.flatMap(p => p.refImages || []).map((img, idx) => (
+                        <div key={img.id || idx} className="border border-black rounded-lg p-2 bg-white text-center flex flex-col justify-between items-center">
+                          <div className="aspect-[4/3] bg-stone-50 flex items-center justify-center overflow-hidden rounded-md mb-2 max-h-[120px] w-full border border-stone-200">
+                            <img
+                              src={img.url}
+                              alt={`Ref #${idx + 1}`}
+                              referrerPolicy="no-referrer"
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </div>
+                          <span className="text-[9px] font-bold text-stone-900 font-mono">Ref #{idx + 1}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="border border-dashed border-stone-300 rounded-xl p-10 text-center text-stone-400 font-mono text-[9px] italic mt-6">
+                      No design reference drawings uploaded. Use Section V to map drawings to page 3 of this document.
+                    </div>
+                  )}
                 </div>
-                <div className="text-center text-[#593622] font-mono text-[10px] font-black italic">
-                  Shri Samarth Woodworks
-                </div>
-                <div className="text-center w-28 border-t border-stone-300 pt-1 uppercase">
-                  Authorized Admin Sign
+
+                <div className="flex justify-between items-end pt-4 text-[8.5px] font-bold mt-auto">
+                  <div className="text-center w-36">
+                    <div className="border-b border-black h-1 w-full mb-1"></div>
+                    MANAGER SIGNATURE
+                  </div>
+                  <div className="text-center w-36">
+                    <div className="border-b border-black h-1 w-full mb-1"></div>
+                    CUSTOMER SIGNATURE
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Quick actions box */}
-          {whatsappNo && (
-            <a
-              href={getWhatsAppUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex-1 py-2.5 bg-[#593622] hover:bg-[#402414] text-white font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
             >
-              <Phone size={14} /> Send Agreement Summary to WhatsApp
-            </a>
-          )}
+              <Printer size={14} /> Print Agreement Papers
+            </button>
+            {whatsappNo && (
+              <a
+                href={getWhatsAppUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl inline-flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+              >
+                <Phone size={14} /> Send WhatsApp Specification
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
       {/* HTML PRINT TEMPLATE (Pure Printable layout, visible only during print stylesheet trigger) */}
-      <div id="print-area" className="hidden print:block p-10 font-serif text-xs text-black bg-white space-y-10 leading-relaxed">
+      <div id="print-area" className="hidden print:block p-8 font-mono text-[10px] text-black bg-white space-y-10 leading-relaxed">
         {/* Printable Page 1 */}
-        <div className="h-[297mm] flex flex-col justify-between p-8 bg-white border border-transparent">
+        <div className="h-[285mm] flex flex-col justify-between p-4 bg-white border-[2.5px] border-black">
           <div>
-            {/* Header branding */}
-            <div className="flex justify-between items-start border-b-2 border-black pb-4">
-              <div>
-                <h1 className="text-xl font-extrabold uppercase font-sans tracking-wide">
-                  SHRI SAMARTH WOODWORKS
-                </h1>
-                <p className="text-[10px] text-stone-600 font-semibold font-sans">
-                  Premium Custom Teakwood Manufacturers &amp; Carpentry
-                </p>
-                <p className="text-[9px] text-stone-500 font-sans mt-0.5">
-                  Workshop Address: Gat No 182, Woodworks Line, Maharashtra, India
-                </p>
-              </div>
-              <div className="text-right font-mono text-[10px]">
-                <h2 className="text-sm font-bold tracking-widest uppercase">Purchase Contract</h2>
-                <p className="mt-1">Order Ref: AGR-{new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2)}</p>
-                <p className="mt-0.5">Date: {formatToDDMMYYYY(orderDate)}</p>
-              </div>
+            <div className="text-center font-bold text-[12px] tracking-wider uppercase py-1">
+              BHISE'Z WORKSHOP - DETAIL ORDER FORM
+            </div>
+            <hr className="border-t-2 border-black my-2" />
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10px] uppercase">
+              <div>ORDER DATE: {orderDate ? formatToDDMMYYYY(orderDate) : '___________'}</div>
+              <div>DELIVERY DATE: {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '___________'}</div>
+              <div>ORDER NO: {products[0]?.orderNo || '___________'}</div>
+              <div>ARTICLE NO: {products[0]?.articleNo || '___________'}</div>
+              <div>TO ARTICLE NO: {products[0]?.toArticleNo || '___________'}</div>
+              <div>WHATSAPP NO: {whatsappNo || '___________'}</div>
             </div>
 
-            {/* Metadata information */}
-            <div className="grid grid-cols-2 gap-8 py-5 border-b border-stone-200 text-[11px] font-sans">
-              <div className="space-y-1">
-                <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block font-mono">DELIVERY DESTINATION</span>
-                <p className="font-extrabold text-base text-black">{customerName || 'Walk-in Client'}</p>
-                <p className="font-bold mt-1 text-stone-700">WhatsApp: {whatsappNo || 'Not provided'}</p>
-                <p className="text-stone-600 mt-1 italic whitespace-pre-wrap">{address || 'No shipping location added.'}</p>
-              </div>
-              <div className="text-right space-y-1 font-medium">
-                <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider block font-mono">SPECIFICATION CODES</span>
-                <p className="font-bold text-stone-900 text-[12px]">Delivery Schedule: <span className="font-extrabold text-red-900 underline">{deliveryDate ? formatToDDMMYYYY(deliveryDate) : 'Not specified'}</span></p>
-                <p className="mt-1 text-stone-700">Polish Tone Shade: <strong className="text-black">{polishShade}</strong></p>
-                <p className="text-stone-700">Polish Treatment: <strong className="text-black">{typeOfPolish}</strong></p>
-                <p className="text-stone-700">Agreement ID: <strong className="text-black font-mono">AGR-{new Date().toISOString().split('T')[0].replace(/-/g, '').slice(4)}</strong></p>
-              </div>
+            <hr className="border-t border-black my-2" />
+
+            <div className="font-mono text-[10px] space-y-1 uppercase">
+              <div>CUSTOMER NAME: <span className="font-bold">{customerName || '___________'}</span></div>
+              <div>ADDRESS: <span className="whitespace-pre-wrap">{address || '___________'}</span></div>
             </div>
 
-            {/* Products specifications table */}
-            <div className="py-6 space-y-3">
-              <h3 className="text-[10px] font-black uppercase tracking-wider font-sans text-stone-800">
-                Schedule of Ordered Products &amp; Components:
-              </h3>
-              <table className="w-full text-xs font-mono text-left">
-                <thead>
-                  <tr className="border-b-2 border-black text-stone-500 text-[10px]">
-                    <th className="py-2">DETAILED TECHNICAL COMPONENT SPECIFICATION</th>
-                    <th className="py-2 text-center">QUANTITY</th>
-                    <th className="py-2 text-right">UNIT RATE</th>
-                    <th className="py-2 text-right">SUBTOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((p, idx) => {
-                    const itemSub = (p.quotedRate * p.qty) + p.cushion + p.hardware + p.packingForwarding + p.transportation - p.discount;
-                    return (
-                      <tr key={p.id || idx} className="border-b border-stone-200">
-                        <td className="py-3 font-sans">
-                          <span className="text-[13px] font-black text-black block">#{idx + 1}: {p.productName || 'Custom Carpentry'}</span>
-                          <span className="text-[10px] text-stone-600 block mt-1 font-mono leading-relaxed">
-                            Category: {p.category} | Sub: {p.subCategory} | Size: {p.size === 'Custom' ? p.customSize : p.size} | Material: {p.material} | Finish: {p.finish}
-                          </span>
-                          {p.specialNotes && (
-                            <span className="text-[9.5px] text-stone-500 italic block mt-1.5 font-sans">
-                              * Notes: {p.specialNotes}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 text-center font-bold text-black font-mono">{p.qty}</td>
-                        <td className="py-3 text-right font-mono">₹{p.quotedRate.toLocaleString()}</td>
-                        <td className="py-3 text-right font-bold text-black font-mono">₹{itemSub.toLocaleString()}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <hr className="border-t border-black my-2.5" />
+
+            {/* Products map */}
+            <div className="space-y-4">
+              {products.map((p, idx) => (
+                <div key={p.id || idx} className="space-y-1 font-mono text-[10px] uppercase">
+                  {idx === 0 && <span className="font-bold underline block mb-1">PRODUCT DETAILS:</span>}
+                  <div>PRODUCT NAME: {p.productName || p.category} {p.size && `(${p.size === 'Custom' ? p.customSize : p.size})`}</div>
+                  <div className="normal-case">ITEM DESCRIPTION: {p.itemDescription || `Structure: Solid wood. Finish: ${p.finish}. Color: ${p.colorShade}.`}</div>
+                  <div>QTY: {p.qty} &nbsp;&nbsp; UNIT RATE: ₹{p.quotedRate.toLocaleString()} &nbsp;&nbsp; AMOUNT: ₹{(p.quotedRate * p.qty).toLocaleString()}</div>
+                  
+                  <hr className="border-t border-black my-2" />
+                  
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[9.5px]">
+                    <div>QUOTED RATE: ₹{p.quotedRate.toLocaleString()}</div>
+                    <div>CUSHION: ₹{p.cushion.toLocaleString()}</div>
+                    <div>DISCOUNT: ₹{p.discount.toLocaleString()}</div>
+                    <div>HARDWARE: ₹{p.hardware.toLocaleString()}</div>
+                    <div>FINAL RATE: ₹{(p.quotedRate - p.discount).toLocaleString()}</div>
+                    <div>PACKING &amp; FORWARDING: ₹{p.packingForwarding.toLocaleString()}</div>
+                    <div>ADVANCE: ₹{p.advance.toLocaleString()}</div>
+                    <div>TRANSPORTATION: ₹{p.transportation.toLocaleString()}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Financial summary aggregation & signatures */}
-          <div className="border-t-2 border-black pt-4">
-            <div className="grid grid-cols-2 gap-8 font-sans">
-              <div className="space-y-1 text-[10px] text-stone-600 font-medium">
-                <span className="text-[9px] font-bold text-stone-400 block font-mono">PAYMENT MODE TERMS:</span>
-                <p>Deposit Mode Selected: <span className="font-extrabold text-black">{paymentMode}</span></p>
-                <p className="mt-1 leading-normal italic text-stone-400">All materials remain the sole property of Shri Samarth Woodworks until full clearance of the consolidated balance due amount.</p>
+          <div>
+            <hr className="border-t border-dashed border-stone-400 my-2" />
+
+            <div className="space-y-1 text-[10px] font-mono uppercase">
+              <div className="flex justify-between">
+                <span>TOTAL INVOICED:</span>
+                <span>₹{totalInvoiced.toLocaleString()}</span>
               </div>
-              <div className="space-y-2 font-mono text-xs">
-                <div className="flex justify-between text-stone-600">
-                  <span>Gross Invoice Value:</span>
-                  <span>₹{totalInvoiced.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-stone-900 border-b border-stone-300 pb-1.5">
-                  <span>Less Total Advance Deposited:</span>
-                  <span className="font-bold">- ₹{totalAdvancePaid.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between font-black text-black text-sm uppercase pt-1 tracking-wider">
-                  <span>Balance Due Amount:</span>
-                  <span>₹{outstandingBalance.toLocaleString()}</span>
-                </div>
+              <div className="flex justify-between">
+                <span>TOTAL ADVANCE PAID:</span>
+                <span>₹{totalAdvancePaid.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between font-bold text-amber-800 text-[11px] border-t border-stone-200 pt-0.5 mt-0.5">
+                <span>OUTSTANDING BALANCE:</span>
+                <span>₹{outstandingBalance.toLocaleString()}</span>
               </div>
             </div>
 
-            {/* Signature Area */}
-            <div className="flex justify-between items-end pt-12 font-sans text-[10px] font-bold text-stone-400">
-              <div className="text-center w-36 border-t border-black pt-1 uppercase">
-                Customer Signature &amp; Date
+            <hr className="border-t border-dashed border-stone-400 my-2" />
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[9.5px] uppercase font-mono">
+              <div>POLISH SHADE: {polishShade} Finish</div>
+              <div>PAYMENT MODE: {paymentMode}</div>
+              <div className="col-span-2">TYPE OF POLISH: {typeOfPolish} ({typeOfPolish === 'HAND' ? 'HAND' : 'MACHINE'})</div>
+            </div>
+
+            <hr className="border-t border-black my-3" />
+
+            <div className="flex justify-between items-end pt-6 text-[10px] font-bold font-mono">
+              <div className="text-center w-40">
+                <div className="border-b border-black h-1 w-full mb-1"></div>
+                MANAGER SIGN
               </div>
-              <div className="text-center text-black font-mono text-[11px] font-bold">
-                For Shri Samarth Woodworks
-              </div>
-              <div className="text-center w-36 border-t border-black pt-1 uppercase">
-                Authorized Executive Signature
+              <div className="text-center w-40">
+                <div className="border-b border-black h-1 w-full mb-1"></div>
+                CUSTOMER SIGN
               </div>
             </div>
           </div>
         </div>
 
         {/* Printable Page 2: Terms & Conditions */}
-        <div className="h-[297mm] flex flex-col justify-between p-8 bg-white border border-transparent font-sans">
-          <div className="space-y-4">
-            <div className="border-b-2 border-black pb-2">
-              <h2 className="text-sm font-black uppercase tracking-wider text-black">
-                {language === 'mr' ? 'करार आणि अटी' : 'TERMS & CONDITIONS OF SALE'}
-              </h2>
-              <p className="text-[9px] text-stone-500 uppercase">Shri Samarth Woodworks Standard Purchase Contract Terms</p>
+        <div className="h-[285mm] flex flex-col justify-between p-4 bg-white border-[2.5px] border-black page-break-before">
+          <div>
+            <div className="flex justify-between items-center text-[10px] font-bold">
+              <span>PAGE 2</span>
+              <span>TERMS AND CONDITIONS</span>
+              <span>BHISE'Z WORKSHOP</span>
             </div>
+            <hr className="border-t-2 border-black my-2" />
 
             {language === 'mr' ? (
-              <div className="text-[10px] space-y-3 text-stone-800 leading-relaxed">
-                <p className="font-bold">१. पेमेंट शेड्युल आणि देय रक्कम:</p>
-                <p>काम सुरू करण्यापूर्वी मी एकूण आदेशाच्या / ऑर्डरच्या मुल्याच्या <span className="underline font-extrabold text-stone-950">₹{totalAdvancePaid.toLocaleString()}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. उर्वरित शिल्लक रक्कम <span className="underline font-extrabold text-stone-950">₹{outstandingBalance.toLocaleString()}</span> डिलिव्हरीपूर्वी अथवा डिलिव्हरीच्या दिवशीच रोख अथवा युपीआय स्वरूपात संपूर्ण भरणे बंधनकारक असेल.</p>
+              <div className="space-y-2 text-[10px] leading-relaxed">
+                <p className="font-bold">१. १. ॲडव्हान्स पेमेंटची आवश्यकता:</p>
+                <p>काम सुरू करण्यापूर्वी मी एकूण खरेदी खर्चाच्या <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. ॲडव्हान्स पेमेंट रक्कम <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span> आहे.</p>
                 
-                <p className="font-bold">२. डिलिव्हरी मुदत आणि डिझाईन बदल:</p>
-                <p>ऑर्डर निश्चित केल्यानंतर डिझाईनमध्ये कोणताही बदल ग्राहकाकडून स्वीकारला जाणार नाही. जर बदल करणे अत्यंत गरजेचे असेल तर त्यासाठी लागणारा जादा साहित्य व मजुरी खर्च ग्राहकास स्वतंत्रपणे द्यावा लागेल. अंदाजे डिलिव्हरी तारीख ही कच्च्या मालाच्या उपलब्धतेवर अवलंबून असते.</p>
+                <p className="font-bold">२. २. पेमेंट शेड्युल:</p>
+                <p>करारावर स्वाक्षरी केल्यानंतर लगेचच पेमेंट देय आहे. करारामध्ये नमूद केलेल्या देयक वेळापत्रकानुसार उर्वरित देयके दिली जातील. माल पाठविण्यापूर्वी पूर्ण पेमेंट मिळणे आवश्यक आहे.</p>
                 
-                <p className="font-bold">३. मालाची मालकी व अधिकार:</p>
-                <p>ऑर्डरचे सर्व साहित्य जोपर्यंत पूर्ण देय रक्कम भरली जात नाही, तोपर्यंत ती श्री समर्थ वुडवर्क्स यांच्या अधिकारांतर्गत मालकीची राहील.</p>
+                <p className="font-bold">३. ३. नॉन-रिफंडेबल क्लॉज:</p>
+                <p>सेवा प्रदात्याकडून कराराचा भंग झाल्यास वगळता ॲडव्हान्स पेमेंट नॉन-रिफंडेबल असेल. २४ तासानंतर ॲडव्हान्स पेमेंट परत केले जाणार नाही.</p>
                 
-                <p className="font-bold">४. लाकूड गुणवत्ता व नैसर्गिक छटा:</p>
-                <p>सागवानी लाकूड किंवा इतर लाकूड प्रकार हे नैसर्गिक असल्यामुळे त्यावरील डिझाईन किंवा रंगाची छटा काही प्रमाणात नैसर्गिक घटकांनुसार भिन्न असू शकते.</p>
+                <p className="font-bold">४. ४. सेवा सुरू करणे:</p>
+                <p>ॲडव्हान्स पेमेंट मिळाल्यानंतर आणि आवश्यक कागदपत्रे किंवा माहिती मिळाल्यानंतर काम सुरू होईल. पेमेंटला विलंब झाल्यास उत्पादनास विलंब होऊ शकतो.</p>
+                
+                <p className="font-bold">५. ५. कामाची व्याप्ती:</p>
+                <p>मूळ ऑर्डरमधील कोणतेही अतिरिक्त बदल किंवा काम अतिरिक्त शुल्कास अधीन असेल.</p>
+                
+                <p className="font-bold">६. ६. डिलिव्हरी:</p>
+                <p>अचूक डिलिव्हरी माहिती प्रदान करण्यास मी जबाबदार आहे. पुरवलेली माहिती चुकीची किंवा अपूर्ण असल्यास डिलिव्हरीच्या अपयशासाठी विक्रेता जबाबदार नाही. डिलिव्हरी तारीख २-३ दिवसांनी बदलू शकते.</p>
+
+                <p className="font-bold">७. ७. परतावा आणि रीफंड:</p>
+                <p>डिलिव्हरीच्या २ दिवसांच्या आत मी कोणत्याही सदोष किंवा चुकीच्या वस्तूंची माहिती विक्रेत्याला देईन. वस्तू सदोष असल्याशिवाय रिटर्न शिपिंगच्या खर्चासाठी मी जबाबदार राहीन.</p>
+
+                <p className="font-bold">८. ८. ऑर्डर रद्द करणे:</p>
+                <p>ऑर्डर दिल्यानंतर २४ तासांच्या आत ग्राहक ती रद्द करू शकतात. गैरवापर किंवा चुकीच्या दुरुस्तीमुळे नुकसान झाल्यास विक्रेता जबाबदार नाही.</p>
+
+                <p className="font-bold">९. ९. अंशतः डिलिव्हरी:</p>
+                <p>अंशतः डिलिव्हरी झाल्यास, मी डिलिव्हरी आणि इन्स्टॉलेशन खर्च देण्यास सहमत आहे. डिलिव्हरी होणाऱ्या वस्तूंची पूर्ण रक्कम आणि भविष्यात डिलिव्हरी होणाऱ्या उर्वरित वस्तूंच्या ४०% रक्कम मी देईन.</p>
+
+                <p className="font-bold">१०. १०. अटींची स्वीकृती:</p>
+                <p>ॲडव्हान्स पेमेंट करून, मी कबूल करतो की मी या अटी आणि शर्ती वाचल्या, समजल्या ​​आणि त्यांच्याशी सहमत आहे.</p>
               </div>
             ) : (
-              <div className="text-[10.5px] space-y-3.5 text-stone-800 leading-relaxed">
-                <p className="font-semibold text-black">1. Payment &amp; Retainage Terms:</p>
-                <p>The purchaser agrees to pay an advance sum of <span className="underline font-extrabold text-stone-950">₹{totalAdvancePaid.toLocaleString()}</span> prior to the initiation of any custom fabrication work. The remaining outstanding balance of <span className="underline font-extrabold text-stone-950">₹{outstandingBalance.toLocaleString()}</span> must be cleared in full on or prior to the date of shipping / site delivery validation.</p>
-                
-                <p className="font-semibold text-black">2. Specification Modifiability:</p>
-                <p>No design alterations, structural changes, or dimension adjustments will be accommodated once the raw material cutting phase has commenced. Any critical requested adjustments thereafter will attract a surcharge covering material waste and additional labor overheads.</p>
-                
-                <p className="font-semibold text-black">3. Title of Ownership:</p>
-                <p>The legal title and ownership of all fabricated furniture, fixtures, and materials detailed in this contract shall remain exclusively with Shri Samarth Woodworks until all payments, including transit charges, are cleared in full.</p>
-                
-                <p className="font-semibold text-black">4. Natural Material Disclaimer:</p>
-                <p>Teakwood and natural woods exhibit organic characteristics such as varying grain structures, knots, and shade patterns. Such variation is a mark of authenticity and shall not constitute a defect or grounds for contract rejection.</p>
+              <div className="space-y-2 text-[8.5px] leading-snug">
+                <div>
+                  <strong className="block">1. 1. ADVANCE PAYMENT REQUIREMENT:</strong>
+                  <span>I agree to pay an advance payment amounting <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span> of the total order cost prior to the commencement of work. The advance payment amount is <span className="underline font-bold">₹{totalAdvancePaid.toLocaleString()}</span>.</span>
+                </div>
+                <div>
+                  <strong className="block">2. 2. PAYMENT SCHEDULE:</strong>
+                  <span>The advance payment is due immediately upon signing the contract or agreement. Subsequent payments will be made as per the agreed payment schedule outlined in the main contract. Full payment must be received before the dispatch of goods.</span>
+                </div>
+                <div>
+                  <strong className="block">3. 3. NON-REFUNDABLE CLAUSE:</strong>
+                  <span>The advance payment is non-refundable except in the event of a breach of contract by the Service Provider. Advance payment will not be refunded after 24 hours.</span>
+                </div>
+                <div>
+                  <strong className="block">4. 4. SERVICE COMMENCEMENT:</strong>
+                  <span>Work will commence upon receipt of the advance payment and any required documentation or information from you about your requirement. Any delay in the advance payment may result in a corresponding delay in the commencement of manufacturing.</span>
+                </div>
+                <div>
+                  <strong className="block">5. 5. SCOPE OF WORK:</strong>
+                  <span>Any additional work or changes to the initial order will be subject to additional charges.</span>
+                </div>
+                <div>
+                  <strong className="block">6. 6. DELIVERY:</strong>
+                  <span>I am responsible for providing accurate delivery information. The Seller is not liable for delivery failures due to incorrect or incomplete information provided by me. The delivery date may vary by 2-3 days.</span>
+                </div>
+                <div>
+                  <strong className="block">7. 7. RETURNS AND REFUNDS:</strong>
+                  <span>I will notify the Seller of any defective or incorrect items within 2 days of delivery. I am responsible for return shipping costs unless the item is defective or incorrect.</span>
+                </div>
+                <div>
+                  <strong className="block">8. 8. ORDER CANCELLATION:</strong>
+                  <span>The Buyer may cancel their order within 24 hours of placing it by contacting the Seller. The Seller is not liable if the product is damaged due to misuse, neglect, or unauthorized repair.</span>
+                </div>
+                <div>
+                  <strong className="block">9. 9. PART DELIVERY:</strong>
+                  <span>In case of part delivery, I agree to pay the delivery charges as well as installation charges. I agree to pay the full amount of the products which are to be delivered and 40% Advance of the remaining products which will be delivered in future.</span>
+                </div>
+                <div>
+                  <strong className="block">10. 10. ACCEPTANCE OF TERMS:</strong>
+                  <span>By making the advance payment, I acknowledge that I have read, understood, and agree to these terms and conditions.</span>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="border-t border-stone-300 pt-6">
-            <p className="text-[9px] text-stone-400 leading-normal mb-8">
-              {language === 'mr' ? 'हा करार डिजिटल स्वरूपात जतन केला गेला आहे आणि कायदेशीररित्या दोन्ही बाजूंना बांधील आहे.' : 'This agreement is logged electronically and is legally binding upon both signing parties.'}
-            </p>
-            <div className="flex justify-between items-end font-sans text-[10px] font-bold text-stone-400">
-              <div className="text-center w-36 border-t border-black pt-1 uppercase">
-                Customer Signature
+          <div className="flex justify-between items-end pt-6 text-[10px] font-bold font-mono mt-auto">
+            <div className="text-center w-40">
+              <div className="border-b border-black h-1 w-full mb-1"></div>
+              MANAGER SIGNATURE
+            </div>
+            <div className="text-center w-40">
+              <div className="border-b border-black h-1 w-full mb-1"></div>
+              CUSTOMER SIGNATURE
+            </div>
+          </div>
+        </div>
+
+        {/* Printable Page 3: Reference Images */}
+        <div className="h-[285mm] flex flex-col justify-between p-4 bg-white border-[2.5px] border-black page-break-before font-mono">
+          <div>
+            <div className="flex justify-between items-center text-[10px] font-bold">
+              <span>PAGE 3</span>
+              <span>REFERENCE IMAGES</span>
+              <span>BHISE'Z WORKSHOP</span>
+            </div>
+            <hr className="border-t-2 border-black my-2" />
+
+            {products.flatMap(p => p.refImages || []).length > 0 ? (
+              <div className="grid grid-cols-2 gap-4 mt-6">
+                {products.flatMap(p => p.refImages || []).map((img, idx) => (
+                  <div key={img.id || idx} className="border border-black rounded-lg p-3 bg-white text-center flex flex-col justify-between items-center">
+                    <div className="aspect-[4/3] bg-stone-50 flex items-center justify-center overflow-hidden rounded-md mb-2 max-h-[160px] w-full border border-stone-200">
+                      <img
+                        src={img.url}
+                        alt={`Ref #${idx + 1}`}
+                        referrerPolicy="no-referrer"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    <span className="text-[10px] font-bold text-stone-900 font-mono">Ref #{idx + 1}</span>
+                  </div>
+                ))}
               </div>
-              <div className="text-center text-black font-mono text-[11px] font-bold">
-                Shri Samarth Woodworks Seal
+            ) : (
+              <div className="border border-dashed border-stone-300 rounded-xl p-16 text-center text-stone-400 font-mono text-[10px] italic mt-6">
+                No design reference drawings uploaded. Use Section V to map drawings to page 3 of this document.
               </div>
-              <div className="text-center w-36 border-t border-black pt-1 uppercase">
-                Admin Signature
-              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between items-end pt-6 text-[10px] font-bold font-mono mt-auto font-mono">
+            <div className="text-center w-40">
+              <div className="border-b border-black h-1 w-full mb-1"></div>
+              MANAGER SIGNATURE
+            </div>
+            <div className="text-center w-40">
+              <div className="border-b border-black h-1 w-full mb-1"></div>
+              CUSTOMER SIGNATURE
             </div>
           </div>
         </div>
