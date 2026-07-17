@@ -335,7 +335,7 @@ export default function DetailOrderFormTab({
 
         setQuotedRate(firstItem.unitPrice || 0);
         setAmount((firstItem.unitPrice || 0) * (firstItem.quantity || 1));
-        setDiscount(firstItem.discount ? Math.round((firstItem.unitPrice * (firstItem.discount / 100)) * firstItem.quantity) : 0);
+        setDiscount(firstItem.discount || 0);
       } else {
         setCategory('Beds');
         setSubCategory('Custom Bed');
@@ -1309,34 +1309,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               </div>
             </div>
 
-            {/* MINIFIED PAGE 3 */}
-            <div className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[9.5px] leading-normal font-sans text-stone-850 select-none max-w-full">
-              <div className="border-2 border-black p-4 space-y-2">
-                <div className="text-center font-extrabold tracking-wider border-b pb-1 flex justify-between items-center text-stone-900">
-                  <span>{language === 'mr' ? 'पान ३' : 'PAGE 3'}</span>
-                  <span>{language === 'mr' ? 'संदर्भ चित्रे' : 'REFERENCE IMAGES'}</span>
-                  <span>{language === 'mr' ? 'भिसेज् वर्कशॉप' : "BHISE'Z WORKSHOP"}</span>
-                </div>
-                {refImages.length === 0 ? (
-                  <div className="text-center py-6 text-stone-400 font-mono text-xs border border-dashed border-stone-200 rounded">
-                    {language === 'mr' ? 'कोणतीही संदर्भ चित्रे अपलोड केलेली नाहीत' : 'No reference images uploaded.'}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {refImages.map((img, idx) => (
-                      <div key={img.id || idx} className="border p-1.5 rounded bg-stone-50 flex flex-col items-center">
-                        <img src={img.url} className="max-h-24 object-contain rounded" referrerPolicy="no-referrer" />
-                        <span className="text-[8px] font-mono mt-1">Ref #{idx + 1}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="pt-4 flex justify-between text-center font-bold">
-                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'Manager Signature'}</span></div>
-                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'Customer Signature'}</span></div>
-                </div>
-              </div>
-            </div>
+
 
           </div>
         </div>
@@ -1650,72 +1623,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
           </div>
         </div>
 
-        {/* PAGE 3 CONTENT (UPLOADED REFERENCE IMAGES & SPECIFICATIONS) */}
-        <div className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between" style={{ pageBreakBefore: 'always' }}>
-          <div>
-            <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-4">
-              <span className="text-xs font-bold font-mono tracking-widest text-stone-500 uppercase">
-                {language === 'mr' ? 'कराराचे पान ३' : 'PAGE 3 OF AGREEMENT'}
-              </span>
-              <span className="text-xs font-black font-mono tracking-widest text-[#593622] uppercase">
-                {language === 'mr' ? 'संदर्भ चित्रे आणि डिझाइन' : 'REFERENCE IMAGES & DESIGN SPECIFICATIONS'}
-              </span>
-            </div>
 
-            <p className="text-xs mb-4 text-stone-600 font-mono">
-              {language === 'mr' 
-                ? 'खालील चित्रे ग्राहकाद्वारे मंजूर केलेल्या फर्निचरची संदर्भ चित्रे आहेत:' 
-                : 'The following are the custom design and reference images approved by the customer for manufacturing:'}
-            </p>
-
-            {refImages.length === 0 ? (
-              <div className="border-2 border-dashed border-stone-300 rounded-xl p-12 text-center text-stone-400 text-xs font-mono">
-                {language === 'mr' ? 'कोणतीही संदर्भ चित्रे अपलोड केलेली नाहीत' : 'No reference images uploaded.'}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4">
-                {refImages.map((img, idx) => (
-                  <div key={img.id || idx} className="border border-black p-2 rounded flex flex-col items-center bg-stone-50">
-                    <img 
-                      src={img.url} 
-                      alt={`Reference ${idx + 1}`} 
-                      className="max-h-[220px] object-contain rounded mb-1.5" 
-                      referrerPolicy="no-referrer"
-                    />
-                    <span className="text-[10px] font-mono font-bold uppercase">
-                      {language === 'mr' ? `संदर्भ चित्र #${idx + 1}` : `Reference Image #${idx + 1}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-12 text-center text-xs font-mono border-t pt-8 mt-4">
-            <div className="space-y-12">
-              <span className="text-stone-400 block font-light">
-                {language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "Bhise'z Workshop Management"}
-              </span>
-              <div>
-                <div className="h-0.5 w-40 bg-black mx-auto" />
-                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">
-                  {language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}
-                </span>
-              </div>
-            </div>
-            <div className="space-y-12">
-              <span className="text-stone-450 block font-light">
-                {language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'Client Confirmation Acceptance'}
-              </span>
-              <div>
-                <div className="h-0.5 w-40 bg-black mx-auto" />
-                <span className="font-bold uppercase tracking-wider block mt-1.5 text-[10px]">
-                  {language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
 
       </div>
 
