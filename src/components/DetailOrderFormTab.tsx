@@ -1,7 +1,27 @@
 import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
-import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat } from 'lucide-react';
+import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight } from 'lucide-react';
 import { formatToDDMMYYYY } from '../utils';
+
+interface AgreementItem {
+  id: string;
+  category: string;
+  subCategory: string;
+  size: string;
+  customSize: string;
+  designType: 'Standard' | 'Custom';
+  material: string;
+  finish: string;
+  colorShade: string;
+  specialNotes: string;
+  qty: number;
+  quotedRate: number;
+  cushion: number;
+  discount: number;
+  hardware: number;
+  productName: string;
+  itemDescription: string;
+}
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'Door Frames': ['Set', 'Mandir Room', 'Door', 'Christian Door', 'Frame'],
@@ -45,6 +65,12 @@ export default function DetailOrderFormTab({
 }: DetailOrderFormTabProps) {
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>('');
   const [language, setLanguage] = React.useState<'en' | 'mr'>('en');
+
+  const [items, setItems] = React.useState<AgreementItem[]>([]);
+  const [activeItemIndex, setActiveItemIndex] = React.useState<number>(0);
+  const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
+  const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string }>>([]);
+  const isUpdatingRef = React.useRef(false);
 
   function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders) {
     const dateToUse = targetDate || new Date().toISOString().split('T')[0];
@@ -189,6 +215,121 @@ export default function DetailOrderFormTab({
     setRefImages((prev) => prev.filter((img) => img.id !== id));
   };
 
+  // Initialize with a default product if empty
+  React.useEffect(() => {
+    if (items.length === 0) {
+      setItems([
+        {
+          id: `item_${Math.random().toString(36).substring(2, 9)}`,
+          category: 'Door Frames',
+          subCategory: 'Set',
+          size: '6ft',
+          customSize: '',
+          designType: 'Standard',
+          material: 'Plywood',
+          finish: 'hand polish',
+          colorShade: 'Walnut',
+          specialNotes: '',
+          qty: 1,
+          quotedRate: 0,
+          cushion: 0,
+          discount: 0,
+          hardware: 0,
+          productName: 'Door Frames › Set (6ft)',
+          itemDescription: 'Structure: Plywood. Finish: hand polish. Color: Walnut.',
+        },
+      ]);
+      setActiveItemIndex(0);
+    }
+  }, [items]);
+
+  // Synchronize active item in state when edit form fields change
+  React.useEffect(() => {
+    if (isUpdatingRef.current) return;
+    setItems((prev) => {
+      const updated = [...prev];
+      if (updated[activeItemIndex]) {
+        updated[activeItemIndex] = {
+          ...updated[activeItemIndex],
+          category,
+          subCategory,
+          size,
+          customSize,
+          designType,
+          material,
+          finish,
+          colorShade,
+          specialNotes,
+          qty,
+          quotedRate,
+          cushion,
+          discount,
+          hardware,
+          productName,
+          itemDescription,
+        };
+      }
+      return updated;
+    });
+  }, [
+    category,
+    subCategory,
+    size,
+    customSize,
+    designType,
+    material,
+    finish,
+    colorShade,
+    specialNotes,
+    qty,
+    quotedRate,
+    cushion,
+    discount,
+    hardware,
+    productName,
+    itemDescription,
+    activeItemIndex,
+  ]);
+
+  const loadItemToForm = (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    isUpdatingRef.current = true;
+    setActiveItemIndex(index);
+    setCategory(item.category);
+    setSubCategory(item.subCategory);
+    setSize(item.size);
+    setCustomSize(item.customSize);
+    setDesignType(item.designType);
+    setMaterial(item.material);
+    setFinish(item.finish);
+    setColorShade(item.colorShade);
+    setSpecialNotes(item.specialNotes);
+    setQty(item.qty);
+    setQuotedRate(item.quotedRate);
+    setCushion(item.cushion);
+    setDiscount(item.discount);
+    setHardware(item.hardware);
+    setProductName(item.productName);
+    setItemDescription(item.itemDescription);
+    setTimeout(() => {
+      isUpdatingRef.current = false;
+    }, 50);
+  };
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const container = document.getElementById('quotation-multiselect-container');
+      if (container && !container.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // Synchronize product name & item description dynamically
   React.useEffect(() => {
     const nameStr = `${category} › ${subCategory} (${size === 'Custom' ? customSize || 'Custom Size' : size})`;
@@ -215,15 +356,21 @@ export default function DetailOrderFormTab({
   const [advance, setAdvance] = React.useState<number>(0);
   const [transportation, setTransportation] = React.useState<number>(0);
 
-  // Balance is calculated as: (Final Rate * Qty) + Packing & Forwarding + Transportation - Advance
-  const balance = React.useMemo(() => {
-    const totalAmount = finalRate * Number(qty);
-    return Math.max(0, totalAmount + Number(packingForwarding) + Number(transportation) - Number(advance));
-  }, [finalRate, qty, packingForwarding, transportation, advance]);
+  // Totals calculated across all items in the agreement
+  const itemsSubtotal = React.useMemo(() => {
+    return items.reduce((sum, item) => {
+      const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
+      return sum + (itemFinalRate * Number(item.qty));
+    }, 0);
+  }, [items]);
 
   const totalInvoiced = React.useMemo(() => {
-    return (finalRate * Number(qty)) + Number(packingForwarding) + Number(transportation);
-  }, [finalRate, qty, packingForwarding, transportation]);
+    return itemsSubtotal + Number(packingForwarding) + Number(transportation);
+  }, [itemsSubtotal, packingForwarding, transportation]);
+
+  const balance = React.useMemo(() => {
+    return Math.max(0, totalInvoiced - Number(advance));
+  }, [totalInvoiced, advance]);
 
   const totalAdvancePaid = React.useMemo(() => {
     return Number(advance);
@@ -250,6 +397,7 @@ export default function DetailOrderFormTab({
     }
 
     const draft = {
+      items, // Send all items in the combined agreement!
       category,
       subCategory,
       size,
@@ -291,6 +439,171 @@ export default function DetailOrderFormTab({
     }
   };
 
+  const approvedQuotations = React.useMemo(() => {
+    return (crmQuotations || []).filter((q) => q.status === 'Approved');
+  }, [crmQuotations]);
+
+  // Group approved quotations by customer
+  const quotationsByCustomer = React.useMemo(() => {
+    const groups: Record<string, {
+      customerName: string;
+      customerId: string;
+      customerPhone: string;
+      customerAddress: string;
+      items: Array<{
+        quoteId: string;
+        quoteItem: any;
+        quoteNotes: string;
+        quoteCreatedAt: string;
+        quoteValidUntil: string;
+      }>;
+    }> = {};
+
+    approvedQuotations.forEach((quote) => {
+      const custId = quote.customer_id || 'unknown';
+      const crmCust = crmCustomers?.find((c) => c.id === custId);
+      const custName = quote.customer_name || crmCust?.name || 'Unknown Customer';
+      
+      if (!groups[custId]) {
+        groups[custId] = {
+          customerName: custName,
+          customerId: custId,
+          customerPhone: crmCust?.phone || crmCust?.whatsappNumber || '',
+          customerAddress: crmCust?.address || '',
+          items: [],
+        };
+      }
+
+      (quote.items || []).forEach((item: any) => {
+        groups[custId].items.push({
+          quoteId: quote.id,
+          quoteItem: item,
+          quoteNotes: quote.notes || '',
+          quoteCreatedAt: quote.created_at,
+          quoteValidUntil: quote.validUntil,
+        });
+      });
+    });
+
+    return Object.values(groups);
+  }, [approvedQuotations, crmCustomers]);
+
+  const handleToggleQuoteItem = (
+    quoteId: string,
+    item: any,
+    customer: any,
+    notes: string,
+    created_at: string,
+    validUntil: string
+  ) => {
+    setSelectedQuoteItems((prev) => {
+      const exists = prev.some((p) => p.quoteId === quoteId && p.item.id === item.id);
+      let next = [];
+      if (exists) {
+        next = prev.filter((p) => !(p.quoteId === quoteId && p.item.id === item.id));
+      } else {
+        const hasDifferentCustomer = prev.length > 0 && prev[0].customer.id !== customer.id;
+        if (hasDifferentCustomer) {
+          next = [{ quoteId, item, customer, notes, created_at, validUntil }];
+        } else {
+          next = [...prev, { quoteId, item, customer, notes, created_at, validUntil }];
+        }
+      }
+
+      loadSelectedQuoteItems(next);
+      return next;
+    });
+  };
+
+  const loadSelectedQuoteItems = (selectedItems: Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string }>) => {
+    if (selectedItems.length === 0) {
+      clearForm();
+      return;
+    }
+
+    const first = selectedItems[0];
+    const { customer } = first;
+
+    setCustomerName(customer.name || customer.customerName || '');
+    setWhatsappNo(customer.phone || customer.whatsappNumber || '');
+    setAddress(customer.address || '');
+
+    const uniqueQuoteIds = Array.from(new Set(selectedItems.map((s) => s.quoteId)));
+    const combinedQuoteNo = uniqueQuoteIds.join(' & ');
+    setOrderNo(combinedQuoteNo);
+    
+    const combinedArticleNo = uniqueQuoteIds.map((id) => `QT/${id.replace('QT-', '')}`).join(' & ');
+    setArticleNo(combinedArticleNo);
+    setToArticleNo('');
+
+    setOrderDate(first.created_at ? first.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setDeliveryDate(first.validUntil ? first.validUntil.split('T')[0] : '');
+
+    const mappedItems: AgreementItem[] = selectedItems.map((selected) => {
+      const { quoteId, item, notes } = selected;
+      
+      let matchedCat = 'Beds';
+      for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
+        if (subs.some((s) => item.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
+          matchedCat = cat;
+          break;
+        }
+      }
+
+      const nameStr = `${matchedCat} › ${item.furnitureItem} (Custom Size)`;
+      const descStr = `Structure: ${item.material || 'Plywood'}. Finish: hand polish. Color: Walnut. ${notes || ''}`;
+
+      return {
+        id: `quote_item_${quoteId}_${item.id}`,
+        category: matchedCat,
+        subCategory: item.furnitureItem,
+        size: 'Custom',
+        customSize: item.dimensions || 'Standard',
+        designType: 'Standard' as const,
+        material: item.material || 'Plywood',
+        finish: 'hand polish',
+        colorShade: 'Walnut',
+        specialNotes: notes || '',
+        qty: item.quantity || 1,
+        quotedRate: item.unitPrice || 0,
+        cushion: 0,
+        discount: (item.discount || 0) * (item.unitPrice || 0) / 100,
+        hardware: 0,
+        productName: nameStr,
+        itemDescription: descStr,
+      };
+    });
+
+    setItems(mappedItems);
+    setActiveItemIndex(0);
+
+    const firstItem = mappedItems[0];
+    if (firstItem) {
+      isUpdatingRef.current = true;
+      setCategory(firstItem.category);
+      setSubCategory(firstItem.subCategory);
+      setSize(firstItem.size);
+      setCustomSize(firstItem.customSize);
+      setDesignType(firstItem.designType);
+      setMaterial(firstItem.material);
+      setFinish(firstItem.finish);
+      setColorShade(firstItem.colorShade);
+      setSpecialNotes(firstItem.specialNotes);
+      setQty(firstItem.qty);
+      setQuotedRate(firstItem.quotedRate);
+      setCushion(firstItem.cushion);
+      setDiscount(firstItem.discount);
+      setHardware(firstItem.hardware);
+      setProductName(firstItem.productName);
+      setItemDescription(firstItem.itemDescription);
+      setTimeout(() => {
+        isUpdatingRef.current = false;
+      }, 50);
+    }
+
+    setSelectedOrderId('');
+  };
+
   // Load selection logic for either active workshop orders or approved quotations
   const handleLoad = (combinedId: string) => {
     if (!combinedId) {
@@ -306,63 +619,33 @@ export default function DetailOrderFormTab({
       setSelectedOrderId(combinedId);
 
       const crmCust = crmCustomers?.find((c) => c.id === quote.customer_id);
+      const customerObj = crmCust || { id: quote.customer_id, name: quote.customer_name };
 
-      setOrderDate(quote.created_at ? quote.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
-      setDeliveryDate(quote.validUntil || '');
-      setOrderNo(quote.id);
-      setArticleNo(`QT/${quote.id.replace('QT-', '')}`);
-      setToArticleNo('');
-      setCustomerName(quote.customer_name || crmCust?.name || '');
-      setWhatsappNo(crmCust?.phone || crmCust?.whatsappNumber || '');
-      setAddress(crmCust?.address || '');
+      const quotationItems = (quote.items || []).map((item: any) => ({
+        quoteId: quote.id,
+        item,
+        customer: {
+          id: customerObj.id,
+          name: customerObj.name || customerObj.customerName,
+          customerName: customerObj.name || customerObj.customerName,
+          phone: customerObj.phone || customerObj.whatsappNumber || '',
+          address: customerObj.address || '',
+        },
+        notes: quote.notes || '',
+        created_at: quote.created_at,
+        validUntil: quote.validUntil
+      }));
 
-      const firstItem = quote.items?.[0];
-      if (firstItem) {
-        let matchedCat = 'Beds';
-        for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
-          if (subs.some((s) => firstItem.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
-            matchedCat = cat;
-            break;
-          }
-        }
-        setCategory(matchedCat);
-        setSubCategory(firstItem.furnitureItem);
-        setSize('Custom');
-        setCustomSize(firstItem.dimensions || 'Standard');
-        setMaterial(firstItem.material || 'Plywood');
-        setQty(firstItem.quantity || 1);
-        setSpecialNotes(quote.notes || '');
+      setSelectedQuoteItems(quotationItems);
+      loadSelectedQuoteItems(quotationItems);
 
-        setQuotedRate(firstItem.unitPrice || 0);
-        setAmount((firstItem.unitPrice || 0) * (firstItem.quantity || 1));
-        setDiscount(firstItem.discount || 0);
-      } else {
-        setCategory('Beds');
-        setSubCategory('Custom Bed');
-        setSize('6ft');
-        setCustomSize('');
-        setMaterial('Plywood');
-        setQty(1);
-        setSpecialNotes('');
-        setQuotedRate(quote.totalAmount || 0);
-        setAmount(quote.totalAmount || 0);
-        setDiscount(0);
-      }
-
-      setCushion(0);
-      setHardware(0);
-      setPackingForwarding(0);
-      setTransportation(0);
-      setAdvance(0);
-      setPolishShade('Walnut Finish');
-      setTypeOfPolish('HAND');
-      setRefImages([]);
     } else if (combinedId.startsWith('order_')) {
       const orderId = combinedId.replace('order_', '');
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
 
       setSelectedOrderId(combinedId);
+      setSelectedQuoteItems([]); // reset multi-quote selection
 
       const cust = customers.find((c) => c.id === order.customer_id);
       const orderPayment = payments ? payments.find((p) => p.order_id === order.id) : null;
@@ -377,22 +660,46 @@ export default function DetailOrderFormTab({
       setWhatsappNo(cust ? cust.phone : '');
       setAddress(cust && cust.address ? cust.address : '');
 
-      setCategory(order.category || 'Beds');
-      setSubCategory(order.sub_category || 'Custom');
-      setSize(order.size || 'Custom');
-      setCustomSize(order.custom_size || '');
-      setDesignType(order.design_type || 'Standard');
-      setMaterial(order.material || 'Plywood');
-      setFinish(order.finish_type || order.finish || 'hand polish');
-      setSpecialNotes(order.special_notes || '');
-      setQty(order.no_of_units || 1);
-      setColorShade(order.color_shade || 'Walnut');
+      const ordItem: AgreementItem = {
+        id: `ord_item_${order.id}`,
+        category: order.category || 'Beds',
+        subCategory: order.sub_category || 'Custom',
+        size: order.size || 'Custom',
+        customSize: order.custom_size || '',
+        designType: order.design_type || 'Standard',
+        material: order.material || 'Plywood',
+        finish: order.finish_type || order.finish || 'hand polish',
+        colorShade: order.color_shade || 'Walnut',
+        specialNotes: order.special_notes || '',
+        qty: order.no_of_units || 1,
+        quotedRate: 15000,
+        cushion: 0,
+        discount: 0,
+        hardware: 0,
+        productName: `${order.category || 'Beds'} › ${order.sub_category || 'Custom'} (${order.size || 'Custom'})`,
+        itemDescription: `Structure: ${order.material || 'Plywood'}. Finish: ${order.finish_type || order.finish || 'hand polish'}. Color: ${order.color_shade || 'Walnut'}. ${order.special_notes || ''}`,
+      };
 
-      setQuotedRate(15000);
-      setAmount(15000 * (order.no_of_units || 1));
-      setCushion(0);
-      setDiscount(0);
-      setHardware(0);
+      setItems([ordItem]);
+      setActiveItemIndex(0);
+
+      setCategory(ordItem.category);
+      setSubCategory(ordItem.subCategory);
+      setSize(ordItem.size);
+      setCustomSize(ordItem.customSize);
+      setDesignType(ordItem.designType);
+      setMaterial(ordItem.material);
+      setFinish(ordItem.finish);
+      setColorShade(ordItem.colorShade);
+      setSpecialNotes(ordItem.specialNotes);
+      setQty(ordItem.qty);
+      setQuotedRate(ordItem.quotedRate);
+      setCushion(ordItem.cushion);
+      setDiscount(ordItem.discount);
+      setHardware(ordItem.hardware);
+      setProductName(ordItem.productName);
+      setItemDescription(ordItem.itemDescription);
+
       setPackingForwarding(1200);
       setTransportation(1800);
       setAdvance(orderAdvance);
@@ -430,7 +737,7 @@ export default function DetailOrderFormTab({
   const getWhatsAppUrl = () => {
     const cleanNumber = whatsappNo.replace(/\D/g, '');
     const isMr = language === 'mr';
-    const text = isMr ? `*भिसेज् वुड वर्कशॉप (BHISE'Z WOOD WORKSHOP)*
+    const text = isMr ? `*मिसळ लाकूड काम (BHISE'Z WOOD WORKSHOP)*
 _ऑर्डर कराराची अधिकृत पुष्टी_
 
 प्रिय *${customerName || 'ग्राहक'}*,
@@ -457,6 +764,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
 
   const clearForm = () => {
     setSelectedOrderId('');
+    setSelectedQuoteItems([]);
     const today = new Date().toISOString().split('T')[0];
     setOrderDate(today);
     setDeliveryDate('');
@@ -480,6 +788,28 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     setPolishShade('');
     setPaymentMode('CASH');
     setTypeOfPolish('HAND');
+    setItems([
+      {
+        id: `item_${Math.random().toString(36).substring(2, 9)}`,
+        category: 'Door Frames',
+        subCategory: 'Set',
+        size: '6ft',
+        customSize: '',
+        designType: 'Standard',
+        material: 'Plywood',
+        finish: 'hand polish',
+        colorShade: 'Walnut',
+        specialNotes: '',
+        qty: 1,
+        quotedRate: 0,
+        cushion: 0,
+        discount: 0,
+        hardware: 0,
+        productName: 'Door Frames › Set (6ft)',
+        itemDescription: 'Structure: Plywood. Finish: hand polish. Color: Walnut.',
+      }
+    ]);
+    setActiveItemIndex(0);
   };
 
   return (
@@ -584,6 +914,90 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </button>
           </div>
         </div>
+
+        {/* COMBINE MULTIPLE QUOTATIONS WIDGET */}
+        {quotationsByCustomer.length > 0 && (
+          <div className="bg-gradient-to-br from-amber-50/20 to-stone-50 p-4 rounded-2xl border border-stone-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles size={14} className="text-[#593622]" />
+                Combine Multiple Approved Quotations / Items:
+              </span>
+              <span className="text-[10px] bg-[#593622]/10 text-[#593622] px-2 py-0.5 rounded-full font-bold">
+                {selectedQuoteItems.length} items combined
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto pr-1">
+              {quotationsByCustomer.map((custGroup) => {
+                const isThisCustSelected = selectedQuoteItems.some(
+                  (item) => item.customer.id === custGroup.customerId
+                );
+                return (
+                  <div
+                    key={custGroup.customerId}
+                    className={`p-3 rounded-xl border transition-all text-xs space-y-2 ${
+                      isThisCustSelected
+                        ? 'bg-amber-50/45 border-amber-200 shadow-xs'
+                        : 'bg-white border-stone-200/80 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="font-extrabold text-stone-850 flex justify-between items-center">
+                      <span className="truncate">{custGroup.customerName}</span>
+                      <span className="text-[10px] text-stone-500 font-normal shrink-0">
+                        {custGroup.customerPhone}
+                      </span>
+                    </div>
+                    <div className="space-y-1 pl-1 max-h-24 overflow-y-auto pr-0.5">
+                      {custGroup.items.map(({ quoteId, quoteItem, quoteNotes, quoteCreatedAt, quoteValidUntil }) => {
+                        const isChecked = selectedQuoteItems.some(
+                          (p) => p.quoteId === quoteId && p.item.id === quoteItem.id
+                        );
+                        return (
+                          <label
+                            key={`${quoteId}_${quoteItem.id}`}
+                            className="flex items-start gap-2 p-1 py-1.5 rounded hover:bg-stone-50 cursor-pointer select-none border-b border-stone-100 last:border-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() =>
+                                handleToggleQuoteItem(
+                                  quoteId,
+                                  quoteItem,
+                                  {
+                                    id: custGroup.customerId,
+                                    name: custGroup.customerName,
+                                    phone: custGroup.customerPhone,
+                                    address: custGroup.customerAddress,
+                                  },
+                                  quoteNotes,
+                                  quoteCreatedAt,
+                                  quoteValidUntil
+                                )
+                              }
+                              className="mt-0.5 rounded border-stone-300 text-[#593622] focus:ring-[#593622] h-3.5 w-3.5"
+                            />
+                            <div className="leading-tight">
+                              <span className="font-bold text-stone-800">
+                                {quoteItem.furnitureItem}
+                              </span>{' '}
+                              <span className="text-stone-400 text-[10px]">
+                                ({quoteItem.dimensions || 'Custom'})
+                              </span>
+                              <div className="text-[9px] text-stone-500 mt-0.5">
+                                Qty: {quoteItem.quantity} • Rate: ₹{quoteItem.unitPrice?.toLocaleString()} • Ref: {quoteId}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* DYNAMIC FORM GRID (SCREEN VIEW ONLY) */}
@@ -686,7 +1100,80 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
           </div>
 
           <div>
-            <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider border-b pb-2">II. Product Configuration &amp; Specs</h2>
+            <div className="flex items-center justify-between mb-3 border-b pb-2">
+              <h2 className="text-sm font-black text-stone-900 uppercase tracking-wider">II. Product Configuration &amp; Specs</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  const newItem: AgreementItem = {
+                    id: `item_${Math.random().toString(36).substring(2, 9)}`,
+                    category: 'Door Frames',
+                    subCategory: 'Set',
+                    size: '6ft',
+                    customSize: '',
+                    designType: 'Standard',
+                    material: 'Plywood',
+                    finish: 'hand polish',
+                    colorShade: 'Walnut',
+                    specialNotes: '',
+                    qty: 1,
+                    quotedRate: 0,
+                    cushion: 0,
+                    discount: 0,
+                    hardware: 0,
+                    productName: 'Door Frames › Set (6ft)',
+                    itemDescription: 'Structure: Plywood. Finish: hand polish. Color: Walnut.',
+                  };
+                  setItems((prev) => [...prev, newItem]);
+                  setTimeout(() => loadItemToForm(items.length), 60);
+                }}
+                className="px-2.5 py-1 bg-[#593622]/10 hover:bg-[#593622]/20 text-[#593622] rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1 transition"
+              >
+                <Plus size={12} />
+                Add Another Product
+              </button>
+            </div>
+
+            {/* List of tabs for each item */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {items.map((itm, idx) => (
+                <div
+                  key={itm.id || idx}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                    idx === activeItemIndex
+                      ? 'bg-[#593622] text-white border-[#593622] shadow-sm'
+                      : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => loadItemToForm(idx)}
+                    className="text-left font-semibold truncate max-w-[140px]"
+                    title={itm.productName}
+                  >
+                    {idx + 1}. {itm.category} ({itm.qty}x)
+                  </button>
+                  {items.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextItems = items.filter((_, i) => i !== idx);
+                        setItems(nextItems);
+                        const nextIdx = Math.max(0, idx - 1);
+                        setActiveItemIndex(nextIdx);
+                        setTimeout(() => loadItemToForm(nextIdx), 60);
+                      }}
+                      className={`p-0.5 rounded-full hover:bg-black/10 transition ${
+                        idx === activeItemIndex ? 'text-white/85 hover:text-white' : 'text-stone-400 hover:text-stone-600'
+                      }`}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -1165,26 +1652,31 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   <div className="col-span-2"><strong>{language === 'mr' ? 'पत्ता:' : 'ADDRESS:'}</strong> {address || '__________________________________________________'}</div>
                 </div>
 
-                <div className="border-t border-b border-black py-2 my-2">
-                  <div className="font-bold underline mb-1 uppercase text-[10px]">{language === 'mr' ? 'उत्पादनाचा तपशील:' : 'Product details:'}</div>
-                  <div><strong>{language === 'mr' ? 'उत्पादनाचे नाव:' : 'PRODUCT NAME:'}</strong> {productName || '_________________________________'}</div>
-                  <div><strong>{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'ITEM DESCRIPTION:'}</strong> {itemDescription || '_________________________________'}</div>
-                  <div className="flex gap-4 mt-1">
-                    <div><strong>{language === 'mr' ? 'नग:' : 'QTY:'}</strong> {qty}</div>
-                    <div><strong>{language === 'mr' ? 'प्रति नग दर:' : 'UNIT RATE:'}</strong> ₹{quotedRate.toLocaleString()}</div>
-                    <div><strong>{language === 'mr' ? 'एकूण रक्कम:' : 'AMOUNT:'}</strong> ₹{(quotedRate * qty).toLocaleString()}</div>
+                <div className="border-t border-b border-black py-2 my-2 space-y-2">
+                  <div className="font-bold underline uppercase text-[10px]">{language === 'mr' ? 'उत्पादनांचा तपशील:' : 'Products details:'}</div>
+                  <div className="space-y-1.5">
+                    {items.map((item, idx) => {
+                      const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
+                      return (
+                        <div key={item.id || idx} className="border-b border-stone-100 pb-1.5 last:border-0 last:pb-0 text-[10px]">
+                          <div className="font-bold">{item.productName}</div>
+                          <div className="text-[9px] text-stone-600 leading-tight italic">{item.itemDescription}</div>
+                          <div className="flex gap-4 mt-0.5 text-[9.5px]">
+                            <div><strong>{language === 'mr' ? 'नग:' : 'QTY:'}</strong> {item.qty}</div>
+                            <div><strong>{language === 'mr' ? 'अंतिम दर:' : 'FINAL RATE:'}</strong> ₹{itemFinalRate.toLocaleString()}</div>
+                            <div><strong>{language === 'mr' ? 'रक्कम:' : 'AMOUNT:'}</strong> ₹{(itemFinalRate * item.qty).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5 text-[9px]">
-                  <div><strong>{language === 'mr' ? 'मूळ दर:' : 'QUOTED RATE:'}</strong> ₹{quotedRate.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'कुशन किंमत:' : 'CUSHION:'}</strong> ₹{cushion.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'सवलत (डिस्काउंट):' : 'DISCOUNT:'}</strong> ₹{discount.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'हार्डवेअर खर्च:' : 'HARDWARE:'}</strong> ₹{hardware.toLocaleString()}</div>
-                  <div className="font-bold"><strong>{language === 'mr' ? 'अंतिम दर:' : 'FINAL RATE:'}</strong> ₹{finalRate.toLocaleString()}</div>
+                  <div><strong>{language === 'mr' ? 'उत्पादने एकूण उप-बेरीज:' : 'PRODUCTS SUBTOTAL:'}</strong> ₹{itemsSubtotal.toLocaleString()}</div>
                   <div><strong>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING & FORWARDING:'}</strong> ₹{packingForwarding.toLocaleString()}</div>
-                  <div><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
                   <div><strong>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION:'}</strong> ₹{transportation.toLocaleString()}</div>
+                  <div><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
                   <div className="font-bold col-span-2 text-[9.5px] border-t border-dashed border-stone-300 pt-1 flex justify-between">
                     <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED:'}</span>
                     <span>₹{totalInvoiced.toLocaleString()}</span>
@@ -1369,17 +1861,25 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="py-2.5 font-bold">{productName || 'Custom Engineered Furniture Unit'}</td>
-                    <td className="py-2.5 text-center">{qty}</td>
-                    <td className="py-2.5 text-right">₹{quotedRate.toLocaleString()}</td>
-                    <td className="py-2.5 text-right font-bold">₹{(quotedRate * qty).toLocaleString()}</td>
-                  </tr>
-                  <tr className="border-t border-dashed border-stone-300">
-                    <td colSpan={4} className="py-2 text-[10px] text-stone-700 italic">
-                      <strong>{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'Item Spec/Description:'}</strong> {itemDescription || 'Standard handcrafted woodwork structure with premium selected materials.'}
-                    </td>
-                  </tr>
+                  {items.map((item, idx) => {
+                    const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
+                    const itemSubtotal = itemFinalRate * Number(item.qty);
+                    return (
+                      <React.Fragment key={item.id || idx}>
+                        <tr className={idx > 0 ? 'border-t border-stone-205' : ''}>
+                          <td className="py-1.5 font-bold">{item.productName}</td>
+                          <td className="py-1.5 text-center">{item.qty}</td>
+                          <td className="py-1.5 text-right">₹{itemFinalRate.toLocaleString()}</td>
+                          <td className="py-1.5 text-right font-bold">₹{itemSubtotal.toLocaleString()}</td>
+                        </tr>
+                        <tr className="border-b border-stone-300">
+                          <td colSpan={4} className="pb-1.5 pt-0.5 text-[9px] text-stone-700 italic leading-snug">
+                            <strong>{language === 'mr' ? 'वैशिष्ट्ये:' : 'Spec/Description:'}</strong> {item.itemDescription}
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1391,40 +1891,24 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               </h2>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs font-mono">
                 <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'मूळ दर:' : 'QUOTED BASE RATE:'}</span>
-                  <span>₹{quotedRate.toLocaleString()}</span>
+                  <span>{language === 'mr' ? 'उत्पादने एकूण उप-बेरीज:' : 'PRODUCTS SUBTOTAL:'}</span>
+                  <span>₹{itemsSubtotal.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'कुशन किंमत:' : 'CUSHION COST:'}</span>
-                  <span>₹{cushion.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'हार्डवेअर खर्च:' : 'HARDWARE CHARGES:'}</span>
-                  <span>₹{hardware.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5 text-rose-750 font-bold">
-                  <span>{language === 'mr' ? '(-) सवलत (डिस्काउंट):' : '(-) DISCOUNT ALLOWED:'}</span>
-                  <span>₹{discount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b-2 border-black pb-0.5 font-black text-stone-900">
-                  <span>{language === 'mr' ? 'अंतिम दर:' : 'FINAL AGREED RATE:'}</span>
-                  <span>₹{finalRate.toLocaleString()}</span>
+                <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-stone-900">
+                  <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED AMOUNT:'}</span>
+                  <span>₹{totalInvoiced.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between border-b border-stone-200 pb-0.5">
                   <span>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING / FORWARDING:'}</span>
                   <span>₹{packingForwarding.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between border-b border-stone-200 pb-0.5">
-                  <span>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION FEE:'}</span>
-                  <span>₹{transportation.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5">
                   <span>{language === 'mr' ? '(-) ऍडव्हान्स पेमेंट:' : '(-) ADVANCE DEPOSITED:'}</span>
                   <span>₹{advance.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-stone-900">
-                  <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED AMOUNT:'}</span>
-                  <span>₹{totalInvoiced.toLocaleString()}</span>
+                <div className="flex justify-between border-b border-stone-200 pb-0.5">
+                  <span>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION FEE:'}</span>
+                  <span>₹{transportation.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-emerald-800">
                   <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
