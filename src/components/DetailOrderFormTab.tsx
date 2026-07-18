@@ -1644,8 +1644,35 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                   <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_________________'}</div>
                   <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'ऑर्डर क्र.:' : 'ORDER NO:'}</strong> {orderNo || '_________________'}</div>
-                  <div><strong>{language === 'mr' ? 'आर्टिकल क्र.:' : 'ARTICLE NO:'}</strong> {articleNo || '_________________'}</div>
+                  
+                  {/* ORDER NO & ARTICLE NO AS CLEAN LISTS */}
+                  <div className="col-span-2 grid grid-cols-2 gap-2 border-y border-dashed border-stone-200 py-1.5 my-0.5">
+                    <div>
+                      <strong>{language === 'mr' ? 'ऑर्डर क्र.:' : 'ORDER NO:'}</strong>
+                      {orderNo && orderNo.includes('&') ? (
+                        <ul className="list-disc pl-3.5 mt-0.5 space-y-0.5 text-[9.5px]">
+                          {orderNo.split(/\s*&\s*/).map((no, idx) => (
+                            <li key={idx} className="font-bold">{no}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="font-bold"> {orderNo || '_________________'}</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>{language === 'mr' ? 'आर्टिकल क्र.:' : 'ARTICLE NO:'}</strong>
+                      {articleNo && articleNo.includes('&') ? (
+                        <ul className="list-disc pl-3.5 mt-0.5 space-y-0.5 text-[9.5px]">
+                          {articleNo.split(/\s*&\s*/).map((no, idx) => (
+                            <li key={idx} className="font-bold">{no}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="font-bold"> {articleNo || '_________________'}</span>
+                      )}
+                    </div>
+                  </div>
+
                   <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_________________'}</div>
                   <div><strong>{language === 'mr' ? 'व्हॉट्सॲप क्र.:' : 'WHATSAPP NO:'}</strong> {whatsappNo || '_________________'}</div>
                   <div className="col-span-2"><strong>{language === 'mr' ? 'ग्राहकाचे नाव:' : 'CUSTOMER NAME:'}</strong> {customerName || '_________________'}</div>
@@ -1654,14 +1681,25 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
 
                 <div className="border-t border-b border-black py-2 my-2 space-y-2">
                   <div className="font-bold underline uppercase text-[10px]">{language === 'mr' ? 'उत्पादनांचा तपशील:' : 'Products details:'}</div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {items.map((item, idx) => {
                       const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
                       return (
                         <div key={item.id || idx} className="border-b border-stone-100 pb-1.5 last:border-0 last:pb-0 text-[10px]">
-                          <div className="font-bold">{item.productName}</div>
-                          <div className="text-[9px] text-stone-600 leading-tight italic">{item.itemDescription}</div>
-                          <div className="flex gap-4 mt-0.5 text-[9.5px]">
+                          <div className="font-bold text-stone-900">{item.productName}</div>
+                          {/* PRODUCT SPECS LIST */}
+                          <div className="mt-1 pl-2 border-l border-stone-300 space-y-0.5 text-[9px] text-stone-600 font-mono">
+                            {item.itemDescription && item.itemDescription.split('.')
+                              .map(p => p.trim())
+                              .filter(p => p.length > 0)
+                              .map((part, pIdx) => (
+                                <div key={pIdx} className="flex items-start gap-1">
+                                  <span className="text-[#593622] shrink-0 font-bold">•</span>
+                                  <span>{part}</span>
+                                </div>
+                              ))}
+                          </div>
+                          <div className="flex gap-4 mt-1.5 text-[9.5px]">
                             <div><strong>{language === 'mr' ? 'नग:' : 'QTY:'}</strong> {item.qty}</div>
                             <div><strong>{language === 'mr' ? 'अंतिम दर:' : 'FINAL RATE:'}</strong> ₹{itemFinalRate.toLocaleString()}</div>
                             <div><strong>{language === 'mr' ? 'रक्कम:' : 'AMOUNT:'}</strong> ₹{(itemFinalRate * item.qty).toLocaleString()}</div>
@@ -1832,17 +1870,47 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-xs font-mono border border-black p-4 rounded mb-6">
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_______________________'}</div>
                 <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'ऑर्डर क्रमांक:' : 'ORDER NO:'}</strong> {orderNo || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'आर्टिकल क्रमांक:' : 'ARTICLE NO:'}</strong> {articleNo || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_______________________'}</div>
+                
+                {/* ORDER NO LIST */}
+                <div className="border-t border-dashed border-stone-300 pt-1">
+                  <strong>{language === 'mr' ? 'ऑर्डर क्रमांक:' : 'ORDER NO:'}</strong>
+                  {orderNo && orderNo.includes('&') ? (
+                    <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
+                      {orderNo.split(/\s*&\s*/).map((no, idx) => (
+                        <li key={idx} className="font-bold">{no}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="font-bold"> {orderNo || '_______________________'}</span>
+                  )}
+                </div>
+
+                {/* ARTICLE NO LIST */}
+                <div className="border-t border-dashed border-stone-300 pt-1">
+                  <strong>{language === 'mr' ? 'आर्टिकल क्रमांक:' : 'ARTICLE NO:'}</strong>
+                  {articleNo && articleNo.includes('&') ? (
+                    <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
+                      {articleNo.split(/\s*&\s*/).map((no, idx) => (
+                        <li key={idx} className="font-bold">{no}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="font-bold"> {articleNo || '_______________________'}</span>
+                  )}
+                </div>
+
+                <div className="border-t border-dashed border-stone-300 pt-1"><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_______________________'}</div>
               </div>
-              <div className="space-y-1 border-l border-stone-300 pl-4">
+              <div className="space-y-2 border-l border-stone-300 pl-4">
                 <div><strong>{language === 'mr' ? 'ग्राहकाचे नाव:' : 'CUSTOMER NAME:'}</strong> {customerName || '_______________________'}</div>
                 <div><strong>{language === 'mr' ? 'व्हॉट्सॲप क्र.:' : 'WHATSAPP NO:'}</strong> {whatsappNo || '_______________________'}</div>
-                <div><strong>{language === 'mr' ? 'पत्ता:' : 'ADDRESS:'}</strong> <span className="text-[11px] font-sans">{address || '__________________________________________________'}</span></div>
+                <div className="pt-2 border-t border-dashed border-stone-300">
+                  <strong>{language === 'mr' ? 'पत्ता:' : 'ADDRESS:'}</strong> 
+                  <span className="text-[11px] font-sans block mt-1">{address || '__________________________________________________'}</span>
+                </div>
               </div>
             </div>
 
@@ -1873,8 +1941,19 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                           <td className="py-1.5 text-right font-bold">₹{itemSubtotal.toLocaleString()}</td>
                         </tr>
                         <tr className="border-b border-stone-300">
-                          <td colSpan={4} className="pb-1.5 pt-0.5 text-[9px] text-stone-700 italic leading-snug">
-                            <strong>{language === 'mr' ? 'वैशिष्ट्ये:' : 'Spec/Description:'}</strong> {item.itemDescription}
+                          <td colSpan={4} className="pb-2 pt-0.5 text-[9px] text-stone-700 leading-snug">
+                            <strong className="block mb-1 text-stone-900">{language === 'mr' ? 'वैशिष्ट्ये:' : 'Spec/Description:'}</strong>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 pl-2">
+                              {item.itemDescription && item.itemDescription.split('.')
+                                .map(p => p.trim())
+                                .filter(p => p.length > 0)
+                                .map((part, pIdx) => (
+                                  <div key={pIdx} className="flex items-start gap-1">
+                                    <span className="text-[#593622] shrink-0 font-bold">•</span>
+                                    <span>{part}</span>
+                                  </div>
+                                ))}
+                            </div>
                           </td>
                         </tr>
                       </React.Fragment>
@@ -1935,7 +2014,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 <strong>{language === 'mr' ? 'पॉलिशचा प्रकार:' : 'TYPE OF POLISH:'}</strong>
                 <p className="mt-0.5 font-bold uppercase">{typeOfPolish} POLISH ({language === 'mr' ? 'हात / मशीन' : 'HAND/MACHINE'})</p>
               </div>
-            </div>
+            </div>    
           </div>
 
           <div className="grid grid-cols-2 gap-12 text-center text-xs font-mono border-t pt-8">
