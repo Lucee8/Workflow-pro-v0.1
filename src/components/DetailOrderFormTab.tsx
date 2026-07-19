@@ -2434,4 +2434,3 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     </div>
   );
 }
-.
