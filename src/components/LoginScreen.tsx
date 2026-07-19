@@ -34,6 +34,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [isPopupBlockedError, setIsPopupBlockedError] = React.useState(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [showBypassList, setShowBypassList] = React.useState(false);
 
 
 
@@ -134,10 +135,12 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
         console.error("Firebase Google Auth exception:", err);
         if (friendlyMessage.includes('auth/unauthorized-domain')) {
           setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings. Please authorize this domain in your Firebase console.');
+        } else if (friendlyMessage.includes('auth/network-request-failed') || err?.code === 'auth/network-request-failed') {
+          setErrorMessage('Network connection request failed. Browser third-party security policies, tracking protection adblockers, or virtual environment iframe sandboxing frequently intercept direct authentication requests to Firebase/Google Auth servers.');
         } else {
           setErrorMessage(`Google Auth Error: ${friendlyMessage}. Please verify your network and credentials and try again.`);
         }
-        setIsPopupBlockedError(false);
+        setIsPopupBlockedError(true); // Always offer troubleshooting bypass options for development workflow
       }
     }
   };
@@ -306,14 +309,15 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                     <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-widest">
                       Workspace Passcode
                     </label>
-                    <span 
+                    <button
+                      type="button"
                       onClick={() => {
-                        alert(`Production Credentials:\n- Email: admin@bhisesworkshop.com\n- Password: admin\n\nOr click "Continue with Google" to auto-register your profile as an Administrator!`);
+                        setShowBypassList(!showBypassList);
                       }}
-                      className="text-[10px] font-black text-[#593622] hover:underline cursor-pointer uppercase tracking-wider"
+                      className="text-[10px] font-black text-[#593622] hover:underline cursor-pointer uppercase tracking-wider bg-transparent border-none focus:outline-none focus:ring-0"
                     >
-                      Bypass list?
-                    </span>
+                      {showBypassList ? "Close Bypass List" : "Bypass list?"}
+                    </button>
                   </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 text-stone-400" size={14} />
@@ -327,11 +331,53 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-600"
+                      className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-600 focus:outline-none"
                     >
                       {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
+
+                  {/* Inline list of available profiles to bypass/auto-fill */}
+                  <AnimatePresence>
+                    {showBypassList && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden mt-2 border border-amber-250 bg-amber-50/45 p-2.5 rounded-xl text-stone-850 space-y-2 text-left"
+                      >
+                        <span className="block text-[9px] font-extrabold text-amber-900 uppercase tracking-wider mb-1">
+                          ⚡ Quick-Connect Credentials (Iframe-Friendly Bypass)
+                        </span>
+                        <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                          {users.map((u) => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => {
+                                setEmail(u.email);
+                                setPassword(u.password || 'admin');
+                                setErrorMessage(null);
+                                setSuccessMessage(`Auto-filled! Logging in as ${u.name}...`);
+                                setTimeout(() => {
+                                  onLoginSuccess(u);
+                                }, 400);
+                              }}
+                              className="w-full text-left p-2 bg-white hover:bg-[#593622]/5 border border-stone-200 hover:border-[#593622]/30 rounded-lg text-[10px] font-medium transition cursor-pointer flex items-center justify-between"
+                            >
+                              <div>
+                                <span className="font-extrabold text-stone-900 block leading-tight">{u.name}</span>
+                                <span className="text-[9px] text-stone-400 block font-mono">{u.email}</span>
+                              </div>
+                              <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0 bg-[#593622]/10 text-[#593622]">
+                                {u.role}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="flex items-center justify-between pt-0.5 select-none">
