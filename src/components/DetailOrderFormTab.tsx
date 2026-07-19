@@ -1683,10 +1683,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               const isLastPage = pageIdx === itemPages.length - 1;
 
               return (
-                <div
-                  key={`preview_specs_page_${pageIdx}`}
-                  className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[11px] leading-snug font-mono text-black select-none max-w-full"
-                >
+                // <div
+                //   key={`preview_specs_page_${pageIdx}`}
+                //   className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[11px] leading-snug font-mono text-black select-none max-w-full"
+                // >
                   <div className="border-2 border-black p-4 space-y-4 min-h-[500px] flex flex-col justify-between">
                     <div>
                       {/* Header */}
