@@ -1996,7 +1996,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
       </div>
 
       {/* PRINT-ONLY EMBEDDED AREA (Forces visibility in system window print and structures into clean pages) */}
-      <div className="hidden print:block fixed inset-0 bg-white text-black font-sans z-50 p-0 m-0">
+      <div className="hidden print:block print-wrapper-flow bg-white text-black font-sans p-0 m-0">
         
         {/* SPECIFICATION PAGES (PAGE 1, 1.1, etc.) */}
         {itemPages.map((pageItems, pageIdx) => {
@@ -2006,7 +2006,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
           return (
             <div
               key={`print_specs_page_${pageIdx}`}
-              className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between"
+              className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between print-page"
               style={pageIdx > 0 ? { pageBreakBefore: 'always' } : {}}
             >
               <div>
@@ -2219,7 +2219,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
         })}
 
         {/* PAGE 2 CONTENT (TERMS & CONDITIONS) */}
-        <div className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between" style={{ pageBreakBefore: 'always' }}>
+        <div className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between print-page" style={{ pageBreakBefore: 'always' }}>
           <div>
             <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-4">
               <span className="text-xs font-bold font-mono tracking-widest text-stone-500 uppercase">
@@ -2373,7 +2373,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
         {imagePages.map((pageImgs, pageIdx) => (
           <div
             key={`print_drawings_page_${pageIdx}`}
-            className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between"
+            className="w-[100%] h-screen min-h-screen p-8 bg-white border border-transparent box-border flex flex-col justify-between print-page"
             style={{ pageBreakBefore: 'always' }}
           >
             <div>
