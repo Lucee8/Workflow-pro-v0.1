@@ -5,7 +5,7 @@ import { formatToDDMMYYYY } from '../utils';
 
 interface AgreementItem {
   id: string;
-  category: string;
+  category: string; 
   subCategory: string;
   size: string;
   customSize: string;
@@ -1228,6 +1228,17 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <div className="md:col-span-12">
+              <label className="block text-[10px] font-bold text-[#593622] uppercase tracking-wider mb-1">Product Name</label>
+              <input
+                type="text"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                placeholder="Product Name"
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-bold"
+              />
+            </div>
+
             <div className="md:col-span-4">
               <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Category</label>
               <input
@@ -1361,17 +1372,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               />
             </div>
 
-            <div className="md:col-span-6">
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Auto-Generated Product Name (Printed)</label>
-              <input
-                type="text"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
-              />
-            </div>
-
-            <div className="md:col-span-6">
+            <div className="md:col-span-12">
               <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Auto-Generated Specifications (Printed)</label>
               <input
                 type="text"
@@ -1459,6 +1460,43 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               <div className="w-full px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 font-black">
                 ₹{balance.toLocaleString()}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Payment Mode</label>
+              <select
+                value={paymentMode}
+                onChange={(e) => setPaymentMode(e.target.value as any)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                <option value="CASH">CASH</option>
+                <option value="BANK">BANK TRANSFER</option>
+                <option value="UPI">UPI / GPAY</option>
+                <option value="OTHER">OTHER</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Polish Shade</label>
+              <input
+                type="text"
+                value={polishShade}
+                onChange={(e) => setPolishShade(e.target.value)}
+                placeholder="e.g. Natural Lacquer"
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Type of Polish</label>
+              <select
+                value={typeOfPolish}
+                onChange={(e) => setTypeOfPolish(e.target.value as any)}
+                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
+              >
+                <option value="HAND">HAND POLISH</option>
+                <option value="MACHINE">MACHINE POLISH</option>
+              </select>
             </div>
           </div>
 
@@ -1689,12 +1727,12 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 >
                   <div className="border-2 border-black p-4 space-y-4 min-h-[500px] flex flex-col justify-between">
                     <div>
-                      {/* Header
+                      {/* Header */}
                       <div className="text-center font-bold tracking-wider text-sm border-b pb-2 select-none uppercase">
                         {language === 'mr' 
                           ? `भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म ${pageIdx > 0 ? '(चालू)' : ''}` 
                           : `BHISE'Z WORKSHOP - DETAIL ORDER FORM ${pageIdx > 0 ? '(CONT.)' : ''}`}
-                      </div> */}
+                      </div>
 
                       {/* Metadata */}
                       {isFirstPage && (
@@ -1749,16 +1787,21 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                             return (
                               <div key={item.id || idx} className="border-b border-stone-100 pb-1.5 last:border-0 last:pb-0 text-[10px]">
                                 <div className="font-bold text-stone-900">{item.productName}</div>
-                                <div className="mt-1 pl-2 border-l border-stone-300 space-y-0.5 text-[9px] text-stone-600 font-mono">
-                                  {item.itemDescription && item.itemDescription.split('.')
-                                    .map(p => p.trim())
-                                    .filter(p => p.length > 0)
-                                    .map((part, pIdx) => (
-                                      <div key={pIdx} className="flex items-start gap-1">
-                                        <span className="text-[#593622] shrink-0 font-bold">•</span>
-                                        <span>{part}</span>
-                                      </div>
-                                    ))}
+                                <div className="mt-1 pl-2 border-l-2 border-[#593622] space-y-0.5 text-[9px] text-stone-600 font-mono">
+                                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                                    <div><strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</div>
+                                    <div><strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</div>
+                                    <div><strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</div>
+                                    <div><strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</div>
+                                    <div className="col-span-2"><strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</div>
+                                    <div><strong>{language === 'mr' ? 'प्रमाण:' : 'Qty:'}</strong> {item.qty}</div>
+                                    <div><strong>{language === 'mr' ? 'कोटेड दर:' : 'Quoted Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</div>
+                                  </div>
+                                  {item.specialNotes && (
+                                    <div className="mt-1 pl-1 bg-stone-50 border-l border-stone-300 text-stone-500 text-[8.5px] italic">
+                                      <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Mfg Notes:'}</strong> {item.specialNotes}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex gap-4 mt-1 text-[9px]">
                                   <div><strong>{language === 'mr' ? 'नग:' : 'QTY:'}</strong> {item.qty}</div>
@@ -1779,6 +1822,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                             <div><strong>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING & FORWARDING:'}</strong> ₹{packingForwarding.toLocaleString()}</div>
                             <div><strong>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION:'}</strong> ₹{transportation.toLocaleString()}</div>
                             <div><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
+                            <div className="col-span-2 font-bold flex justify-between border-t border-dashed border-stone-200 pt-1">
+                              <span>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</span>
+                              <span className="font-bold text-stone-900">{paymentMode}</span>
+                            </div>
                             <div className="font-bold col-span-2 text-[9.5px] border-t border-dashed border-stone-300 pt-1 flex justify-between">
                               <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED:'}</span>
                               <span>₹{totalInvoiced.toLocaleString()}</span>
@@ -1791,12 +1838,6 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                               <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'OUTSTANDING BALANCE:'}</span>
                               <span>₹{outstandingBalance.toLocaleString()}</span>
                             </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-1 text-[9px] pt-1">
-                            <div><strong>{language === 'mr' ? 'पॉलिश शेड:' : 'POLISH SHADE:'}</strong> {polishShade || '_________________'}</div>
-                            <div><strong>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</strong> {paymentMode}</div>
-                            <div className="col-span-2"><strong>{language === 'mr' ? 'पॉलिशचा प्रकार:' : 'TYPE OF POLISH:'}</strong> {typeOfPolish} ({language === 'mr' ? 'हात / मशीन' : 'HAND / MACHINE'})</div>
                           </div>
                         </>
                       )}
@@ -2075,19 +2116,22 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                               <td className="py-1 text-right font-bold">₹{itemSubtotal.toLocaleString()}</td>
                             </tr>
                             <tr className="border-b border-stone-300">
-                              <td colSpan={4} className="pb-1.5 pt-0.5 text-[9px] text-stone-700 leading-snug">
-                                <strong className="block mb-0.5 text-stone-900">{language === 'mr' ? 'वैशिष्ट्ये:' : 'Spec/Description:'}</strong>
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 pl-2">
-                                  {item.itemDescription && item.itemDescription.split('.')
-                                    .map(p => p.trim())
-                                    .filter(p => p.length > 0)
-                                    .map((part, pIdx) => (
-                                      <div key={pIdx} className="flex items-start gap-1">
-                                        <span className="text-[#593622] shrink-0 font-bold">•</span>
-                                        <span>{part}</span>
-                                      </div>
-                                    ))}
+                              <td colSpan={4} className="pb-1.5 pt-1 text-[9px] text-stone-750 leading-snug">
+                                <strong className="block mb-1 text-stone-900 uppercase tracking-wider text-[8px]">{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'DETAILED SPECIFICATIONS:'}</strong>
+                                <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 pl-2 font-mono">
+                                  <div>• <strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</div>
+                                  <div>• <strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</div>
+                                  <div>• <strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</div>
+                                  <div>• <strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</div>
+                                  <div>• <strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</div>
+                                  <div>• <strong>{language === 'mr' ? 'दर (₹):' : 'Unit Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</div>
+                                  <div>• <strong>{language === 'mr' ? 'प्रमाण:' : 'Quantity:'}</strong> {item.qty}</div>
                                 </div>
+                                {item.specialNotes && (
+                                  <div className="mt-1 pl-2 text-[8.5px] text-stone-600 font-sans italic">
+                                    <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Special/Mfg Notes:'}</strong> {item.specialNotes}
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           </React.Fragment>
@@ -2130,26 +2174,17 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                           <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
                           <span>₹{totalAdvancePaid.toLocaleString()}</span>
                         </div>
+                        <div className="flex justify-between border-b border-stone-200 pb-0.5 font-bold text-stone-900">
+                          <span>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</span>
+                          <span className="uppercase">{paymentMode}</span>
+                        </div>
+                        <div className="border-b border-stone-200 pb-0.5">
+                          {/* Blank cell to balance grid */}
+                        </div>
                         <div className="col-span-2 flex justify-between pt-1 font-black text-[#593622] text-sm border-t border-black uppercase mt-0.5">
                           <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'Outstanding Balance:'}</span>
                           <span>₹{outstandingBalance.toLocaleString()}</span>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* TEHNICAL POLISH SPEC */}
-                    <div className="border border-black rounded p-3 mb-4 grid grid-cols-3 gap-4 text-xs font-mono">
-                      <div>
-                        <strong>{language === 'mr' ? 'पॉलिश शेड:' : 'POLISH SHADE:'}</strong>
-                        <p className="mt-0.5 font-bold uppercase">{polishShade || (language === 'mr' ? 'नैसर्गिक लाकूड' : 'Natural Lacquer')}</p>
-                      </div>
-                      <div>
-                        <strong>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</strong>
-                        <p className="mt-0.5 font-bold uppercase">{paymentMode}</p>
-                      </div>
-                      <div>
-                        <strong>{language === 'mr' ? 'पॉलिशचा प्रकार:' : 'TYPE OF POLISH:'}</strong>
-                        <p className="mt-0.5 font-bold uppercase">{typeOfPolish} POLISH ({language === 'mr' ? 'हात / मशीन' : 'HAND/MACHINE'})</p>
                       </div>
                     </div>
                   </>
