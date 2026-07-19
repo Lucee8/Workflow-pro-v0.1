@@ -1687,14 +1687,14 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 //   key={`preview_specs_page_${pageIdx}`}
                 //   className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[11px] leading-snug font-mono text-black select-none max-w-full"
                 // >
-                  <div className="border-2 border-black p-4 space-y-4 min-h-[500px] flex flex-col justify-between">
-                    <div>
-                      {/* Header */}
-                      <div className="text-center font-bold tracking-wider text-sm border-b pb-2 select-none uppercase">
-                        {language === 'mr' 
-                          ? `भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म ${pageIdx > 0 ? '(चालू)' : ''}` 
-                          : `BHISE'Z WORKSHOP - DETAIL ORDER FORM ${pageIdx > 0 ? '(CONT.)' : ''}`}
-                      </div>
+                //   <div className="border-2 border-black p-4 space-y-4 min-h-[500px] flex flex-col justify-between">
+                //     <div>
+                //       {/* Header */}
+                //       <div className="text-center font-bold tracking-wider text-sm border-b pb-2 select-none uppercase">
+                //         {language === 'mr' 
+                //           ? `भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म ${pageIdx > 0 ? '(चालू)' : ''}` 
+                //           : `BHISE'Z WORKSHOP - DETAIL ORDER FORM ${pageIdx > 0 ? '(CONT.)' : ''}`}
+                //       </div>
 
                       {/* Metadata */}
                       {isFirstPage && (
