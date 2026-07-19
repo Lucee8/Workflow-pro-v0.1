@@ -2185,6 +2185,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
           </div>
         </div>
+
       </div>
 
     </div>
