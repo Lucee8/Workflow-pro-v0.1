@@ -2,7 +2,6 @@ import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
 import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight } from 'lucide-react';
 import { formatToDDMMYYYY } from '../utils';
-import logoImg from '../assets/images/logo.png';
 
 interface AgreementItem {
   id: string;
@@ -1731,27 +1730,13 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                       {/* Header */}
                       {isFirstPage ? (
                         <div className="flex justify-between items-start border-b-2 border-black pb-3 mb-4">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src="src/assets/images/logo.png"
-                              alt="Bhise'z Wood Workshop Logo"
-                              className="h-10 md:h-12 max-w-[200px] object-contain"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                const target = e.currentTarget;
-                                if (target.src !== logoImg) {
-                                  target.src = logoImg;
-                                }
-                              }}
-                            />
-                            <div className="flex flex-col items-start select-none">
-                              <span className="text-xl md:text-2xl font-black text-stone-950 uppercase tracking-tight leading-none font-sans">
-                                {language === 'mr' ? 'भिसेज् वुड वर्कशॉप' : "BHISE'Z WOOD WORKSHOP"}
-                              </span>
-                              <span className="text-[8px] md:text-[8.5px] font-extrabold text-stone-600 uppercase tracking-widest leading-tight font-mono mt-1">
-                                {language === 'mr' ? 'उत्कृष्ट फर्निचर उत्पादक आणि कारागीर' : 'ELITE FURNITURE MANUFACTURERS & CUSTOM WOOD CRAFTERS'}
-                              </span>
-                            </div>
+                          <div className="flex flex-col items-start select-none">
+                            <span className="text-xl md:text-2xl font-black text-stone-950 uppercase tracking-tight leading-none font-sans">
+                              {language === 'mr' ? 'भिसेज् वुड वर्कशॉप' : "BHISE'Z WOOD WORKSHOP"}
+                            </span>
+                            <span className="text-[8px] md:text-[8.5px] font-extrabold text-stone-600 uppercase tracking-widest leading-tight font-mono mt-1">
+                              {language === 'mr' ? 'उत्कृष्ट फर्निचर उत्पादक आणि कारागीर' : 'ELITE FURNITURE MANUFACTURERS & CUSTOM WOOD CRAFTERS'}
+                            </span>
                           </div>
                           <div className="text-right shrink-0">
                             <div className="border-2 border-black px-2.5 py-1 bg-white inline-block shadow-2xs">
@@ -2172,27 +2157,13 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 {/* Header - Only on the very first page, or a minified header on subsequent pages */}
                 {isFirstPage ? (
                   <div className="flex justify-between items-start border-b-2 border-black pb-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src="src/assets/images/logo.png"
-                        alt="Bhise'z Wood Workshop Logo"
-                        className="h-12 max-w-[220px] object-contain"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          if (target.src !== logoImg) {
-                            target.src = logoImg;
-                          }
-                        }}
-                      />
-                      <div>
-                        <h1 className="text-2xl font-black tracking-tighter uppercase font-sans text-stone-950 leading-none">
-                          {language === 'mr' ? 'भिसेज् वुड वर्कशॉप' : "BHISE'Z WOOD WORKSHOP"}
-                        </h1>
-                        <p className="text-[9px] uppercase tracking-widest font-mono text-stone-600 mt-1">
-                          {language === 'mr' ? 'उत्कृष्ट फर्निचर उत्पादक आणि कारागीर' : 'ELITE FURNITURE MANUFACTURERS & CUSTOM WOOD CRAFTERS'}
-                        </p>
-                      </div>
+                    <div>
+                      <h1 className="text-2xl font-black tracking-tighter uppercase font-sans text-stone-950 leading-none">
+                        {language === 'mr' ? 'भिसेज् वुड वर्कशॉप' : "BHISE'Z WOOD WORKSHOP"}
+                      </h1>
+                      <p className="text-[9px] uppercase tracking-widest font-mono text-stone-600 mt-1">
+                        {language === 'mr' ? 'उत्कृष्ट फर्निचर उत्पादक आणि कारागीर' : 'ELITE FURNITURE MANUFACTURERS & CUSTOM WOOD CRAFTERS'}
+                      </p>
                     </div>
                     <div className="text-right">
                       <div className="border-2 border-black px-2.5 py-1 bg-white inline-block">
