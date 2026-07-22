@@ -1723,131 +1723,235 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               return (
                 <div
                   key={`preview_specs_page_${pageIdx}`}
-                  className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[11px] leading-snug font-mono text-black select-none max-w-full"
+                  className="bg-white border rounded-xl shadow-xs p-6 origin-top scale-100 transition-all text-[11px] leading-snug font-sans text-black select-none max-w-full"
                 >
-                  <div className="border-2 border-black p-4 space-y-4 min-h-[500px] flex flex-col justify-between">
+                  <div className="space-y-4 min-h-[500px] flex flex-col justify-between">
                     <div>
                       {/* Header */}
-                      <div className="text-center font-bold tracking-wider text-sm border-b pb-2 select-none uppercase">
-                        {language === 'mr' 
-                          ? `भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म ${pageIdx > 0 ? '(चालू)' : ''}` 
-                          : `BHISE'Z WORKSHOP - DETAIL ORDER FORM ${pageIdx > 0 ? '(CONT.)' : ''}`}
-                      </div>
-
-                      {/* Metadata */}
-                      {isFirstPage && (
-                        <div className="grid grid-cols-2 gap-2 text-[10px] mt-2 border-b pb-2">
-                          <div><strong>{language === 'mr' ? 'ऑर्डरची तारीख:' : 'ORDER DATE:'}</strong> {orderDate ? formatToDDMMYYYY(orderDate) : '_________________'}</div>
-                          <div><strong>{language === 'mr' ? 'वितरणाची तारीख:' : 'DELIVERY DATE:'}</strong> {deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_________________'}</div>
-                          
-                          <div className="col-span-2 grid grid-cols-2 gap-2 border-y border-dashed border-stone-200 py-1 my-0.5">
-                            <div>
-                              <strong>{language === 'mr' ? 'ऑर्डर क्र.:' : 'ORDER NO:'}</strong>
-                              {orderNo && orderNo.includes('&') ? (
-                                <ul className="list-disc pl-3 mt-0.5 space-y-0.5 text-[9px]">
-                                  {orderNo.split(/\s*&\s*/).map((no, idx) => (
-                                    <li key={idx} className="font-bold">{no}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <span className="font-bold"> {orderNo || '_________________'}</span>
-                              )}
-                            </div>
-                            <div>
-                              <strong>{language === 'mr' ? 'आर्टिकल क्र.:' : 'ARTICLE NO:'}</strong>
-                              {articleNo && articleNo.includes('&') ? (
-                                <ul className="list-disc pl-3 mt-0.5 space-y-0.5 text-[9px]">
-                                  {articleNo.split(/\s*&\s*/).map((no, idx) => (
-                                    <li key={idx} className="font-bold">{no}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <span className="font-bold"> {articleNo || '_________________'}</span>
-                              )}
+                      {isFirstPage ? (
+                        <div className="flex justify-between items-start border-b border-stone-200 pb-3 mb-4">
+                          <div className="flex flex-col items-start select-none">
+                            <span className="text-2xl font-black text-[#F2A900] tracking-tight leading-none font-display">Bhisez</span>
+                            <div className="w-full flex items-center gap-1 my-0.5">
+                              <div className="h-[1px] bg-[#E31E24] flex-1"></div>
+                              <span className="text-[7px] font-extrabold text-[#E31E24] tracking-[0.25em] leading-none font-sans">FURNITURE</span>
+                              <div className="h-[1px] bg-[#E31E24] flex-1"></div>
                             </div>
                           </div>
-
-                          <div><strong>{language === 'mr' ? 'पर्यायी आर्टिकल क्र.:' : 'TO ARTICLE NO:'}</strong> {toArticleNo || '_________________'}</div>
-                          <div><strong>{language === 'mr' ? 'व्हॉट्सॲप क्र.:' : 'WHATSAPP NO:'}</strong> {whatsappNo || '_________________'}</div>
-                          <div className="col-span-2"><strong>{language === 'mr' ? 'ग्राहकाचे नाव:' : 'CUSTOMER NAME:'}</strong> {customerName || '_________________'}</div>
-                          <div className="col-span-2 whitespace-pre-line"><strong>{language === 'mr' ? 'पत्ता:' : 'ADDRESS:'}</strong> {address || '__________________________________________________'}</div>
+                          <div className="text-right">
+                            <span className="text-[8px] font-mono tracking-wider text-stone-400 uppercase">
+                              INVOICE REF: #{orderNo || 'MANUAL'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center border-b border-stone-200 pb-2.5 mb-4 text-[9px] font-sans text-stone-500 font-bold uppercase tracking-wider">
+                          <span>
+                            {language === 'mr' ? 'भिसेज् वुड वर्कशॉप - सविस्तर ऑर्डर फॉर्म (चालू)' : "BHISE'Z WOOD WORKSHOP - DETAIL ORDER FORM (CONT.)"}
+                          </span>
+                          <span className="font-mono text-[9px] text-stone-400">
+                            {language === 'mr' ? `पान १.${pageIdx}` : `PAGE 1.${pageIdx}`}
+                          </span>
                         </div>
                       )}
 
-                      {/* Items */}
-                      <div className="border-t border-b border-black py-2 my-2 space-y-2">
-                        <div className="font-bold underline uppercase text-[10px]">
-                          {language === 'mr' 
-                            ? `उत्पादनांचा तपशील (भाग ${pageIdx + 1}):` 
-                            : `Products details (Part ${pageIdx + 1}):`}
-                        </div>
-                        <div className="space-y-2">
-                          {pageItems.map((item, idx) => {
-                            const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
-                            return (
-                              <div key={item.id || idx} className="border-b border-stone-100 pb-1.5 last:border-0 last:pb-0 text-[10px]">
-                                <div className="font-bold text-stone-900">{item.productName}</div>
-                                <div className="mt-1 pl-2 border-l-2 border-[#593622] space-y-0.5 text-[9px] text-stone-600 font-mono">
-                                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
-                                    <div><strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</div>
-                                    <div><strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</div>
-                                    <div><strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</div>
-                                    <div><strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</div>
-                                    <div className="col-span-2"><strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</div>
-                                    <div><strong>{language === 'mr' ? 'प्रमाण:' : 'Qty:'}</strong> {item.qty}</div>
-                                    <div><strong>{language === 'mr' ? 'कोटेड दर:' : 'Quoted Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</div>
-                                  </div>
-                                  {item.specialNotes && (
-                                    <div className="mt-1 pl-1 bg-stone-50 border-l border-stone-300 text-stone-500 text-[8.5px] italic">
-                                      <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Mfg Notes:'}</strong> {item.specialNotes}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex gap-4 mt-1 text-[9px]">
-                                  <div><strong>{language === 'mr' ? 'नग:' : 'QTY:'}</strong> {item.qty}</div>
-                                  <div><strong>{language === 'mr' ? 'अंतिम दर:' : 'FINAL RATE:'}</strong> ₹{itemFinalRate.toLocaleString()}</div>
-                                  <div><strong>{language === 'mr' ? 'रक्कम:' : 'AMOUNT:'}</strong> ₹{(itemFinalRate * item.qty).toLocaleString()}</div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Financial details & polish specs on the last page */}
-                      {isLastPage && (
-                        <>
-                          <div className="grid grid-cols-2 gap-1.5 text-[9px] border-b pb-2">
-                            <div><strong>{language === 'mr' ? 'उत्पादने एकूण उप-बेरीज:' : 'PRODUCTS SUBTOTAL:'}</strong> ₹{itemsSubtotal.toLocaleString()}</div>
-                            <div><strong>{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING & FORWARDING:'}</strong> ₹{packingForwarding.toLocaleString()}</div>
-                            <div><strong>{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION:'}</strong> ₹{transportation.toLocaleString()}</div>
-                            <div><strong>{language === 'mr' ? 'ऍडव्हान्स पेमेंट:' : 'ADVANCE:'}</strong> ₹{advance.toLocaleString()}</div>
-                            <div className="col-span-2 font-bold flex justify-between border-t border-dashed border-stone-200 pt-1">
-                              <span>{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</span>
-                              <span className="font-bold text-stone-900">{paymentMode}</span>
+                      {/* Metadata Box - Only on first page */}
+                      {isFirstPage && (
+                        <div className="grid grid-cols-12 gap-x-4 gap-y-1.5 text-[10px] font-sans border border-stone-800 rounded-lg p-4 bg-white mb-4">
+                          <div className="col-span-6 space-y-1.5">
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">ORDER DATE:</span>
+                              <span className="font-bold text-stone-900">{orderDate ? formatToDDMMYYYY(orderDate) : '_________________'}</span>
                             </div>
-                            <div className="font-bold col-span-2 text-[9.5px] border-t border-dashed border-stone-300 pt-1 flex justify-between">
-                              <span>{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED:'}</span>
-                              <span>₹{totalInvoiced.toLocaleString()}</span>
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">DELIVERY DATE:</span>
+                              <span className="font-bold text-stone-900">{deliveryDate ? formatToDDMMYYYY(deliveryDate) : '_________________'}</span>
                             </div>
-                            <div className="font-bold col-span-2 text-[9.5px] flex justify-between">
-                              <span>{language === 'mr' ? 'एकूण आगाऊ रक्कम:' : 'TOTAL ADVANCE PAID:'}</span>
-                              <span>₹{totalAdvancePaid.toLocaleString()}</span>
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">ORDER NO:</span>
+                              <span className="font-extrabold text-stone-900">{orderNo || '_________________'}</span>
                             </div>
-                            <div className="font-bold text-amber-900 col-span-2 text-xs border-t border-stone-400 pt-1 flex justify-between">
-                              <span>{language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'OUTSTANDING BALANCE:'}</span>
-                              <span>₹{outstandingBalance.toLocaleString()}</span>
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">ARTICLE NO:</span>
+                              <span className="font-bold text-stone-900">{articleNo || '_________________'}</span>
+                            </div>
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">TO ARTICLE NO:</span>
+                              <span className="font-bold text-stone-900">{toArticleNo || '_________________'}</span>
                             </div>
                           </div>
-                        </>
+                          
+                          <div className="col-span-6 space-y-1.5 border-l border-stone-200 pl-4">
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">CUSTOMER NAME:</span>
+                              <span className="font-bold text-stone-900">{customerName || '_________________'}</span>
+                            </div>
+                            <div className="flex justify-between items-baseline border-b border-stone-100 pb-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider">WHATSAPP NO:</span>
+                              <span className="font-bold text-stone-900">{whatsappNo || '_________________'}</span>
+                            </div>
+                            <div className="pt-0.5">
+                              <span className="font-extrabold text-stone-500 text-[8px] uppercase tracking-wider block">ADDRESS:</span>
+                              <div className="text-stone-950 font-bold mt-1 leading-snug whitespace-pre-line text-[9px] font-sans">
+                                {address || '__________________________________________________'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Item Specifications Box */}
+                      <div className="border border-stone-850 rounded-lg overflow-hidden bg-white my-3">
+                        <div className="bg-stone-50 px-4 py-1.5 border-b border-stone-850">
+                          <span className="text-[9px] font-extrabold uppercase tracking-widest text-stone-900">
+                            {language === 'mr' ? `उत्पादन तपशील (भाग ${pageIdx + 1})` : `ITEM SPECIFICATIONS (PART ${pageIdx + 1})`}
+                          </span>
+                        </div>
+                        <table className="w-full text-left border-collapse text-[10px]">
+                          <thead>
+                            <tr className="border-b border-stone-300 bg-white">
+                              <th className="px-4 py-1.5 text-[8px] font-extrabold text-stone-700 uppercase tracking-widest">{language === 'mr' ? 'उत्पादनाचे नाव' : 'PRODUCT NAME'}</th>
+                              <th className="px-4 py-1.5 text-[8px] font-extrabold text-stone-700 uppercase tracking-widest text-center">{language === 'mr' ? 'नग' : 'QTY'}</th>
+                              <th className="px-4 py-1.5 text-[8px] font-extrabold text-stone-700 uppercase tracking-widest text-right">{language === 'mr' ? 'दर प्रति नग (₹)' : 'UNIT RATE (₹)'}</th>
+                              <th className="px-4 py-1.5 text-[8px] font-extrabold text-stone-700 uppercase tracking-widest text-right">{language === 'mr' ? 'एकूण रक्कम (₹)' : 'SUBTOTAL (₹)'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pageItems.map((item, idx) => {
+                              const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
+                              const itemSubtotal = itemFinalRate * Number(item.qty);
+                              return (
+                                <React.Fragment key={item.id || idx}>
+                                  <tr className={idx > 0 ? 'border-t border-stone-250 bg-white' : 'bg-white'}>
+                                    <td className="px-4 py-2 font-extrabold text-stone-900 text-[10.5px]">{item.productName}</td>
+                                    <td className="px-4 py-2 text-center font-bold text-stone-900">{item.qty}</td>
+                                    <td className="px-4 py-2 text-right font-bold text-stone-900">₹{itemFinalRate.toLocaleString()}</td>
+                                    <td className="px-4 py-2 text-right font-black text-stone-900">₹{itemSubtotal.toLocaleString()}</td>
+                                  </tr>
+                                  <tr className="border-b border-stone-250 bg-white">
+                                    <td colSpan={4} className="px-4 pb-2.5 pt-0 text-[9px] text-stone-700 leading-snug">
+                                      <strong className="block text-stone-400 font-extrabold uppercase tracking-wider text-[7.5px] mb-0.5">{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'DETAILED SPECIFICATIONS:'}</strong>
+                                      <div className="grid grid-cols-3 gap-x-4 gap-y-1 pl-1 font-sans">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'दर (₹):' : 'Unit Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 col-span-3">
+                                          <span className="text-[5px] text-stone-300">●</span>
+                                          <span><strong>{language === 'mr' ? 'प्रमाण:' : 'Quantity:'}</strong> {item.qty}</span>
+                                        </div>
+                                      </div>
+                                      {item.specialNotes && (
+                                        <div className="mt-1.5 pl-2 border-l-2 border-amber-600 bg-amber-50/30 py-0.5 text-[8.5px] text-stone-600 font-sans italic">
+                                          <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Mfg Notes:'}</strong> {item.specialNotes}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Detailed Financial Specification Card on Last Specification Page */}
+                      {isLastPage && (
+                        <div className="border border-stone-850 rounded-lg p-5 bg-white space-y-4 my-3">
+                          <h3 className="text-[10px] font-extrabold uppercase tracking-wider text-stone-900 border-b border-stone-200 pb-2">
+                            {language === 'mr' ? 'वित्तीय कपातीचा सविस्तर गोषवारा' : 'DETAILED FINANCIAL SPECIFICATION'}
+                          </h3>
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-[10px] font-sans font-semibold">
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-baseline border-b border-stone-100 pb-1">
+                                <span className="text-stone-500 uppercase text-[8.5px] tracking-wider">{language === 'mr' ? 'उत्पादने एकूण उप-बेरीज:' : 'PRODUCTS SUBTOTAL:'}</span>
+                                <span className="text-stone-900">₹{itemsSubtotal.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between items-baseline border-b border-stone-100 pb-1">
+                                <span className="text-stone-500 uppercase text-[8.5px] tracking-wider">{language === 'mr' ? 'पॅकिंग व फॉरवर्डिंग:' : 'PACKING / FORWARDING:'}</span>
+                                <span className="text-stone-900">₹{packingForwarding.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between items-baseline border-b border-stone-100 pb-1">
+                                <span className="text-stone-500 uppercase text-[8.5px] tracking-wider">{language === 'mr' ? 'वाहतूक खर्च:' : 'TRANSPORTATION FEE:'}</span>
+                                <span className="text-stone-900">₹{transportation.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between items-baseline pt-1">
+                                <span className="text-stone-500 uppercase text-[8.5px] tracking-wider">{language === 'mr' ? 'पैसे देण्याची पद्धत:' : 'PAYMENT MODE:'}</span>
+                                <span className="text-stone-950 font-extrabold tracking-wide uppercase">{paymentMode}</span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-baseline border-b border-stone-100 pb-1">
+                                <span className="text-stone-500 uppercase text-[8.5px] tracking-wider">{language === 'mr' ? 'एकूण बीजक रक्कम:' : 'TOTAL INVOICED AMOUNT:'}</span>
+                                <span className="text-stone-900">₹{totalInvoiced.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between items-baseline border-b border-stone-100 pb-1">
+                                <span className="text-stone-500 uppercase text-[8.5px] tracking-wider">{language === 'mr' ? '(-) आगाऊ रक्कम वजावट:' : '(-) ADVANCE DEPOSITED:'}</span>
+                                <span className="text-stone-900">₹{advance.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between items-center bg-emerald-50/70 border border-emerald-100/60 rounded px-2.5 py-1.5">
+                                <span className="text-emerald-800 uppercase text-[8px] tracking-wider font-extrabold">{language === 'mr' ? 'एकूण आगाऊ रक्कम भरली:' : 'TOTAL ADVANCE PAID:'}</span>
+                                <span className="text-emerald-700 font-extrabold text-[11px] font-mono">₹{totalAdvancePaid.toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-stone-950 my-4"></div>
+
+                          <div className="flex justify-between items-center px-1">
+                            <span className="text-[11px] font-extrabold uppercase tracking-widest text-stone-900">
+                              {language === 'mr' ? 'उर्वरित शिल्लक रक्कम:' : 'OUTSTANDING BALANCE:'}
+                            </span>
+                            <span className="text-[15px] font-black text-[#E31E24] font-mono">
+                              ₹{outstandingBalance.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
                       )}
                     </div>
 
                     {/* Signatures */}
                     {isLastPage && (
-                      <div className="grid grid-cols-2 gap-8 text-center pt-4 border-t border-black">
-                        <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}</span></div>
-                        <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}</span></div>
+                      <div className="grid grid-cols-2 gap-12 text-center text-xs font-sans mt-8 pt-4">
+                        <div className="space-y-8">
+                          <div className="border-t border-stone-300 w-full"></div>
+                          <span className="text-[10px] font-extrabold text-stone-900 uppercase block tracking-wider">
+                            {language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "BHISE'Z WORKSHOP MANAGEMENT"}
+                          </span>
+                          <span className="text-[8px] font-extrabold text-stone-400 block tracking-widest uppercase">
+                            {language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}
+                          </span>
+                        </div>
+                        <div className="space-y-8">
+                          <div className="border-t border-stone-300 w-full"></div>
+                          <span className="text-[10px] font-extrabold text-stone-900 uppercase block tracking-wider">
+                            {language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'CLIENT CONFIRMATION ACCEPTANCE'}
+                          </span>
+                          <span className="text-[8px] font-extrabold text-stone-400 block tracking-widest uppercase">
+                            {language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1856,16 +1960,16 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             })}
 
             {/* MINIFIED PAGE 2 (TERMS & CONDITIONS) */}
-            <div className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[9.5px] leading-normal font-sans text-stone-850 select-none max-w-full">
-              <div className="border-2 border-black p-4 space-y-2">
-                <div className="text-center font-extrabold tracking-wider border-b pb-1 flex justify-between items-center text-stone-900">
-                  <span>{language === 'mr' ? 'पान २' : 'PAGE 2'}</span>
-                  <span>{language === 'mr' ? 'नियम आणि अटी' : 'TERMS AND CONDITIONS'}</span>
+            <div className="bg-white border rounded-xl shadow-xs p-6 origin-top scale-100 transition-all text-[9.5px] leading-normal font-sans text-stone-850 select-none max-w-full">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b border-stone-200 pb-2.5 mb-4 text-[9px] font-sans text-stone-500 font-bold uppercase tracking-wider">
+                  <span>{language === 'mr' ? 'कराराचे पान २' : 'PAGE 2 OF AGREEMENT'}</span>
+                  <span className="font-mono text-[9px] text-stone-400">{language === 'mr' ? 'नियम आणि अटी' : 'TERMS AND CONDITIONS'}</span>
                   <span>{language === 'mr' ? 'भिसेज् वर्कशॉप' : "BHISE'Z WORKSHOP"}</span>
                 </div>
-                <ol className="list-decimal list-outside pl-4 space-y-1 text-justify text-stone-700">
+                <ol className="list-decimal list-outside pl-4 space-y-2 text-justify text-stone-700 text-[9px] leading-relaxed">
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '१. ॲडव्हान्स पेमेंटची आवश्यकता :' : '1. Advance Payment Requirement:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '१. ॲडव्हान्स पेमेंटची आवश्यकता :' : '1. Advance Payment Requirement:'}</strong>
                     {language === 'mr' ? (
                       <>काम सुरू करण्यापूर्वी मी एकूण ऑर्डरच्या खर्चाच्या <span className="underline font-bold">₹{advance.toLocaleString() || '_______'}</span> चे ॲडव्हान्स पेमेंट देण्यास सहमत आहे. ॲडव्हान्स पेमेंटची रक्कम <span className="underline font-bold">₹{advance.toLocaleString() || '_______________________'}</span> आहे.</>
                     ) : (
@@ -1873,7 +1977,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '२. पेमेंट वेळापत्रक (पेमेंट शेड्युल) :' : '2. Payment Schedule:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '२. पेमेंट वेळापत्रक (पेमेंट शेड्युल) :' : '2. Payment Schedule:'}</strong>
                     {language === 'mr' ? (
                       <>करार किंवा करारावर स्वाक्षरी केल्यावर लगेचच ॲडव्हान्स पेमेंट भरणे आवश्यक आहे. पुढील देयके मुख्य करारामध्ये नमूद केलेल्या पेमेंट वेळापत्रकानुसार केली जातील. माल पाठवण्यापूर्वी पूर्ण पेमेंट मिळणे अनिवार्य आहे.</>
                     ) : (
@@ -1881,7 +1985,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '३. रिफंड न मिळण्याबाबतची अट :' : '3. Non-Refundable Clause:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '३. रिफंड न मिळण्याबाबतची अट :' : '3. Non-Refundable Clause:'}</strong>
                     {language === 'mr' ? (
                       <>सर्व्हिस प्रोव्हायडरकडून कराराचा भंग झाल्याशिवाय ॲडव्हान्स पेमेंट परत केले जाणार नाही. २४ तासांनंतर ॲडव्हान्स पेमेंट कोणत्याही परिस्थितीत परत केले जाणार नाही.</>
                     ) : (
@@ -1889,7 +1993,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '४. काम सुरू करणे :' : '4. Service Commencement:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '४. काम सुरू करणे :' : '4. Service Commencement:'}</strong>
                     {language === 'mr' ? (
                       <>ॲडव्हान्स पेमेंट आणि तुमच्या आवश्यकतेबद्दल आवश्यक ती कागदपत्रे किंवा माहिती मिळाल्यानंतरच काम सुरू होईल. ॲडव्हान्स पेमेंटला विलंब झाल्यास उत्पादन सुरू होण्यास तोच समान विलंब होऊ शकतो.</>
                     ) : (
@@ -1897,7 +2001,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '५. कामाची व्याप्ती :' : '5. Scope of Work:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '५. कामाची व्याप्ती :' : '5. Scope of Work:'}</strong>
                     {language === 'mr' ? (
                       <>मूळ ऑर्डरमधील कोणतेही अतिरिक्त काम किंवा बदलांसाठी अतिरिक्त शुल्क लागू होईल.</>
                     ) : (
@@ -1905,7 +2009,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '६. डिलिव्हरी (वितरण) :' : '6. Delivery:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '६. डिलिव्हरी (वितरण) :' : '6. Delivery:'}</strong>
                     {language === 'mr' ? (
                       <>डिलिव्हरीची अचूक माहिती देण्याची जबाबदारी माझी आहे. माझ्याकडून चुकीची किंवा अपूर्ण माहिती दिल्यामुळे डिलिव्हरी यशस्वी न झाल्यास विक्रेता जबाबदार राहणार नाही. डिलिव्हरीची तारीख २-३ दिवसांनी बदलू शकते.</>
                     ) : (
@@ -1913,7 +2017,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '७. वस्तू परत मिळणे आणि रिफंड :' : '7. Returns and Refunds:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '७. वस्तू परत मिळणे आणि रिफंड :' : '7. Returns and Refunds:'}</strong>
                     {language === 'mr' ? (
                       <>डिलिव्हरी मिळाल्यापासून २ दिवसांच्या आत मी कोणत्याही सदोष किंवा चुकीच्या वस्तूची माहिती विक्रेत्याला देईन. वस्तू सदोष किंवा चुकीची असल्याशिवाय वस्तू परत करण्याच्या वाहतूक खर्चासाठी मी स्वतः जबाबदार असेन.</>
                     ) : (
@@ -1921,7 +2025,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '८. ऑर्डर रद्द करणे :' : '8. Order Cancellation:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '८. ऑर्डर रद्द करणे :' : '8. Order Cancellation:'}</strong>
                     {language === 'mr' ? (
                       <>खरेदीदार ऑर्डर दिल्यानंतर २४ तासांच्या आत विक्रेत्याशी संपर्क साधून आपली ऑर्डर रद्द करू शकतात. गैरवापर, दुर्लक्ष किंवा अनधिकृत दुरुस्तीमुळे वस्तू खराब झाल्यास विक्रेता जबाबदार नाही.</>
                     ) : (
@@ -1929,7 +2033,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '९. अंशतः डिलिव्हरी (पार्ट डिलिव्हरी) :' : '9. Part Delivery:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '९. अंशतः डिलिव्हरी (पार्ट डिलिव्हरी) :' : '9. Part Delivery:'}</strong>
                     {language === 'mr' ? (
                       <>अंशतः डिलिव्हरीच्या बाबतीत (पार्ट डिलिव्हरी), मी डिलिव्हरी चार्जेस तसेच इन्स्टॉलेशन चार्जेस भरण्यास सहमत आहे. ज्या उत्पादनांची डिलिव्हरी होणार आहे त्यांची पूर्ण रक्कम आणि भविष्यात डिलीव्हर होणाऱ्या उर्वरित उत्पादनांचे ४०% ॲडव्हान्स देण्यास मी सहमत आहे.</>
                     ) : (
@@ -1937,7 +2041,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                   <li>
-                    <strong className="text-stone-900 uppercase text-[8.5px] block">{language === 'mr' ? '१०. नियमांची स्वीकृती :' : '10. Acceptance of Terms:'}</strong>
+                    <strong className="text-stone-900 uppercase text-[8px] block tracking-wide">{language === 'mr' ? '१०. नियमांची स्वीकृती :' : '10. Acceptance of Terms:'}</strong>
                     {language === 'mr' ? (
                       <>ॲडव्हान्स पेमेंट करून, मी कबूल करतो की मी हे नियम आणि अटी वाचल्या आहेत, समजून घेतल्या आहेत आणि मी त्यांच्याशी सहमत आहे.</>
                     ) : (
@@ -1945,9 +2049,27 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     )}
                   </li>
                 </ol>
-                <div className="pt-4 flex justify-between text-center font-bold">
-                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'Manager Signature'}</span></div>
-                  <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'Customer Signature'}</span></div>
+                
+                {/* Signatures */}
+                <div className="grid grid-cols-2 gap-12 text-center text-xs font-sans mt-8 pt-4">
+                  <div className="space-y-8">
+                    <div className="border-t border-stone-300 w-full"></div>
+                    <span className="text-[10px] font-extrabold text-stone-900 uppercase block tracking-wider">
+                      {language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "BHISE'Z WORKSHOP MANAGEMENT"}
+                    </span>
+                    <span className="text-[8px] font-extrabold text-stone-400 block tracking-widest uppercase">
+                      {language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}
+                    </span>
+                  </div>
+                  <div className="space-y-8">
+                    <div className="border-t border-stone-300 w-full"></div>
+                    <span className="text-[10px] font-extrabold text-stone-900 uppercase block tracking-wider">
+                      {language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'CLIENT CONFIRMATION ACCEPTANCE'}
+                    </span>
+                    <span className="text-[8px] font-extrabold text-stone-400 block tracking-widest uppercase">
+                      {language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1956,13 +2078,13 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             {imagePages.map((pageImgs, pageIdx) => (
               <div
                 key={`preview_drawings_page_${pageIdx}`}
-                className="bg-white border rounded shadow-xs p-6 origin-top scale-100 transition-all text-[10px] leading-normal font-sans text-stone-850 select-none max-w-full"
+                className="bg-white border rounded-xl shadow-xs p-6 origin-top scale-100 transition-all text-[10px] leading-normal font-sans text-stone-850 select-none max-w-full"
               >
-                <div className="border-2 border-black p-4 space-y-4 min-h-[450px] flex flex-col justify-between">
+                <div className="space-y-4 min-h-[450px] flex flex-col justify-between">
                   <div>
-                    <div className="text-center font-extrabold tracking-wider border-b pb-1 flex justify-between items-center text-stone-900 mb-4 text-[11px]">
+                    <div className="flex justify-between items-center border-b border-stone-200 pb-2.5 mb-4 text-[9px] font-sans text-stone-500 font-bold uppercase tracking-wider">
                       <span>{language === 'mr' ? `पान ${3 + pageIdx}` : `PAGE ${3 + pageIdx}`}</span>
-                      <span>{language === 'mr' ? 'संदर्भ रेखाचित्रे आणि ब्ल्यूप्रिंट्स' : 'REFERENCE DRAWINGS & BLUEPRINTS'}</span>
+                      <span className="font-mono text-[9px] text-stone-400">{language === 'mr' ? 'संदर्भ रेखाचित्रे आणि ब्ल्यूप्रिंट्स' : 'REFERENCE DRAWINGS & BLUEPRINTS'}</span>
                       <span>{language === 'mr' ? 'भिसेज् वर्कशॉप' : "BHISE'Z WORKSHOP"}</span>
                     </div>
                     
@@ -1970,7 +2092,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                       {pageImgs.map((img) => (
                         <div
                           key={img.id}
-                          className="border border-stone-300 rounded-lg overflow-hidden aspect-video bg-stone-50 flex items-center justify-center p-1"
+                          className="border border-stone-200 rounded-lg overflow-hidden aspect-video bg-stone-50 flex items-center justify-center p-1 shadow-xs"
                         >
                           <img
                             src={img.url}
@@ -1982,9 +2104,26 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     </div>
                   </div>
                   
-                  <div className="pt-4 flex justify-between text-center font-bold border-t border-stone-200">
-                    <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'Manager Signature'}</span></div>
-                    <div>_________________<br/><span className="text-[8px] uppercase tracking-wider">{language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'Customer Signature'}</span></div>
+                  {/* Signatures */}
+                  <div className="grid grid-cols-2 gap-12 text-center text-xs font-sans mt-8 pt-4">
+                    <div className="space-y-8">
+                      <div className="border-t border-stone-300 w-full"></div>
+                      <span className="text-[10px] font-extrabold text-stone-900 uppercase block tracking-wider">
+                        {language === 'mr' ? 'भिसेज् वर्कशॉप व्यवस्थापन' : "BHISE'Z WORKSHOP MANAGEMENT"}
+                      </span>
+                      <span className="text-[8px] font-extrabold text-stone-400 block tracking-widest uppercase">
+                        {language === 'mr' ? 'व्यवस्थापकाची स्वाक्षरी' : 'MANAGER SIGN'}
+                      </span>
+                    </div>
+                    <div className="space-y-8">
+                      <div className="border-t border-stone-300 w-full"></div>
+                      <span className="text-[10px] font-extrabold text-stone-900 uppercase block tracking-wider">
+                        {language === 'mr' ? 'ग्राहकाची सहमती स्वीकृती' : 'CLIENT CONFIRMATION ACCEPTANCE'}
+                      </span>
+                      <span className="text-[8px] font-extrabold text-stone-400 block tracking-widest uppercase">
+                        {language === 'mr' ? 'ग्राहकाची स्वाक्षरी' : 'CUSTOMER SIGN'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2434,3 +2573,4 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     </div>
   );
 }
+  
