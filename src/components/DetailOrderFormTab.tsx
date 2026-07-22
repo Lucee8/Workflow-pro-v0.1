@@ -856,7 +856,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
   }, [items]);
 
   const imagePages = React.useMemo(() => {
-    return chunkArray(refImages, 4);
+    if (refImages.length === 0) {
+      return [[]];
+    }
+    return chunkArray(refImages, 9);
   }, [refImages]);
 
   return (
@@ -2095,19 +2098,34 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                       <span>{language === 'mr' ? 'भिसेज् वर्कशॉप' : "BHISE'Z WORKSHOP"}</span>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                      {pageImgs.map((img) => (
-                        <div
-                          key={img.id}
-                          className="border border-stone-200 rounded-lg overflow-hidden aspect-video bg-stone-50 flex items-center justify-center p-1 shadow-xs"
-                        >
-                          <img
-                            src={img.url}
-                            className="max-h-full max-w-full object-contain"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      ))}
+                    <div className="grid grid-cols-3 gap-3 my-2">
+                      {Array.from({ length: 9 }).map((_, slotIdx) => {
+                        const img = pageImgs[slotIdx];
+                        if (img) {
+                          return (
+                            <div
+                              key={img.id}
+                              className="border border-stone-200 rounded-xl overflow-hidden aspect-square bg-stone-50 flex items-center justify-center p-2 shadow-2xs"
+                            >
+                              <img
+                                src={img.url}
+                                className="max-h-full max-w-full object-contain"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            key={`preview_empty_slot_${slotIdx}`}
+                            className="border border-dashed border-stone-300 rounded-xl aspect-square bg-stone-50/20 flex items-center justify-center p-2"
+                          >
+                            <span className="text-[8px] md:text-[9px] font-mono italic text-stone-300 text-center tracking-tight">
+                              [Intentionally Left Blank]
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                   
@@ -2535,19 +2553,34 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 mt-4">
-                {pageImgs.map((img) => (
-                  <div
-                    key={img.id}
-                    className="border border-stone-400 rounded-lg overflow-hidden aspect-[4/3] bg-stone-50 flex items-center justify-center p-2"
-                  >
-                    <img
-                      src={img.url}
-                      className="max-h-full max-w-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                ))}
+              <div className="grid grid-cols-3 gap-4 my-4">
+                {Array.from({ length: 9 }).map((_, slotIdx) => {
+                  const img = pageImgs[slotIdx];
+                  if (img) {
+                    return (
+                      <div
+                        key={img.id}
+                        className="border border-stone-300 rounded-xl overflow-hidden aspect-square bg-stone-50 flex items-center justify-center p-3 shadow-2xs"
+                      >
+                        <img
+                          src={img.url}
+                          className="max-h-full max-w-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={`print_empty_slot_${slotIdx}`}
+                      className="border border-dashed border-stone-300 rounded-xl aspect-square bg-stone-50/20 flex items-center justify-center p-3"
+                    >
+                      <span className="text-[10px] font-mono italic text-stone-300 text-center tracking-tight">
+                        [Intentionally Left Blank]
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
