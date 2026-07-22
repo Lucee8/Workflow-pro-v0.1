@@ -4,7 +4,12 @@
  */
 
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { 
+  initializeAuth, 
+  browserSessionPersistence, 
+  inMemoryPersistence, 
+  getAuth 
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -17,7 +22,24 @@ const databaseId = firebaseConfig.projectId === "adroit-acronym-78gvj"
   : (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.startsWith("ai-studio-") ? firebaseConfig.firestoreDatabaseId : undefined);
 
 export const db = getFirestore(app, databaseId);
-export const auth = getAuth(app);
+
+// Safe Auth initialization avoiding IndexedDB issues in iframe environments
+function getOrInitAuth() {
+  try {
+    return getAuth(app);
+  } catch {
+    // Not initialized yet
+  }
+  try {
+    return initializeAuth(app, {
+      persistence: [browserSessionPersistence, inMemoryPersistence]
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
+
+export const auth = getOrInitAuth();
 
 export enum OperationType {
   CREATE = 'create',
@@ -65,4 +87,3 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
