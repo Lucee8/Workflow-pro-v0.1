@@ -67,8 +67,28 @@ import {
   Share2,
   Image,
   QrCode,
-  FileSignature
+  FileSignature,
+  Package,
+  Sparkles,
+  Layers
 } from 'lucide-react';
+
+function getAmountInWords(num: number): string {
+  if (!num || num === 0) return 'Zero Rupees Only';
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  
+  const helper = (n: number): string => {
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
+    if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' and ' + helper(n % 100) : '');
+    if (n < 100000) return helper(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + helper(n % 1000) : '');
+    if (n < 10000000) return helper(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + helper(n % 100000) : '');
+    return helper(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + helper(n % 10000000) : '');
+  };
+  
+  return helper(Math.round(num)).trim() + ' Rupees Only';
+}
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -187,24 +207,123 @@ export default function CRMTab({
   const [viewingEstimateQuote, setViewingEstimateQuote] = React.useState<CRMQuotation | null>(null);
 
   const [quoteCustomerId, setQuoteCustomerId] = React.useState<string>('');
-  const [quoteItemName, setQuoteItemName] = React.useState<string>('');
+  const [quoteItems, setQuoteItems] = React.useState<CRMQuotationItem[]>([]);
+  const [quoteDiscount, setQuoteDiscount] = React.useState<number>(0);
+  const [quoteGst, setQuoteGst] = React.useState<number>(0);
+  const [quoteValidUntil, setQuoteValidUntil] = React.useState<string>('');
+  const [quotePaymentTerms, setQuotePaymentTerms] = React.useState<string>('');
+  const [quoteDeliveryTerms, setQuoteDeliveryTerms] = React.useState<string>('');
+  const [quoteNotes, setQuoteNotes] = React.useState<string>('');
 
   React.useEffect(() => {
     if (showAddQuoteModal) {
       if (editingQuotation) {
         setQuoteCustomerId(editingQuotation.customer_id || '');
-        setQuoteItemName(editingQuotation.items?.[0]?.furnitureItem || '');
+        const loadedItems = editingQuotation.items && editingQuotation.items.length > 0
+          ? editingQuotation.items.map(item => ({
+              id: item.id || generateId('item'),
+              furnitureItem: item.furnitureItem || '',
+              material: item.material || 'Solid Teak Wood',
+              dimensions: item.dimensions || '',
+              quantity: item.quantity || 1,
+              unitPrice: item.unitPrice || 0,
+              discount: item.discount || 0,
+              gst: item.gst || 0,
+              totalAmount: item.totalAmount || ((item.quantity || 1) * (item.unitPrice || 0))
+            }))
+          : [{
+              id: generateId('item'),
+              furnitureItem: '',
+              material: 'Solid Teak Wood',
+              dimensions: '',
+              quantity: 1,
+              unitPrice: 0,
+              discount: 0,
+              gst: 0,
+              totalAmount: 0
+            }];
+        setQuoteItems(loadedItems);
+        setQuoteDiscount(editingQuotation.discount !== undefined ? editingQuotation.discount : (editingQuotation.items?.[0]?.discount || 0));
+        setQuoteGst(editingQuotation.gst !== undefined ? editingQuotation.gst : (editingQuotation.items?.[0]?.gst || 0));
+        setQuoteValidUntil(editingQuotation.validUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+        setQuotePaymentTerms(editingQuotation.paymentTerms || '40% Advance on order confirmation, 60% before dispatch post-QC inspection.');
+        setQuoteDeliveryTerms(editingQuotation.deliveryTerms || 'Ex-workshop dispatch / Transport charges extra at actuals.');
+        setQuoteNotes(editingQuotation.notes || '');
       } else {
         const initialCustId = selectedCustomerId || '';
         setQuoteCustomerId(initialCustId);
         const customer = db.crmCustomers?.find(c => c.id === initialCustId);
-        setQuoteItemName(customer?.productRequirement || '');
+        setQuoteItems([{
+          id: generateId('item'),
+          furnitureItem: customer?.productRequirement || '',
+          material: 'Solid Teak Wood',
+          dimensions: '',
+          quantity: 1,
+          unitPrice: 0,
+          discount: 0,
+          gst: 0,
+          totalAmount: 0
+        }]);
+        setQuoteDiscount(0);
+        setQuoteGst(0);
+        setQuoteValidUntil(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+        setQuotePaymentTerms('40% Advance on order confirmation, 60% before dispatch post-QC inspection.');
+        setQuoteDeliveryTerms('Ex-workshop dispatch / Transport charges extra at actuals.');
+        setQuoteNotes('');
       }
     } else {
       setQuoteCustomerId('');
-      setQuoteItemName('');
+      setQuoteItems([]);
+      setQuoteDiscount(0);
+      setQuoteGst(0);
+      setQuoteValidUntil('');
+      setQuotePaymentTerms('');
+      setQuoteDeliveryTerms('');
+      setQuoteNotes('');
     }
   }, [showAddQuoteModal, editingQuotation, selectedCustomerId, db.crmCustomers]);
+
+  const handleAddProductItem = () => {
+    setQuoteItems(prev => [
+      ...prev,
+      {
+        id: generateId('item'),
+        furnitureItem: '',
+        material: 'Solid Teak Wood',
+        dimensions: '',
+        quantity: 1,
+        unitPrice: 0,
+        discount: 0,
+        gst: 0,
+        totalAmount: 0
+      }
+    ]);
+  };
+
+  const handleRemoveProductItem = (idx: number) => {
+    if (quoteItems.length <= 1) return;
+    setQuoteItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleUpdateProductItem = (idx: number, field: keyof CRMQuotationItem, val: any) => {
+    setQuoteItems(prev => prev.map((item, i) => {
+      if (i === idx) {
+        const updated = { ...item, [field]: val };
+        const q = Number(updated.quantity) || 0;
+        const p = Number(updated.unitPrice) || 0;
+        updated.totalAmount = q * p;
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const quoteSubtotal = quoteItems.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0);
+  const quoteDiscountAmt = Number(quoteDiscount) || 0;
+  const quoteTaxableSubtotal = Math.max(0, quoteSubtotal - quoteDiscountAmt);
+  const quoteGstPercent = Number(quoteGst) || 0;
+  const quoteGstAmt = Math.round(quoteTaxableSubtotal * (quoteGstPercent / 100));
+  const quoteGrandTotal = quoteTaxableSubtotal + quoteGstAmt;
 
   // Customized printable estimate asset states (stored in localStorage for persistence)
   const [customLogo, setCustomLogo] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_logo'));
@@ -731,83 +850,64 @@ export default function CRMTab({
     });
   };
 
-  const handleCreateQuotation = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSaveQuotation = (statusToSave: 'Draft' | 'Sent') => {
     if (!hasWriteAccess) return;
-    const formData = new FormData(e.currentTarget);
-    const custId = formData.get('customerId') as string;
-    const customer = db.crmCustomers.find(c => c.id === custId);
-    
-    const qty = Number(formData.get('quantity') || 1);
-    const unitPrice = Number(formData.get('unitPrice') || 0);
-    const discountAmount = Number(formData.get('discount') || 0);
-    const gstPercent = Number(formData.get('gst') || 0);
-
-    const subTotal = qty * unitPrice;
-    const discountedTotal = Math.max(0, subTotal - discountAmount);
-    const finalAmount = Math.round(discountedTotal + (discountedTotal * (gstPercent / 100)));
-
-    const item: CRMQuotationItem = {
-      id: editingQuotation ? (editingQuotation.items?.[0]?.id || generateId('item')) : generateId('item'),
-      furnitureItem: formData.get('furnitureItem') as string,
-      quantity: qty,
-      material: formData.get('material') as string,
-      dimensions: formData.get('dimensions') as string,
-      unitPrice,
-      discount: discountAmount,
-      gst: gstPercent,
-      totalAmount: finalAmount
-    };
-
-    if (editingQuotation) {
-      const updatedQuote: CRMQuotation = {
-        ...editingQuotation,
-        customer_id: custId,
-        customer_name: customer ? customer.name : 'Unknown Customer',
-        items: [item],
-        totalAmount: finalAmount,
-        notes: (formData.get('notes') as string) || undefined,
-      };
-      onSaveCRMQuotation(updatedQuote);
-
-      onSaveCRMTimelineEvent({
-        id: generateId('evt'),
-        customer_id: custId,
-        type: 'note_added',
-        title: 'Price Quotation Updated',
-        description: `Modified details for quotation ${editingQuotation.id}. Adjusted customized "${item.furnitureItem}" value to ₹${finalAmount.toLocaleString('en-IN')}.`,
-        timestamp: new Date().toISOString(),
-        operator: currentUser.name
-      });
-
-      setShowAddQuoteModal(false);
-      setEditingQuotation(null);
-      alert(`Success: Price Quotation ${editingQuotation.id} has been updated.`);
+    if (!quoteCustomerId) {
+      alert('Please select a Customer Lead.');
+      return;
+    }
+    if (quoteItems.length === 0) {
+      alert('Please add at least one product item to the quotation.');
+      return;
+    }
+    const emptyItem = quoteItems.find(i => !i.furnitureItem || !i.furnitureItem.trim());
+    if (emptyItem) {
+      alert('Please fill in the Item Name for all products.');
       return;
     }
 
-    const quoteId = generateCRMQuotationId(db.crmQuotations || []);
+    const customer = db.crmCustomers?.find(c => c.id === quoteCustomerId);
+    const quoteId = editingQuotation ? editingQuotation.id : generateCRMQuotationId(db.crmQuotations || []);
     const nextEstimateNo = (db.crmQuotations && db.crmQuotations.length > 0) 
       ? Math.max(0, ...db.crmQuotations.map(q => q.estimateNo || 0)) + 1 
       : 1;
-    const estimateDate = new Date().toISOString().split('T')[0];
-    const customDescription = '';
-    const customTerms = '';
+
+    const formattedItems: CRMQuotationItem[] = quoteItems.map(item => {
+      const q = Math.max(1, Number(item.quantity) || 1);
+      const p = Math.max(0, Number(item.unitPrice) || 0);
+      return {
+        id: item.id || generateId('item'),
+        furnitureItem: item.furnitureItem.trim(),
+        quantity: q,
+        material: item.material || 'Solid Teak Wood',
+        dimensions: item.dimensions || '',
+        unitPrice: p,
+        discount: 0,
+        gst: quoteGstPercent,
+        totalAmount: q * p
+      };
+    });
 
     const newQuote: CRMQuotation = {
       id: quoteId,
-      customer_id: custId,
+      customer_id: quoteCustomerId,
       customer_name: customer ? customer.name : 'Unknown Customer',
-      items: [item],
-      totalAmount: finalAmount,
-      validUntil: (formData.get('validUntil') as string) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: (formData.get('notes') as string) || undefined,
-      status: 'Sent',
-      created_at: new Date(estimateDate + 'T12:00:00').toISOString(),
-      created_by: currentUser.name,
-      estimateNo: nextEstimateNo,
-      description: customDescription,
-      termsAndConditions: customTerms
+      items: formattedItems,
+      subtotal: quoteSubtotal,
+      discount: quoteDiscountAmt,
+      gst: quoteGstPercent,
+      gstAmount: quoteGstAmt,
+      totalAmount: quoteGrandTotal,
+      validUntil: quoteValidUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      paymentTerms: quotePaymentTerms,
+      deliveryTerms: quoteDeliveryTerms,
+      notes: quoteNotes,
+      status: editingQuotation ? (editingQuotation.status === 'Approved' ? 'Approved' : statusToSave) : statusToSave,
+      created_at: editingQuotation ? editingQuotation.created_at : new Date().toISOString(),
+      created_by: editingQuotation ? editingQuotation.created_by : currentUser.name,
+      estimateNo: editingQuotation ? editingQuotation.estimateNo : nextEstimateNo,
+      description: quoteNotes,
+      termsAndConditions: `${quotePaymentTerms ? 'Payment Terms: ' + quotePaymentTerms + '\n' : ''}${quoteDeliveryTerms ? 'Delivery Terms: ' + quoteDeliveryTerms : ''}`
     };
 
     onSaveCRMQuotation(newQuote);
@@ -815,16 +915,17 @@ export default function CRMTab({
     // Add Timeline Event
     onSaveCRMTimelineEvent({
       id: generateId('evt'),
-      customer_id: custId,
-      type: 'quotation_sent',
-      title: 'Quotation Sent to Client',
-      description: `Created quotation ${quoteId} for customized "${item.furnitureItem}" valued at ₹${finalAmount.toLocaleString('en-IN')}. Sent with validity until ${formatToDDMMYYYY(newQuote.validUntil)}.`,
+      customer_id: quoteCustomerId,
+      type: statusToSave === 'Draft' ? 'note_added' : 'quotation_sent',
+      title: editingQuotation ? 'Price Quotation Updated' : (statusToSave === 'Draft' ? 'Quotation Draft Saved' : 'Quotation Issued to Client'),
+      description: `Quotation ${quoteId} (${quoteItems.length} product${quoteItems.length > 1 ? 's' : ''}: ${quoteItems.map(i => i.furnitureItem).join(', ')}) saved for ₹${quoteGrandTotal.toLocaleString('en-IN')}.`,
       timestamp: new Date().toISOString(),
       operator: currentUser.name
     });
 
     setShowAddQuoteModal(false);
-    alert(`Success: Quotation ${quoteId} registered and timeline updated.`);
+    setEditingQuotation(null);
+    alert(`Success: Quotation ${quoteId} ${editingQuotation ? 'updated' : 'created'} successfully (${statusToSave}).`);
   };
 
   const handleCreateFollowup = (e: React.FormEvent<HTMLFormElement>) => {
@@ -1945,9 +2046,9 @@ export default function CRMTab({
                   <tr>
                     <th className="p-4">Quotation ID</th>
                     <th className="p-4">Customer Lead</th>
-                    <th className="p-4">Item Name</th>
+                    <th className="p-4">Product Items Included</th>
+                    <th className="p-4">Total Qty</th>
                     <th className="p-4">Valid Until</th>
-                    <th className="p-4">Material Specified</th>
                     <th className="p-4">Estimated Value</th>
                     <th className="p-4">Current Status</th>
                     <th className="p-4 text-right">Actions</th>
@@ -1956,19 +2057,40 @@ export default function CRMTab({
                 <tbody className="divide-y divide-stone-100 font-medium text-stone-700">
                   {db.crmQuotations && db.crmQuotations.length > 0 ? (
                     db.crmQuotations.map(quote => {
+                      const itemsCount = quote.items?.length || 0;
                       const firstItem = quote.items?.[0];
+                      const totalQty = quote.items?.reduce((sum, i) => sum + (i.quantity || 1), 0) || 1;
                       return (
                         <tr key={quote.id} className="hover:bg-stone-50/50 transition">
                           <td className="p-4 font-mono font-bold text-[#593622]">{quote.id}</td>
                           <td className="p-4 text-stone-900 font-bold">{quote.customer_name}</td>
-                          <td className="p-4">{firstItem?.furnitureItem || 'Custom scope'}</td>
-                          <td className="p-4 font-mono">{formatToDDMMYYYY(quote.validUntil)}</td>
-                          <td className="p-4 text-stone-500 text-[11px]">{firstItem?.material || '-'}</td>
+                          <td className="p-4">
+                            {itemsCount > 1 ? (
+                              <div>
+                                <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                                  <span>{firstItem?.furnitureItem}</span>
+                                  <span className="bg-amber-100 text-amber-900 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                    +{itemsCount - 1} more product{itemsCount - 1 > 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-stone-500 truncate max-w-xs mt-0.5">
+                                  {quote.items?.map(i => i.furnitureItem).join(', ')}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="font-bold text-stone-900">
+                                {firstItem?.furnitureItem || 'Custom Scope'}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-4 font-mono font-bold text-stone-700">{totalQty}</td>
+                          <td className="p-4 font-mono text-stone-600">{formatToDDMMYYYY(quote.validUntil)}</td>
                           <td className="p-4 font-mono font-bold text-stone-950">₹{(quote.totalAmount ?? 0).toLocaleString('en-IN')}</td>
                           <td className="p-4">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
                               quote.status === 'Approved' ? 'bg-green-100 text-green-700' :
                               quote.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
+                              quote.status === 'Draft' ? 'bg-amber-100 text-amber-700' :
                               quote.status === 'Rejected' ? 'bg-rose-100 text-rose-700' :
                               'bg-stone-100 text-stone-700'
                             }`}>
@@ -2320,163 +2442,497 @@ export default function CRMTab({
         </div>
       )}
 
-      {/* 2. GENERATE QUOTATION MODAL */}
+      {/* 2. GENERATE / EDIT MULTI-PRODUCT QUOTATION MODAL */}
       {showAddQuoteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-stone-950/75 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden">
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto"
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            className="bg-white rounded-3xl border border-stone-200 shadow-2xl w-full max-w-7xl h-[94vh] max-h-[94vh] flex flex-col overflow-hidden"
           >
-            <div className="flex justify-between items-center border-b border-stone-100 pb-3">
-              <h3 className="text-base font-black text-[#593622] font-display uppercase tracking-tight">
-                {editingQuotation ? `Edit Price Quotation (${editingQuotation.id})` : 'Generate Custom Price Quotation'}
-              </h3>
-              <button onClick={() => { setShowAddQuoteModal(false); setEditingQuotation(null); }} className="text-stone-400 hover:text-stone-700">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-stone-900 via-stone-850 to-[#593622] text-white px-6 py-4 flex justify-between items-center shrink-0 border-b border-stone-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-300">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-tight font-display uppercase text-white">
+                      {editingQuotation ? `Edit Price Quotation (${editingQuotation.id})` : 'New Multi-Product Quotation'}
+                    </h3>
+                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                      {editingQuotation ? editingQuotation.id : generateCRMQuotationId(db.crmQuotations || [])}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-300 mt-0.5">
+                    Assign unlimited products & specs under one unified customer lead quotation
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setShowAddQuoteModal(false); setEditingQuotation(null); }}
+                className="text-stone-400 hover:text-white bg-stone-800/60 hover:bg-stone-800 p-2 rounded-xl transition cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <form
-              key={editingQuotation ? editingQuotation.id : 'new'}
-              onSubmit={handleCreateQuotation}
-              className="space-y-3.5 text-xs"
-            >
-              <div className="space-y-1">
-                <label className="font-bold text-stone-600">Select Customer Lead *</label>
-                <select
-                  required
-                  name="customerId"
-                  value={quoteCustomerId}
-                  onChange={(e) => {
-                    const custId = e.target.value;
-                    setQuoteCustomerId(custId);
-                    const customer = db.crmCustomers?.find(c => c.id === custId);
-                    if (customer && customer.productRequirement) {
-                      setQuoteItemName(customer.productRequirement);
-                    } else {
-                      setQuoteItemName('');
-                    }
-                  }}
-                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 bg-stone-50/60">
+              {/* Step 1: Customer Lead Selection */}
+              <div className="bg-white p-5 rounded-2xl border border-stone-200/90 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-[#593622]/10 text-[#593622] flex items-center justify-center text-xs font-black">
+                      1
+                    </div>
+                    <h4 className="text-sm font-extrabold text-stone-900 tracking-tight">Customer Lead Information</h4>
+                  </div>
+                  {quoteCustomerId && (
+                    <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                      <CheckCircle size={12} /> Lead Linked
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                      Select Customer Lead <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      required
+                      value={quoteCustomerId}
+                      onChange={(e) => {
+                        const custId = e.target.value;
+                        setQuoteCustomerId(custId);
+                        const customer = db.crmCustomers?.find(c => c.id === custId);
+                        if (customer && customer.productRequirement && quoteItems.length === 1 && !quoteItems[0].furnitureItem) {
+                          setQuoteItems([{ ...quoteItems[0], furnitureItem: customer.productRequirement }]);
+                        }
+                      }}
+                      className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-bold text-stone-900"
+                    >
+                      <option value="" disabled>-- Select Customer Lead --</option>
+                      {db.crmCustomers?.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.id}) {c.phone ? `• ${c.phone}` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Customer Quick Summary Card */}
+                  {(() => {
+                    const selectedCust = db.crmCustomers?.find(c => c.id === quoteCustomerId);
+                    if (!selectedCust) return (
+                      <div className="border border-dashed border-stone-200 rounded-xl p-3 bg-stone-50/50 flex items-center justify-center text-stone-400 text-xs italic">
+                        Select a customer lead above to view contact details
+                      </div>
+                    );
+                    return (
+                      <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3 text-xs space-y-1">
+                        <div className="font-extrabold text-stone-900 flex justify-between items-center">
+                          <span>{selectedCust.name}</span>
+                          <span className="text-[10px] text-amber-800 font-mono font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                            ID: {selectedCust.id}
+                          </span>
+                        </div>
+                        <div className="text-stone-600 text-[11px] flex flex-wrap gap-x-3 gap-y-0.5">
+                          {selectedCust.phone && <span>📞 {selectedCust.phone}</span>}
+                          {selectedCust.city && <span>📍 {selectedCust.city}</span>}
+                          {selectedCust.status && <span>🏷️ {selectedCust.status}</span>}
+                        </div>
+                        {selectedCust.productRequirement && (
+                          <div className="text-[11px] text-[#593622] font-semibold pt-1 border-t border-amber-200/60 truncate">
+                            Requirement: {selectedCust.productRequirement}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Step 2: Repeatable Product Items Section */}
+              <div className="bg-white p-5 rounded-2xl border border-stone-200/90 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-[#593622]/10 text-[#593622] flex items-center justify-center text-xs font-black">
+                      2
+                    </div>
+                    <h4 className="text-sm font-extrabold text-stone-900 tracking-tight">Product Items Specification</h4>
+                  </div>
+                  <span className="text-xs bg-amber-100 text-amber-900 px-3 py-1 rounded-full font-extrabold">
+                    {quoteItems.length} Product{quoteItems.length > 1 ? 's' : ''} Added
+                  </span>
+                </div>
+
+                {/* Product Cards Loop */}
+                <div className="space-y-4">
+                  {quoteItems.map((item, idx) => {
+                    const itemSub = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+                    return (
+                      <div
+                        key={item.id || idx}
+                        className="bg-stone-50/70 border border-stone-200 hover:border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-2xs transition-all space-y-4 relative group"
+                      >
+                        {/* Item Card Top Bar */}
+                        <div className="flex items-center justify-between border-b border-stone-200/70 pb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-[#593622] text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider">
+                              PRODUCT #{idx + 1}
+                            </span>
+                            {item.furnitureItem && (
+                              <span className="text-xs font-bold text-stone-800 truncate max-w-xs sm:max-w-md">
+                                {item.furnitureItem}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-mono font-extrabold text-stone-900 bg-white border border-stone-200 px-3 py-1 rounded-xl shadow-2xs">
+                              Item Value: <span className="text-[#593622]">₹{itemSub.toLocaleString('en-IN')}</span>
+                            </span>
+                            {quoteItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveProductItem(idx)}
+                                className="text-stone-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition cursor-pointer"
+                                title="Remove Product Item"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Item Fields */}
+                        <div className="space-y-3">
+                          {/* Item Name */}
+                          <div className="space-y-1">
+                            <label className="font-bold text-stone-700 text-xs flex justify-between">
+                              <span>Item / Product Name <span className="text-rose-500">*</span></span>
+                              <span className="text-[10px] text-stone-400 font-normal">e.g. Dining Table, Sofa, Wardrobe, Bed</span>
+                            </label>
+                            <input
+                              required
+                              type="text"
+                              value={item.furnitureItem}
+                              onChange={(e) => handleUpdateProductItem(idx, 'furnitureItem', e.target.value)}
+                              placeholder="e.g. 6-Seater Teakwood Dining Table"
+                              className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs font-semibold text-stone-900"
+                            />
+                            {!item.furnitureItem && (
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                <span className="text-[10px] text-stone-400 font-bold self-center">Quick Presets:</span>
+                                {['6-Seater Dining Table', 'King Size Storage Bed', '3-Seater Leatherette Sofa', '4-Door Teak Wardrobe', 'Modular Tv Console', 'Coffee Table'].map((preset) => (
+                                  <button
+                                    key={preset}
+                                    type="button"
+                                    onClick={() => handleUpdateProductItem(idx, 'furnitureItem', preset)}
+                                    className="text-[10px] bg-stone-100 hover:bg-amber-100 hover:text-amber-900 text-stone-600 px-2 py-0.5 rounded-md transition cursor-pointer"
+                                  >
+                                    + {preset}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Material & Dimensions */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="font-bold text-stone-700 text-xs">Premium Wood / Material</label>
+                              <input
+                                type="text"
+                                value={item.material}
+                                onChange={(e) => handleUpdateProductItem(idx, 'material', e.target.value)}
+                                placeholder="e.g. Solid Teak Wood & Matte Lacquer"
+                                className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs text-stone-800"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="font-bold text-stone-700 text-xs">Dimensions Specification</label>
+                              <input
+                                type="text"
+                                value={item.dimensions}
+                                onChange={(e) => handleUpdateProductItem(idx, 'dimensions', e.target.value)}
+                                placeholder="e.g. 72L x 36W x 30H inches"
+                                className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs font-mono text-stone-800"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Qty, Unit Cost, Subtotal */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <label className="font-bold text-stone-700 text-xs">Quantity <span className="text-rose-500">*</span></label>
+                              <input
+                                required
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateProductItem(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs font-bold text-stone-900"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="font-bold text-stone-700 text-xs">Unit Cost (INR) <span className="text-rose-500">*</span></label>
+                              <input
+                                required
+                                type="number"
+                                min="0"
+                                value={item.unitPrice || ''}
+                                onChange={(e) => handleUpdateProductItem(idx, 'unitPrice', Math.max(0, parseFloat(e.target.value) || 0))}
+                                placeholder="e.g. 45000"
+                                className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs font-bold font-mono text-stone-900"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="font-bold text-stone-500 text-xs">Product Subtotal</label>
+                              <div className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3.5 py-2 text-xs font-bold font-mono text-stone-900 flex items-center justify-between">
+                                <span>₹</span>
+                                <span>{itemSub.toLocaleString('en-IN')}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add Product Button */}
+                <button
+                  type="button"
+                  onClick={handleAddProductItem}
+                  className="w-full py-3.5 px-4 bg-amber-50/60 hover:bg-amber-100/80 border-2 border-dashed border-amber-300 hover:border-amber-400 rounded-2xl text-[#593622] font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-2xs"
                 >
-                  <option value="" disabled>-- Select Customer --</option>
-                  {db.crmCustomers?.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-                  ))}
-                </select>
+                  <Plus size={18} />
+                  <span>+ Add Product</span>
+                </button>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-600">Item name *</label>
-                <input
-                  required
-                  type="text"
-                  name="furnitureItem"
-                  value={quoteItemName}
-                  onChange={(e) => setQuoteItemName(e.target.value)}
-                  placeholder="e.g. 6-Seater Teakwood Dining Table"
-                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-semibold"
-                />
+              {/* Step 3: Shared Quotation Fields & Summary */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left: Shared Terms & Notes */}
+                <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-stone-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-stone-100 pb-3">
+                    <div className="w-6 h-6 rounded-full bg-[#593622]/10 text-[#593622] flex items-center justify-center text-xs font-black">
+                      3
+                    </div>
+                    <h4 className="text-sm font-extrabold text-stone-900 tracking-tight">Proposal Terms & Conditions</h4>
+                  </div>
+
+                  <div className="space-y-3.5 text-xs">
+                    {/* Validity Date */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-stone-700">Quotation Validity Date</label>
+                      <input
+                        type="date"
+                        value={quoteValidUntil}
+                        onChange={(e) => setQuoteValidUntil(e.target.value)}
+                        className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2 font-mono font-bold text-stone-900"
+                      />
+                    </div>
+
+                    {/* Payment Terms */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-stone-700">Payment Terms</label>
+                        <div className="flex gap-1 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setQuotePaymentTerms('40% Advance on order confirmation, 60% before dispatch post-QC inspection.')}
+                            className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
+                          >
+                            40% / 60%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% on final delivery & installation.')}
+                            className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
+                          >
+                            50% / 50%
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={quotePaymentTerms}
+                        onChange={(e) => setQuotePaymentTerms(e.target.value)}
+                        placeholder="e.g. 40% Advance on order, 60% post-QC prior to dispatch"
+                        className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2 text-stone-800"
+                      />
+                    </div>
+
+                    {/* Delivery Terms */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-stone-700">Delivery Terms</label>
+                        <div className="flex gap-1 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setQuoteDeliveryTerms('Ex-workshop dispatch / Transport charges extra at actuals.')}
+                            className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
+                          >
+                            Ex-workshop
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQuoteDeliveryTerms('Includes door delivery & white-glove on-site assembly.')}
+                            className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
+                          >
+                            Door Delivery
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={quoteDeliveryTerms}
+                        onChange={(e) => setQuoteDeliveryTerms(e.target.value)}
+                        placeholder="e.g. Ex-workshop dispatch, transport charges at actuals"
+                        className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2 text-stone-800"
+                      />
+                    </div>
+
+                    {/* Notes & proposal details */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-stone-700">Quotation Proposal Terms Notes</label>
+                      <textarea
+                        value={quoteNotes}
+                        onChange={(e) => setQuoteNotes(e.target.value)}
+                        placeholder="Enter custom warranty terms, timber moisture guarantee, or special notes..."
+                        className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2 text-stone-800 h-20"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Calculations Summary Card */}
+                <div className="lg:col-span-5 bg-gradient-to-br from-stone-900 via-stone-850 to-stone-950 text-white p-6 rounded-2xl shadow-xl border border-stone-800 flex flex-col justify-between space-y-5">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-stone-800 pb-3">
+                      <h4 className="text-sm font-extrabold text-amber-300 uppercase tracking-wider font-display">
+                        Quotation Financial Summary
+                      </h4>
+                      <span className="text-[10px] bg-stone-800 text-stone-300 px-2 py-0.5 rounded font-mono">
+                        Live Auto-Calc
+                      </span>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      {/* Subtotal */}
+                      <div className="flex justify-between items-center">
+                        <span className="text-stone-300">Total Item Value (Subtotal)</span>
+                        <span className="font-mono font-bold text-stone-100">
+                          ₹{quoteSubtotal.toLocaleString('en-IN')}.00
+                        </span>
+                      </div>
+
+                      {/* Discount Input */}
+                      <div className="space-y-1 pt-2 border-t border-stone-800">
+                        <div className="flex justify-between items-center">
+                          <label className="text-stone-300 font-bold">Discount Amount (INR)</label>
+                          <span className="text-rose-400 font-mono text-[11px]">
+                            -₹{quoteDiscountAmt.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          value={quoteDiscount || ''}
+                          onChange={(e) => setQuoteDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                          placeholder="0"
+                          className="w-full bg-stone-800/80 border border-stone-700 focus:border-amber-400 rounded-xl px-3.5 py-2 font-mono text-stone-100 text-xs font-bold"
+                        />
+                      </div>
+
+                      {/* Taxable Value */}
+                      <div className="flex justify-between items-center text-stone-300 text-[11px]">
+                        <span>Taxable Value</span>
+                        <span className="font-mono font-semibold">₹{quoteTaxableSubtotal.toLocaleString('en-IN')}.00</span>
+                      </div>
+
+                      {/* GST Percentage */}
+                      <div className="space-y-1 pt-2 border-t border-stone-800">
+                        <div className="flex justify-between items-center">
+                          <label className="text-stone-300 font-bold">GST Percentage (%)</label>
+                          <span className="text-amber-300 font-mono text-[11px]">
+                            +₹{quoteGstAmt.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <select
+                          value={quoteGst}
+                          onChange={(e) => setQuoteGst(Number(e.target.value))}
+                          className="w-full bg-stone-800/80 border border-stone-700 focus:border-amber-400 rounded-xl px-3.5 py-2 font-bold text-stone-100 text-xs"
+                        >
+                          <option value={0}>0% GST (Default Excluded)</option>
+                          <option value={5}>5% GST</option>
+                          <option value={18}>18% GST (Standard Furniture GST)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grand Total Highlight Box */}
+                  <div className="bg-stone-800/90 border border-amber-500/30 p-4 rounded-xl space-y-1">
+                    <div className="text-[10px] font-black uppercase text-amber-400 tracking-wider">
+                      Grand Total Amount
+                    </div>
+                    <div className="text-2xl font-black font-mono text-amber-300 tracking-tight">
+                      ₹{quoteGrandTotal.toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] text-stone-400 italic">
+                      {getAmountInWords(quoteGrandTotal)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sticky Footer Action Bar */}
+            <div className="px-6 py-4 bg-white border-t border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-stone-600 font-medium">
+                  Summary:
+                </span>
+                <span className="text-xs font-bold text-stone-900 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                  {quoteItems.length} Product{quoteItems.length > 1 ? 's' : ''} • Grand Total: ₹{quoteGrandTotal.toLocaleString('en-IN')}
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Premium Wood / Material</label>
-                  <input
-                    type="text"
-                    name="material"
-                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.material || '' : ''}
-                    placeholder="e.g. Solid Teak wood & Matte Lacquer"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Dimensions Spec</label>
-                  <input
-                    type="text"
-                    name="dimensions"
-                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.dimensions || '' : ''}
-                    placeholder="e.g. 72L x 36W x 30H inches"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Quantity *</label>
-                  <input
-                    required
-                    type="number"
-                    name="quantity"
-                    min="1"
-                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.quantity || 1 : 1}
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Unit Cost (INR) *</label>
-                  <input
-                    required
-                    type="number"
-                    name="unitPrice"
-                    min="1"
-                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.unitPrice || '' : ''}
-                    placeholder="45000"
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-600">Discount Amount (INR) *</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    min="0"
-                    defaultValue={editingQuotation ? editingQuotation.items?.[0]?.discount || 0 : 0}
-                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-stone-600">GST percentage (%)</label>
-                <select
-                  name="gst"
-                  defaultValue={editingQuotation ? String(editingQuotation.items?.[0]?.gst || 0) : '0'}
-                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowAddQuoteModal(false); setEditingQuotation(null); }}
+                  className="px-4 py-2.5 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-bold text-xs transition cursor-pointer"
                 >
-                  <option value="0">0% (Default)</option>
-                  <option value="5">5% GST</option>
-                  <option value="18">18% GST</option>
-                </select>
-                <input
-                  type="hidden"
-                  name="validUntil"
-                  value={editingQuotation ? editingQuotation.validUntil : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                />
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveQuotation('Draft')}
+                  className="px-4 py-2.5 rounded-xl border border-amber-600 text-amber-900 bg-amber-50 hover:bg-amber-100 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Save as Draft</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveQuotation('Sent')}
+                  className="px-5 py-2.5 rounded-xl bg-[#593622] hover:bg-[#482b1b] text-white font-bold text-xs transition shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <FileCheck size={15} />
+                  <span>{editingQuotation ? 'Update Price Quotation' : 'Issue Quotation'}</span>
+                </button>
               </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-stone-600">Quotation Proposal Terms Notes</label>
-                <textarea
-                  name="notes"
-                  defaultValue={editingQuotation ? editingQuotation.notes || '' : ''}
-                  placeholder="e.g. Terms: 40% Advance, 60% post-QC and before dispatch. 3 years structural warranty..."
-                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none h-16"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-[#593622] hover:bg-[#4d2f1e] text-white py-2.5 rounded-xl font-bold transition shadow-md text-xs mt-3 cursor-pointer"
-              >
-                {editingQuotation ? 'Update Price Quotation' : 'Log and Issue Price Quote'}
-              </button>
-            </form>
+            </div>
           </motion.div>
         </div>
       )}
