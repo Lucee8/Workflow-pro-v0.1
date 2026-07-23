@@ -347,12 +347,7 @@ export default function DetailOrderFormTab({
     };
   }, []);
 
-  // Synchronize product name & item description dynamically
-  React.useEffect(() => {
-    const nameStr = `${category} › ${subCategory} (${size === 'Custom' ? customSize || 'Custom Size' : size})`;
-    setProductName(nameStr);
-  }, [category, subCategory, size, customSize]);
-
+  // Auto-generate default item description when materials/finish change (without overwriting manual product name)
   React.useEffect(() => {
     const descStr = `Structure: ${material}. Finish: ${finish}. Color: ${colorShade}. ${specialNotes}`;
     setItemDescription(descStr);
@@ -586,7 +581,7 @@ export default function DetailOrderFormTab({
         }
       }
 
-      const nameStr = `${matchedCat} › ${item.furnitureItem} (Custom Size)`;
+      const nameStr = item.furnitureItem ? item.furnitureItem : `${matchedCat} › Custom Size`;
       const descStr = `Structure: ${item.material || 'Sagwan'}. Finish: Hand Polish. Color: Walnut. ${notes || ''}`;
 
       return {
@@ -1203,10 +1198,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   <button
                     type="button"
                     onClick={() => loadItemToForm(idx)}
-                    className="text-left font-semibold truncate max-w-[140px]"
-                    title={itm.productName}
+                    className="text-left font-semibold truncate max-w-[160px]"
+                    title={itm.productName || itm.category}
                   >
-                    {idx + 1}. {itm.category} ({itm.qty}x)
+                    {idx + 1}. {itm.productName || itm.category} ({itm.qty}x)
                   </button>
                   {items.length > 1 && (
                     <button
@@ -1233,13 +1228,18 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             <div className="md:col-span-12">
-              <label className="block text-[10px] font-bold text-[#593622] uppercase tracking-wider mb-1">Product Name</label>
+              <label className="block text-[10px] font-bold text-[#593622] uppercase tracking-wider mb-1 flex justify-between items-center">
+                <span>Product Name <span className="text-rose-500">*</span></span>
+                <span className="text-[9px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-medium border border-amber-200">
+                  Manually Editable (Does not alter original quotation)
+                </span>
+              </label>
               <input
                 type="text"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
-                placeholder="Product Name"
-                className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-bold"
+                placeholder="e.g. Wooden Sofa (Custom Size)"
+                className="w-full px-3 py-2 bg-white border border-stone-300 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl text-xs focus:outline-none text-stone-900 font-bold shadow-2xs"
               />
             </div>
 
@@ -1841,37 +1841,49 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                                   <tr className="border-b border-stone-250 bg-white">
                                     <td colSpan={4} className="px-4 pb-2.5 pt-0 text-[9px] text-stone-700 leading-snug">
                                       <strong className="block text-stone-400 font-extrabold uppercase tracking-wider text-[7.5px] mb-0.5">{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'DETAILED SPECIFICATIONS:'}</strong>
-                                      <div className="grid grid-cols-3 gap-x-4 gap-y-1 pl-1 font-sans">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'दर (₹):' : 'Unit Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 col-span-3">
-                                          <span className="text-[5px] text-stone-300">●</span>
-                                          <span><strong>{language === 'mr' ? 'प्रमाण:' : 'Quantity:'}</strong> {item.qty}</span>
-                                        </div>
-                                      </div>
-                                      {item.specialNotes && (
+                                       <div className="grid grid-cols-3 gap-x-4 gap-y-1 pl-1 font-sans">
+                                         <div className="flex items-center gap-1.5 col-span-3 font-semibold text-stone-900 bg-stone-50/80 px-2 py-0.5 rounded border border-stone-200/60 mb-0.5">
+                                           <span className="text-[5px] text-[#593622]">●</span>
+                                           <span><strong>{language === 'mr' ? 'उत्पादनाचे नाव:' : 'Product Name:'}</strong> {item.productName || 'N/A'}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'श्रेणी:' : 'Category:'}</strong> {item.category || 'N/A'}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'उप-श्रेणी:' : 'Sub-Category:'}</strong> {item.subCategory || 'N/A'}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'दर (₹):' : 'Unit Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</span>
+                                         </div>
+                                         <div className="flex items-center gap-1.5">
+                                           <span className="text-[5px] text-stone-300">●</span>
+                                           <span><strong>{language === 'mr' ? 'प्रमाण:' : 'Quantity:'}</strong> {item.qty}</span>
+                                         </div>
+                                       </div>
+                                       {item.specialNotes && (
                                         <div className="mt-1.5 pl-2 border-l-2 border-amber-600 bg-amber-50/30 py-0.5 text-[8.5px] text-stone-600 font-sans italic">
                                           <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Mfg Notes:'}</strong> {item.specialNotes}
                                         </div>
@@ -2286,13 +2298,16 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                               <td colSpan={4} className="pb-1.5 pt-1 text-[9px] text-stone-750 leading-snug">
                                 <strong className="block mb-1 text-stone-900 uppercase tracking-wider text-[8px]">{language === 'mr' ? 'सविस्तर वैशिष्ट्ये:' : 'DETAILED SPECIFICATIONS:'}</strong>
                                 <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 pl-2 font-mono">
+                                  <div className="col-span-3 font-bold">• <strong>{language === 'mr' ? 'उत्पादनाचे नाव:' : 'Product Name:'}</strong> {item.productName || 'N/A'}</div>
+                                  <div>• <strong>{language === 'mr' ? 'श्रेणी:' : 'Category:'}</strong> {item.category || 'N/A'}</div>
+                                  <div>• <strong>{language === 'mr' ? 'उप-श्रेणी:' : 'Sub-Category:'}</strong> {item.subCategory || 'N/A'}</div>
                                   <div>• <strong>{language === 'mr' ? 'आकार:' : 'Size:'}</strong> {item.size === 'Custom' ? `${item.customSize || 'Custom'}` : item.size}</div>
                                   <div>• <strong>{language === 'mr' ? 'डिझाईन:' : 'Design:'}</strong> {item.designType}</div>
                                   <div>• <strong>{language === 'mr' ? 'मटेरिअल:' : 'Material:'}</strong> {item.material}</div>
                                   <div>• <strong>{language === 'mr' ? 'फिनिश:' : 'Finish:'}</strong> {item.finish}</div>
                                   <div>• <strong>{language === 'mr' ? 'रंग/शेड:' : 'Color/Shade:'}</strong> {item.colorShade}</div>
-                                  <div>• <strong>{language === 'mr' ? 'दर (₹):' : 'Unit Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</div>
                                   <div>• <strong>{language === 'mr' ? 'प्रमाण:' : 'Quantity:'}</strong> {item.qty}</div>
+                                  <div>• <strong>{language === 'mr' ? 'दर (₹):' : 'Unit Rate:'}</strong> ₹{Number(item.quotedRate || 0).toLocaleString()}</div>
                                 </div>
                                 {item.specialNotes && (
                                   <div className="mt-1 pl-2 text-[8.5px] text-stone-600 font-sans italic">
