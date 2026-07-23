@@ -81,7 +81,7 @@ export default function DetailOrderFormTab({
   const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string }>>([]);
   const isUpdatingRef = React.useRef(false);
 
-  function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders) {
+  function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders, quoteList: any[] = crmQuotations) {
     const dateToUse = targetDate || new Date().toISOString().split('T')[0];
     let yy = '';
     let mm = '';
@@ -89,19 +89,23 @@ export default function DetailOrderFormTab({
       const parts = dateToUse.split('-');
       if (parts[0] && parts[0].length === 4) {
         yy = parts[0].slice(-2);
-      }
-      if (parts[1]) {
-        mm = parts[1].padStart(2, '0');
+        mm = (parts[1] || '').padStart(2, '0');
+      } else if (parts[2] && parts[2].length === 4) {
+        yy = parts[2].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
       }
     } else if (dateToUse && dateToUse.includes('/')) {
       const parts = dateToUse.split('/');
       if (parts[2] && parts[2].length === 4) {
         yy = parts[2].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
+      } else if (parts[0] && parts[0].length === 4) {
+        yy = parts[0].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
       }
-      if (parts[1]) {
-        mm = parts[1].padStart(2, '0');
-      }
-    } else {
+    }
+
+    if (!yy || !mm) {
       const d = new Date();
       yy = d.getFullYear().toString().slice(-2);
       mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -109,20 +113,34 @@ export default function DetailOrderFormTab({
     const prefix = `ORD${yy}${mm}`;
     
     let maxSerial = 0;
+    const processIdString = (idStr?: string) => {
+      if (!idStr || typeof idStr !== 'string') return;
+      const cleanStr = idStr.replace(/[-_\s/]/g, '').toUpperCase();
+      if (cleanStr.startsWith(prefix)) {
+        const serialPart = cleanStr.substring(prefix.length);
+        const serialNum = parseInt(serialPart, 10);
+        if (!isNaN(serialNum) && serialNum > maxSerial) {
+          maxSerial = serialNum;
+        }
+      }
+    };
+
     if (orderList && orderList.length > 0) {
-      orderList.forEach((o) => {
-        const checkIds = [o.id || '', o.article_no || ''];
-        checkIds.forEach((id) => {
-          if (id.startsWith(prefix)) {
-            const serialPart = id.substring(prefix.length);
-            const serialNum = parseInt(serialPart, 10);
-            if (!isNaN(serialNum) && serialNum > maxSerial) {
-              maxSerial = serialNum;
-            }
-          }
-        });
+      orderList.forEach((o: any) => {
+        processIdString(o.id);
+        processIdString(o.orderNo);
+        processIdString(o.article_no);
       });
     }
+
+    if (quoteList && quoteList.length > 0) {
+      quoteList.forEach((q: any) => {
+        processIdString(q.id);
+        processIdString(q.orderNo);
+        processIdString(q.quotationNo);
+      });
+    }
+
     const nextSerial = maxSerial + 1;
     const sss = String(nextSerial).padStart(3, '0');
     return `${prefix}${sss}`;
@@ -354,10 +372,10 @@ export default function DetailOrderFormTab({
   }, [material, finish, colorShade, specialNotes]);
 
   React.useEffect(() => {
-    if (!selectedOrderId && (!orderNo || orderNo.startsWith('ORD'))) {
-      setOrderNo(generateNewOrderNo(orderDate));
+    if (!selectedOrderId && (!orderNo || orderNo.trim() === '')) {
+      setOrderNo(generateNewOrderNo(orderDate, orders, crmQuotations));
     }
-  }, [orderDate, selectedOrderId, orders]);
+  }, [orderDate, selectedOrderId, orders, crmQuotations]);
 
   // Final Rate is calculated as: Quoted Rate + Cushion + Hardware - Discount
   const finalRate = React.useMemo(() => {
@@ -561,7 +579,7 @@ export default function DetailOrderFormTab({
     
     // Generate order number in ORDYYMM000 format
     const quoteDate = first.created_at ? first.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
-    setOrderNo(generateNewOrderNo(quoteDate));
+    setOrderNo(generateNewOrderNo(quoteDate, orders, crmQuotations));
     
     // Leave article number blank for manual entry
     setArticleNo('');
@@ -802,7 +820,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     const today = formatToDDMMYYYY(new Date().toISOString().split('T')[0]);
     setOrderDate(today);
     setDeliveryDate('');
-    setOrderNo(generateNewOrderNo(today));
+    setOrderNo(generateNewOrderNo(today, orders, crmQuotations));
     setArticleNo('');
     setToArticleNo('');
     setCustomerName('');
