@@ -305,8 +305,38 @@ export default function OrderDetailsView({
 
   const currentStageIndex = stages.indexOf(order.current_status);
 
+  // Auto-set Design as active gate when order is opened for the first time / in Pending status
+  React.useEffect(() => {
+    if (order && order.current_status === 'Pending') {
+      const updatedOrder: Order = {
+        ...order,
+        current_status: 'Design',
+        updated_at: new Date().toISOString(),
+      };
+      const log: StatusLog = {
+        id: 'log_' + generateUUID().split('-')[0],
+        order_id: order.id,
+        stage: 'Design',
+        changed_by: currentUser.id,
+        changed_by_name: currentUser.name,
+        changed_by_role: currentUser.role,
+        timestamp: new Date().toISOString(),
+        note: 'Order opened — automatically set Design as current active gate.',
+        qc_passed: true,
+      };
+      onUpdateOrder(updatedOrder, log);
+    }
+  }, [order?.id, order?.current_status]);
+
+  // Debouncing lock to prevent accidental double-clicks from skipping stages
+  const [isAdvancing, setIsAdvancing] = React.useState(false);
+
   // Administrative transition actions
   const triggerTransition = (nextStage: OrderStage, notesText = '', qcPassedValue: boolean | null = null) => {
+    if (isAdvancing) return;
+    setIsAdvancing(true);
+    setTimeout(() => setIsAdvancing(false), 1000);
+
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: order.id,
@@ -328,10 +358,10 @@ export default function OrderDetailsView({
     };
 
     onUpdateOrder(updatedOrder, log);
-    alert(`Order updated & status logged successful: now in "${nextStage}" stage.`);
   };
 
   const handleAdminStepAction = (actionType: 'forward' | 'fail_qc_1' | 'fail_qc_2') => {
+    if (isAdvancing) return;
     if (actionType === 'forward') {
       const nextIdx = currentStageIndex + 1;
       if (nextIdx < stages.length) {
@@ -611,7 +641,7 @@ export default function OrderDetailsView({
                   </p>
                 </div>
                 <div className="font-mono text-stone-400 text-[10px] font-bold">
-                  Staged order tracking: {currentStageIndex + 1} of 7 completed
+                  Stage tracking: {Math.max(1, currentStageIndex)} of 7 completed
                 </div>
               </div>
 
@@ -631,19 +661,25 @@ export default function OrderDetailsView({
                 <div className="pt-2 flex flex-wrap gap-2 border-t border-stone-150">
                   <span className="text-[10px] font-bold text-stone-400 block w-full">ADMIN CONTROLLER GATEWAYS:</span>
                   
-                  {order.current_status !== 'Carpentry' && order.current_status !== 'Polish' && order.current_status !== 'Ready to Dispatch' && (
+                  {(order.current_status === 'Design' || order.current_status === 'Carpentry' || order.current_status === 'Polish') && (
                     <button
+                      disabled={isAdvancing}
                       onClick={() => handleAdminStepAction('forward')}
-                      className="bg-[#593622] hover:bg-[#402414] text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1"
+                      className={`bg-[#593622] hover:bg-[#402414] text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
+                        isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
                     >
-                      <CheckCircle2 size={11} /> Advanced Stage Forward
+                      <CheckCircle2 size={11} /> Advance Stage Forward
                     </button>
                   )}
 
                   {order.current_status === 'Ready to Dispatch' && (
                     <button
+                      disabled={isAdvancing}
                       onClick={() => triggerTransition('Dispatched', 'Admin authorized logistics departure: Order registered on transport manifest.', true)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1"
+                      className={`bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
+                        isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
                     >
                       <CheckCircle2 size={11} /> Ship & Dispatch Furniture
                     </button>
@@ -652,14 +688,20 @@ export default function OrderDetailsView({
                   {order.current_status === 'QC Check 1' && (
                     <>
                       <button
+                        disabled={isAdvancing}
                         onClick={() => triggerTransition('Polish', 'Admin audited structural joints: QC Pass 1 successful.', true)}
-                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition"
+                        className={`bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
                       >
                         Pass QC Check 1
                       </button>
                       <button
+                        disabled={isAdvancing}
                         onClick={() => handleAdminStepAction('fail_qc_1')}
-                        className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition"
+                        className={`bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
                       >
                         Fail (Send back to Carpentry)
                       </button>
@@ -669,14 +711,20 @@ export default function OrderDetailsView({
                   {order.current_status === 'QC Check 2' && (
                     <>
                       <button
+                        disabled={isAdvancing}
                         onClick={() => triggerTransition('Ready to Dispatch', 'Admin audited PU luster coats: QC Pass 2 successful.', true)}
-                        className="bg-green-600 hover:bg-green-700 text-white px-2.5 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition"
+                        className={`bg-green-600 hover:bg-green-700 text-white px-2.5 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
                       >
                         Pass QC Check 2
                       </button>
                       <button
+                        disabled={isAdvancing}
                         onClick={() => handleAdminStepAction('fail_qc_2')}
-                        className="bg-[#be123c] hover:bg-[#9f1239] text-white px-2.5 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition"
+                        className={`bg-[#be123c] hover:bg-[#9f1239] text-white px-2.5 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
                       >
                         Fail (Send back to Polish)
                       </button>
