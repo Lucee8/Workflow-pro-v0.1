@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Trees,
 } from 'lucide-react';
 import React from 'react';
 
@@ -65,6 +66,7 @@ export default function Sidebar({
         { id: 'crm', label: 'CRM', icon: Contact },
         { id: 'orders', label: 'Orders', icon: ClipboardList },
         { id: 'customers', label: 'Customers', icon: Contact },
+        { id: 'wood_management', label: 'Wood Management', icon: Trees },
         { id: 'create_order', label: 'Work Order', icon: HardHat },
         { id: 'calendar', label: 'Calendar', icon: Calendar },
         { id: 'users', label: 'Users', icon: Users },

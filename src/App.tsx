@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, CRMAgreement } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -31,8 +31,7 @@ import {
   deleteCRMNoteFromFirebase,
   saveCRMAttachmentToFirebase,
   deleteCRMAttachmentFromFirebase,
-  saveCRMTimelineEventToFirebase,
-  saveCRMAgreementToFirebase
+  saveCRMTimelineEventToFirebase
 } from './db/firebaseService';
 
 // Component imports
@@ -53,6 +52,7 @@ import DetailOrderFormTab from './components/DetailOrderFormTab';
 import MaterialRequirementPlanning from './components/MaterialRequirementPlanning';
 import CRMTab from './components/CRMTab';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
+import WoodManagementTab from './components/WoodManagementTab';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2 } from 'lucide-react';
@@ -465,15 +465,6 @@ export default function App() {
     saveCRMTimelineEventToFirebase(item);
   };
 
-  const handleSaveCRMAgreement = (item: CRMAgreement) => {
-    const exists = db.crmAgreements.some(a => a.id === item.id);
-    const updated = exists
-      ? db.crmAgreements.map(a => a.id === item.id ? item : a)
-      : [item, ...db.crmAgreements];
-    updateDbState({ ...db, crmAgreements: updated });
-    saveCRMAgreementToFirebase(item);
-  };
-
   // Nav to specific order details tab
   const handleViewOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -759,6 +750,18 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* TAB: WOOD MANAGEMENT REQUIREMENT REQUESTS (Admin / Manager) */}
+          {currentTab === 'wood_management' && (isAdmin || isManager) && (
+            <motion.div
+              key="wood_management"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+            >
+              <WoodManagementTab />
+            </motion.div>
+          )}
+
           {/* TAB: CREATE NEW CUSTOM SERIAL ORDER (Wizard Form, Admin Only) */}
           {currentTab === 'create_order' && isAdmin && (
             <motion.div
@@ -899,10 +902,8 @@ export default function App() {
                 payments={db.payments}
                 crmQuotations={db.crmQuotations}
                 crmCustomers={db.crmCustomers}
-                crmAgreements={db.crmAgreements}
                 preselectedQuotationId={preselectedQuotationId}
                 onClearPreselectedQuotation={() => setPreselectedQuotationId(null)}
-                onSaveCRMAgreement={handleSaveCRMAgreement}
                 onSendToWorkOrder={(draft) => {
                   setWorkOrderDraft(draft);
                   setCurrentTab('create_order');
