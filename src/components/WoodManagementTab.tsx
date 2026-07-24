@@ -21,7 +21,8 @@ import {
   Ruler,
   Hash,
   Share2,
-  Download
+  Download,
+  Trash2
 } from 'lucide-react';
 
 export interface WoodRequirementItem {
@@ -177,6 +178,17 @@ export default function WoodManagementTab() {
   const [selectedRequest, setSelectedRequest] = useState<WoodRequirementRequest | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [printModalRequest, setPrintModalRequest] = useState<WoodRequirementRequest | null>(null);
+  const [deleteConfirmReq, setDeleteConfirmReq] = useState<WoodRequirementRequest | null>(null);
+
+  // Delete Request Handler
+  const handleDeleteRequest = (id: string) => {
+    setRequests((prev) => prev.filter((r) => r.id !== id));
+    if (selectedRequest && selectedRequest.id === id) {
+      setSelectedRequest(null);
+      setIsModalOpen(false);
+    }
+    setDeleteConfirmReq(null);
+  };
 
   // Filtered requests based on search and status tabs
   const filteredRequests = requests.filter((req) => {
@@ -422,26 +434,39 @@ export default function WoodManagementTab() {
                     </span>
                   </div>
 
-                  {/* Status Badge */}
-                  <div
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${
-                      isPending
-                        ? 'bg-amber-50 text-amber-800 border-amber-300/80'
-                        : isApproved
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300/80'
-                        : 'bg-rose-50 text-rose-800 border-rose-300/80'
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
+                  {/* Right side: Status Badge + Delete Button */}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${
                         isPending
-                          ? 'bg-amber-500 animate-pulse'
+                          ? 'bg-amber-50 text-amber-800 border-amber-300/80'
                           : isApproved
-                          ? 'bg-emerald-600'
-                          : 'bg-rose-600'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300/80'
+                          : 'bg-rose-50 text-rose-800 border-rose-300/80'
                       }`}
-                    />
-                    <span>{req.status}</span>
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          isPending
+                            ? 'bg-amber-500 animate-pulse'
+                            : isApproved
+                            ? 'bg-emerald-600'
+                            : 'bg-rose-600'
+                        }`}
+                      />
+                      <span>{req.status}</span>
+                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirmReq(req);
+                      }}
+                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-100/70 rounded-lg transition border border-transparent hover:border-rose-200"
+                      title="Delete Request"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
 
@@ -739,6 +764,14 @@ export default function WoodManagementTab() {
                   Print Schedule
                 </button>
                 <button
+                  onClick={() => setDeleteConfirmReq(selectedRequest)}
+                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="Delete Wood Request"
+                >
+                  <Trash2 size={15} />
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
+                <button
                   onClick={() => setIsModalOpen(false)}
                   className="px-4 py-2 bg-white border border-stone-300 text-stone-700 rounded-xl text-xs font-bold hover:bg-stone-100 transition cursor-pointer"
                 >
@@ -816,6 +849,47 @@ export default function WoodManagementTab() {
             </div>
             <div>
               <p className="border-t border-stone-800 pt-1 w-48 text-center">Supervisor / Manager Signature</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmReq && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="h-10 w-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-stone-900 text-base">Delete Wood Request?</h3>
+                <p className="text-xs text-stone-500">This action will remove the request card.</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs space-y-1 font-sans">
+              <p><strong>Req ID:</strong> {deleteConfirmReq.id}</p>
+              <p><strong>Work Order:</strong> {deleteConfirmReq.workOrderNo}</p>
+              <p><strong>Product:</strong> {deleteConfirmReq.productName}</p>
+              <p><strong>Carpenter:</strong> {deleteConfirmReq.carpenterName}</p>
+              <p><strong>Volume:</strong> {deleteConfirmReq.totalVolumeCFT.toFixed(2)} CFT</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                onClick={() => setDeleteConfirmReq(null)}
+                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteRequest(deleteConfirmReq.id)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Trash2 size={14} />
+                Delete Request
+              </button>
             </div>
           </div>
         </div>
