@@ -204,66 +204,68 @@ export default function App() {
   };
 
   // Staging CRUD updates actions
-  const handleSaveOrder = (newOrder: Order, newCustomer?: Customer) => {
-    const updatedOrders = [newOrder, ...db.orders];
+  const handleSaveOrder = (newOrderOrOrders: Order | Order[], newCustomer?: Customer) => {
+    const ordersToAdd = Array.isArray(newOrderOrOrders) ? newOrderOrOrders : [newOrderOrOrders];
+
+    const updatedOrders = [...ordersToAdd, ...db.orders];
     let updatedCusts = [...db.customers];
     if (newCustomer) {
       updatedCusts = [newCustomer, ...db.customers];
     }
 
     let updatedPayments = [...db.payments];
-    let paymentRecord: Payment | undefined;
-    if (newOrder.total_amount !== undefined && newOrder.advance_paid !== undefined) {
-      const pid = 'pay_' + Math.random().toString(36).substring(2, 9);
-      paymentRecord = {
-        id: pid,
+    const newPayments: Payment[] = [];
+    const newLogs: StatusLog[] = [];
+
+    ordersToAdd.forEach((newOrder) => {
+      if (newOrder.total_amount !== undefined && newOrder.advance_paid !== undefined) {
+        const pid = 'pay_' + Math.random().toString(36).substring(2, 9);
+        const paymentRecord: Payment = {
+          id: pid,
+          order_id: newOrder.id,
+          total_amount: newOrder.total_amount,
+          advance_paid: newOrder.advance_paid,
+          balance_due: Math.max(0, newOrder.total_amount - newOrder.advance_paid),
+          payment_date: newOrder.order_date || new Date().toISOString().split('T')[0],
+          payment_mode: 'cash',
+          notes: 'Auto-created payment record from Detail Order Form details.',
+          created_by: currentUser?.id || 'admin',
+          created_at: new Date().toISOString(),
+        };
+        newPayments.push(paymentRecord);
+        savePaymentToFirebase(paymentRecord);
+      }
+
+      const log: StatusLog = {
+        id: 'log_' + Math.random().toString(36).substring(2, 9),
         order_id: newOrder.id,
-        total_amount: newOrder.total_amount,
-        advance_paid: newOrder.advance_paid,
-        balance_due: Math.max(0, newOrder.total_amount - newOrder.advance_paid),
-        payment_date: newOrder.order_date || new Date().toISOString().split('T')[0],
-        payment_mode: 'cash',
-        notes: 'Auto-created payment record from Detail Order Form details.',
-        created_by: currentUser?.id || 'admin',
-        created_at: new Date().toISOString(),
+        stage: 'Pending',
+        changed_by: currentUser?.id || 'admin',
+        changed_by_name: currentUser?.name || 'Admin',
+        changed_by_role: currentUser?.role || 'admin',
+        timestamp: new Date().toISOString(),
+        note: `Bespoke furniture order registered. Article Code: ${newOrder.article_no}.`,
       };
-      updatedPayments = [paymentRecord, ...db.payments];
+      newLogs.push(log);
+      saveStatusLogToFirebase(log);
+      saveOrderToFirebase(newOrder);
+    });
+
+    if (newCustomer) {
+      saveCustomerToFirebase(newCustomer);
     }
-
-    // Auto log creations phase
-    const log: StatusLog = {
-      id: 'log_' + Math.random().toString(36).substring(2, 9),
-      order_id: newOrder.id,
-      stage: 'Pending',
-      changed_by: currentUser?.id || 'admin',
-      changed_by_name: currentUser?.name || 'Admin',
-      changed_by_role: currentUser?.role || 'admin',
-      timestamp: new Date().toISOString(),
-      note: `Bespoke furniture order registered. Previewing Article Code: ${newOrder.article_no}.`,
-    };
-
-    const updatedLogs = [log, ...db.statusLogs];
 
     updateDbState({
       ...db,
       orders: updatedOrders,
       customers: updatedCusts,
-      statusLogs: updatedLogs,
-      payments: updatedPayments,
+      statusLogs: [...newLogs, ...db.statusLogs],
+      payments: [...newPayments, ...db.payments],
     });
 
-    // Write to Firestore asynchronously
-    saveOrderToFirebase(newOrder);
-    if (newCustomer) {
-      saveCustomerToFirebase(newCustomer);
-    }
-    if (paymentRecord) {
-      savePaymentToFirebase(paymentRecord);
-    }
-    saveStatusLogToFirebase(log);
-
     setCurrentTab('orders'); // Jump back to listings tab
-    alert(`Success: Order registered! Article NO is ${newOrder.article_no}`);
+    const articleSummary = ordersToAdd.map((o) => o.article_no).join(', ');
+    alert(`Success: ${ordersToAdd.length} Work Order(s) registered! Article NO(s): ${articleSummary}`);
   };
 
   const handleUpdateOrder = (updatedOrder: Order, newLog?: StatusLog) => {
@@ -1019,3 +1021,4 @@ export default function App() {
     </div>
   );
 }
+  

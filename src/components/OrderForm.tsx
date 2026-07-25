@@ -91,7 +91,7 @@ interface OrderFormProps {
   customers: Customer[];
   users: User[];
   orders: Order[];
-  onSave: (newOrder: Order, newCustomer?: Customer) => void;
+  onSave: (newOrder: Order | Order[], newCustomer?: Customer) => void;
   onCancel: () => void;
   initialDraft?: any | null;
   onClearDraft?: () => void;
@@ -418,7 +418,8 @@ export default function OrderForm({
     const carpToUse = activeProd ? activeProd.carpenterId : carpenterId;
 
     if (carpToUse) {
-      const generated = generateArticleNumber(catToUse, carpToUse, orders, users);
+      const offset = productsList.length > 0 ? activeProductIndex : 0;
+      const generated = generateArticleNumber(catToUse, carpToUse, orders, users, offset);
       setArticlePreview(generated);
     }
   }, [category, carpenterId, activeProductIndex, productsList, orders, users]);
@@ -760,12 +761,21 @@ export default function OrderForm({
       }
     ];
 
+    const createdOrders: Order[] = [];
+
     listToSave.forEach((prod, idx) => {
       const orderId = listToSave.length > 1 ? `${baseOrderId}-${idx + 1}` : baseOrderId;
-      const artNo = generateArticleNumber(prod.category || category, prod.carpenterId || carpenterId, orders, users);
+      const artNo = generateArticleNumber(
+        prod.category || category,
+        prod.carpenterId || carpenterId,
+        orders,
+        users,
+        idx
+      );
 
       const newOrder: Order = {
         id: orderId,
+        parent_order_id: baseOrderId,
         article_no: artNo,
         customer_id: targetCustomerId,
         category: prod.category || category,
@@ -806,8 +816,10 @@ export default function OrderForm({
         advance_paid: idx === 0 ? draftAdvancePaid : 0,
       };
 
-      onSave(newOrder, idx === 0 ? newCustomerObj : undefined);
+      createdOrders.push(newOrder);
     });
+
+    onSave(createdOrders, newCustomerObj);
   };
 
   return (
