@@ -267,6 +267,139 @@ export default function OrderForm({
     new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // default today + 10 days
   );
 
+  // --- MULTI-PRODUCT ASSIGNMENT TAB STATE ---
+  const [productsList, setProductsList] = React.useState<Array<{
+    id: string;
+    productName: string;
+    category: string;
+    subCategory: string;
+    size: string;
+    customSize?: string;
+    designType: 'Standard' | 'Custom';
+    material: string;
+    finish: string;
+    colorShade: string;
+    qty: number;
+    specialNotes?: string;
+    quotedRate?: number;
+    cushion?: number;
+    discount?: number;
+    hardware?: number;
+    finalRate?: number;
+    amount?: number;
+    refImages?: Array<{ id: string; url: string; type: 'Design Reference' }>;
+    carpenterId: string;
+    carpenterLabourRate: number | '';
+    carpenterDeliveryDate: string;
+    polishPersonId: string;
+    polishLabourRate: number | '';
+    polishDeliveryDate: string;
+  }>>([]);
+  const [activeProductIndex, setActiveProductIndex] = React.useState<number>(0);
+
+  // Sync state for step 4 if productsList is not initialized from draft
+  React.useEffect(() => {
+    if (step === 4 && productsList.length === 0) {
+      const defaultCarpenter = activeCarpenters[0]?.id || '';
+      const defaultPolish = activePolish[0]?.id || '';
+      const defaultCarpDate = carpenterDeliveryDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const defaultPolDate = polishDeliveryDate || new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const pName = `${subCategory} (${size === 'Custom' ? customSize || 'Custom' : size})`;
+      setProductsList([
+        {
+          id: 'item_1_' + generateUUID().split('-')[0],
+          productName: pName,
+          category,
+          subCategory,
+          size,
+          customSize,
+          designType,
+          material,
+          finish,
+          colorShade,
+          qty: noOfUnits,
+          specialNotes,
+          refImages,
+          carpenterId: carpenterId || defaultCarpenter,
+          carpenterLabourRate: carpenterLabourRate !== '' ? carpenterLabourRate : '',
+          carpenterDeliveryDate: defaultCarpDate,
+          polishPersonId: polishPersonId || defaultPolish,
+          polishLabourRate: polishLabourRate !== '' ? polishLabourRate : '',
+          polishDeliveryDate: defaultPolDate,
+        },
+      ]);
+      setActiveProductIndex(0);
+    }
+  }, [step]);
+
+  const handleSelectProductTab = (index: number) => {
+    setActiveProductIndex(index);
+    const prod = productsList[index];
+    if (prod) {
+      setCarpenterId(prod.carpenterId || '');
+      setCarpenterLabourRate(prod.carpenterLabourRate !== undefined ? prod.carpenterLabourRate : '');
+      setCarpenterDeliveryDate(prod.carpenterDeliveryDate || '');
+      setPolishPersonId(prod.polishPersonId || '');
+      setPolishLabourRate(prod.polishLabourRate !== undefined ? prod.polishLabourRate : '');
+      setPolishDeliveryDate(prod.polishDeliveryDate || '');
+    }
+  };
+
+  const handleSelectCarpenter = (cId: string) => {
+    setCarpenterId(cId);
+    if (productsList.length > 0) {
+      setProductsList((prev) =>
+        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, carpenterId: cId } : p))
+      );
+    }
+  };
+
+  const handleChangeCarpenterLabourRate = (rate: number | '') => {
+    setCarpenterLabourRate(rate);
+    if (productsList.length > 0) {
+      setProductsList((prev) =>
+        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, carpenterLabourRate: rate } : p))
+      );
+    }
+  };
+
+  const handleChangeCarpenterDeliveryDate = (dateStr: string) => {
+    setCarpenterDeliveryDate(dateStr);
+    if (productsList.length > 0) {
+      setProductsList((prev) =>
+        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, carpenterDeliveryDate: dateStr } : p))
+      );
+    }
+  };
+
+  const handleSelectPolish = (pId: string) => {
+    setPolishPersonId(pId);
+    if (productsList.length > 0) {
+      setProductsList((prev) =>
+        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, polishPersonId: pId } : p))
+      );
+    }
+  };
+
+  const handleChangePolishLabourRate = (rate: number | '') => {
+    setPolishLabourRate(rate);
+    if (productsList.length > 0) {
+      setProductsList((prev) =>
+        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, polishLabourRate: rate } : p))
+      );
+    }
+  };
+
+  const handleChangePolishDeliveryDate = (dateStr: string) => {
+    setPolishDeliveryDate(dateStr);
+    if (productsList.length > 0) {
+      setProductsList((prev) =>
+        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, polishDeliveryDate: dateStr } : p))
+      );
+    }
+  };
+
   // --- STEP 5: REVIEW STATE ---
   const [orderDate, setOrderDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [deliveryDate, setDeliveryDate] = React.useState(
@@ -280,11 +413,15 @@ export default function OrderForm({
   const [copied, setCopied] = React.useState(false);
 
   React.useEffect(() => {
-    if (carpenterId) {
-      const generated = generateArticleNumber(category, carpenterId, orders, users);
+    const activeProd = productsList[activeProductIndex];
+    const catToUse = activeProd ? activeProd.category : category;
+    const carpToUse = activeProd ? activeProd.carpenterId : carpenterId;
+
+    if (carpToUse) {
+      const generated = generateArticleNumber(catToUse, carpToUse, orders, users);
       setArticlePreview(generated);
     }
-  }, [category, carpenterId, orders, users]);
+  }, [category, carpenterId, activeProductIndex, productsList, orders, users]);
 
   // Customer filtration
   const filteredCustomers = customers.filter((c) =>
@@ -350,7 +487,6 @@ export default function OrderForm({
         const phoneMatches = draftPhone && c.phone && c.phone.trim() === draftPhone;
 
         if (phoneMatches) {
-          // If phone matches, names must be similar (to prevent mismatching different customers using the same test phone number)
           const cNameLower = c.name.toLowerCase();
           const dNameLower = draftName.toLowerCase();
           const nameIsSimilar = 
@@ -376,6 +512,109 @@ export default function OrderForm({
         setCustName(initialDraft.customerName || '');
         setCustPhone(initialDraft.whatsappNo || '');
         setCustAddress(initialDraft.address || '');
+      }
+
+      // Populate multi-product items list for workshop delegation tabs
+      const defaultCarpenter = activeCarpenters[0]?.id || '';
+      const defaultPolish = activePolish[0]?.id || '';
+      const defaultCarpDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const defaultPolDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      let initialProds: Array<{
+        id: string;
+        productName: string;
+        category: string;
+        subCategory: string;
+        size: string;
+        customSize?: string;
+        designType: 'Standard' | 'Custom';
+        material: string;
+        finish: string;
+        colorShade: string;
+        qty: number;
+        specialNotes?: string;
+        quotedRate?: number;
+        cushion?: number;
+        discount?: number;
+        hardware?: number;
+        finalRate?: number;
+        amount?: number;
+        refImages?: Array<{ id: string; url: string; type: 'Design Reference' }>;
+        carpenterId: string;
+        carpenterLabourRate: number | '';
+        carpenterDeliveryDate: string;
+        polishPersonId: string;
+        polishLabourRate: number | '';
+        polishDeliveryDate: string;
+      }> = [];
+
+      if (Array.isArray(initialDraft.items) && initialDraft.items.length > 0) {
+        initialProds = initialDraft.items.map((it: any, idx: number) => {
+          const pName = it.productName || it.subCategory || it.category || `Product #${idx + 1}`;
+          return {
+            id: it.id || `item_${idx + 1}_` + generateUUID().split('-')[0],
+            productName: pName,
+            category: it.category || initialDraft.category || 'Door Frames',
+            subCategory: it.subCategory || initialDraft.subCategory || 'Set',
+            size: it.size || initialDraft.size || '6ft',
+            customSize: it.customSize || initialDraft.customSize || '',
+            designType: it.designType || initialDraft.designType || 'Standard',
+            material: it.material || initialDraft.material || 'Plywood',
+            finish: it.finish || initialDraft.finish || 'hand polish',
+            colorShade: it.colorShade || initialDraft.colorShade || 'Walnut',
+            qty: it.qty || it.noOfUnits || 1,
+            specialNotes: it.specialNotes || initialDraft.specialNotes || '',
+            quotedRate: it.quotedRate,
+            cushion: it.cushion,
+            discount: it.discount,
+            hardware: it.hardware,
+            finalRate: it.finalRate,
+            amount: it.amount,
+            refImages: it.refImages || initialDraft.refImages || [],
+            carpenterId: it.carpenterId || defaultCarpenter,
+            carpenterLabourRate: it.carpenterLabourRate !== undefined ? it.carpenterLabourRate : '',
+            carpenterDeliveryDate: it.carpenterDeliveryDate || defaultCarpDate,
+            polishPersonId: it.polishPersonId || defaultPolish,
+            polishLabourRate: it.polishLabourRate !== undefined ? it.polishLabourRate : '',
+            polishDeliveryDate: it.polishDeliveryDate || defaultPolDate,
+          };
+        });
+      } else {
+        const pName = initialDraft.productName || initialDraft.subCategory || initialDraft.category || 'Product #1';
+        initialProds = [
+          {
+            id: 'item_1_' + generateUUID().split('-')[0],
+            productName: pName,
+            category: initialDraft.category || 'Door Frames',
+            subCategory: initialDraft.subCategory || 'Set',
+            size: initialDraft.size || '6ft',
+            customSize: initialDraft.customSize || '',
+            designType: initialDraft.designType || 'Standard',
+            material: initialDraft.material || 'Plywood',
+            finish: initialDraft.finish || 'hand polish',
+            colorShade: initialDraft.colorShade || 'Walnut',
+            qty: initialDraft.qty || 1,
+            specialNotes: initialDraft.specialNotes || '',
+            refImages: initialDraft.refImages || [],
+            carpenterId: defaultCarpenter,
+            carpenterLabourRate: '',
+            carpenterDeliveryDate: defaultCarpDate,
+            polishPersonId: defaultPolish,
+            polishLabourRate: '',
+            polishDeliveryDate: defaultPolDate,
+          },
+        ];
+      }
+
+      setProductsList(initialProds);
+      setActiveProductIndex(0);
+      if (initialProds[0]) {
+        setCarpenterId(initialProds[0].carpenterId);
+        setCarpenterLabourRate(initialProds[0].carpenterLabourRate);
+        setCarpenterDeliveryDate(initialProds[0].carpenterDeliveryDate);
+        setPolishPersonId(initialProds[0].polishPersonId);
+        setPolishLabourRate(initialProds[0].polishLabourRate);
+        setPolishDeliveryDate(initialProds[0].polishDeliveryDate);
       }
 
       // Rates & Polishing details can be set in internalNotes
@@ -408,7 +647,15 @@ export default function OrderForm({
       return true;
     }
     if (currentStep === 4) {
-      if (!carpenterId) {
+      if (productsList.length > 0) {
+        const unassignedIdx = productsList.findIndex((p) => !p.carpenterId);
+        if (unassignedIdx !== -1) {
+          const unassignedItem = productsList[unassignedIdx];
+          alert(`Please select a primary carpenter for product "${unassignedItem.productName || unassignedItem.subCategory || (unassignedIdx + 1)}".`);
+          handleSelectProductTab(unassignedIdx);
+          return false;
+        }
+      } else if (!carpenterId) {
         alert('A dedicated carpenter is required in order to save the production line order.');
         return false;
       }
@@ -464,7 +711,7 @@ export default function OrderForm({
     const draftTotalInvoiced = initialDraft ? ((draftFinalRate * draftQty) + draftPacking + draftTransportation) : undefined;
     const draftAdvancePaid = initialDraft ? draftAdvance : undefined;
 
-    const generatedOrderId = (initialDraft && initialDraft.orderNo)
+    const baseOrderId = (initialDraft && initialDraft.orderNo)
       ? initialDraft.orderNo
       : (() => {
           const dateToUse = orderDate || new Date().toISOString().split('T')[0];
@@ -489,50 +736,78 @@ export default function OrderForm({
           return `${prefix}${String(maxSerial + 1).padStart(3, '0')}`;
         })();
 
-    // Build the order record itself
-    const newOrder: Order = {
-      id: generatedOrderId,
-      article_no: articlePreview,
-      customer_id: targetCustomerId,
-      category,
-      sub_category: subCategory,
-      size,
-      custom_size: size === 'Custom' ? customSize : undefined,
-      design_type: designType,
-      material,
-      finish,
-      color_shade: colorShade,
-      no_of_units: noOfUnits,
-      carpenter_id: carpenterId,
-      carpenter_labour_rate: carpenterLabourRate !== '' ? Number(carpenterLabourRate) : undefined,
-      carpenter_delivery_date: carpenterDeliveryDate,
-      polish_person_id: polishPersonId || undefined,
-      polish_labour_rate: polishLabourRate !== '' ? Number(polishLabourRate) : undefined,
-      polish_delivery_date: polishPersonId ? polishDeliveryDate : undefined,
-      current_status: 'Design',
-      is_delayed: false,
-      priority,
-      order_date: orderDate,
-      delivery_date: deliveryDate,
-      internal_notes: internalNotes || undefined,
-      special_notes: specialNotes || undefined,
-      portal_token: 'pt_' + generateUUID().split('-')[0],
-      portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      qr_token: 'qr_' + generateUUID().split('-')[0],
-      created_at: new Date().toISOString(),
-      created_by: 'user_admin',
-      images: refImages.map((img) => ({
-        id: img.id,
-        url: img.url,
-        type: 'Design Reference',
-        uploaded_at: new Date().toISOString(),
-        uploaded_by: 'user_admin',
-      })),
-      total_amount: draftTotalInvoiced,
-      advance_paid: draftAdvancePaid,
-    };
+    const listToSave = productsList.length > 0 ? productsList : [
+      {
+        id: generateUUID(),
+        productName: subCategory || category,
+        category,
+        subCategory,
+        size,
+        customSize,
+        designType,
+        material,
+        finish,
+        colorShade,
+        qty: noOfUnits,
+        specialNotes,
+        refImages,
+        carpenterId,
+        carpenterLabourRate,
+        carpenterDeliveryDate,
+        polishPersonId,
+        polishLabourRate,
+        polishDeliveryDate,
+      }
+    ];
 
-    onSave(newOrder, newCustomerObj);
+    listToSave.forEach((prod, idx) => {
+      const orderId = listToSave.length > 1 ? `${baseOrderId}-${idx + 1}` : baseOrderId;
+      const artNo = generateArticleNumber(prod.category || category, prod.carpenterId || carpenterId, orders, users);
+
+      const newOrder: Order = {
+        id: orderId,
+        article_no: artNo,
+        customer_id: targetCustomerId,
+        category: prod.category || category,
+        sub_category: prod.subCategory || subCategory,
+        size: prod.size || size,
+        custom_size: (prod.size || size) === 'Custom' ? (prod.customSize || customSize) : undefined,
+        design_type: prod.designType || designType,
+        material: prod.material || material,
+        finish: prod.finish || finish,
+        color_shade: prod.colorShade || colorShade,
+        no_of_units: prod.qty || noOfUnits,
+        carpenter_id: prod.carpenterId || carpenterId,
+        carpenter_labour_rate: prod.carpenterLabourRate !== '' ? Number(prod.carpenterLabourRate) : undefined,
+        carpenter_delivery_date: prod.carpenterDeliveryDate || carpenterDeliveryDate,
+        polish_person_id: prod.polishPersonId || polishPersonId || undefined,
+        polish_labour_rate: prod.polishLabourRate !== '' ? Number(prod.polishLabourRate) : undefined,
+        polish_delivery_date: prod.polishPersonId ? (prod.polishDeliveryDate || polishDeliveryDate) : undefined,
+        current_status: 'Design',
+        is_delayed: false,
+        priority,
+        order_date: orderDate,
+        delivery_date: deliveryDate,
+        internal_notes: internalNotes || undefined,
+        special_notes: prod.specialNotes || specialNotes || undefined,
+        portal_token: 'pt_' + generateUUID().split('-')[0],
+        portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        qr_token: 'qr_' + generateUUID().split('-')[0],
+        created_at: new Date().toISOString(),
+        created_by: 'user_admin',
+        images: (prod.refImages && prod.refImages.length > 0 ? prod.refImages : refImages).map((img) => ({
+          id: img.id,
+          url: img.url,
+          type: 'Design Reference',
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: 'user_admin',
+        })),
+        total_amount: prod.amount || (prod.finalRate ? prod.finalRate * prod.qty : draftTotalInvoiced),
+        advance_paid: idx === 0 ? draftAdvancePaid : 0,
+      };
+
+      onSave(newOrder, idx === 0 ? newCustomerObj : undefined);
+    });
   };
 
   return (
@@ -1079,9 +1354,69 @@ export default function OrderForm({
           {/* STEP 4: WORKSHOP DELEGATE */}
           {step === 4 && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 border-b border-stone-100 pb-2">
-                4. Delegate Workshop Staff
-              </h2>
+              <div className="border-b border-stone-100 pb-2">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                  4. Delegate Workshop Staff
+                </h2>
+                <p className="text-[11px] text-stone-400 mt-0.5">
+                  Assign primary carpenter and polish person independently for each product in this order.
+                </p>
+              </div>
+
+              {/* Product Tab Navigation */}
+              {productsList.length > 0 && (
+                <div className="bg-amber-50/40 p-3.5 rounded-2xl border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold text-[#593622] uppercase tracking-wider flex items-center gap-1.5">
+                      ★ Select Product Line Item ({productsList.length} Total)
+                    </span>
+                    <span className="text-[10px] text-stone-500 font-semibold hidden sm:inline">
+                      Click tab to switch assignment per product
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {productsList.map((prod, idx) => {
+                      const isSelected = idx === activeProductIndex;
+                      const carpUser = activeCarpenters.find((u) => u.id === prod.carpenterId);
+                      const polUser = activePolish.find((u) => u.id === prod.polishPersonId);
+
+                      return (
+                        <button
+                          key={prod.id || idx}
+                          type="button"
+                          onClick={() => handleSelectProductTab(idx)}
+                          className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#593622] text-white border-[#593622] shadow-sm ring-2 ring-[#593622]/20'
+                              : 'bg-white hover:bg-stone-100 border-stone-200 text-stone-700'
+                          }`}
+                        >
+                          <span
+                            className={`h-5 w-5 rounded-lg text-[10px] flex items-center justify-center font-mono font-black ${
+                              isSelected ? 'bg-amber-300 text-[#593622]' : 'bg-stone-100 text-stone-600'
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                          <div className="text-left">
+                            <div className="font-bold leading-tight truncate max-w-[160px]">
+                              {prod.productName || prod.subCategory || prod.category} ({prod.qty}x)
+                            </div>
+                            <div
+                              className={`text-[9.5px] font-medium leading-tight mt-0.5 ${
+                                isSelected ? 'text-amber-200' : 'text-stone-400'
+                              }`}
+                            >
+                              Carp: {carpUser ? carpUser.name.split(' ')[0] : 'None'} | Pol: {polUser ? polUser.name.split(' ')[0] : 'None'}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Carpenter Selector */}
               <div className="space-y-3">
@@ -1089,11 +1424,12 @@ export default function OrderForm({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {activeCarpenters.map((carp) => {
                     const workload = getWorkload(carp.id);
-                    const isSelected = carpenterId === carp.id;
+                    const activeProd = productsList[activeProductIndex];
+                    const isSelected = activeProd ? activeProd.carpenterId === carp.id : carpenterId === carp.id;
                     return (
                       <label
                         key={carp.id}
-                        onClick={() => setCarpenterId(carp.id)}
+                        onClick={() => handleSelectCarpenter(carp.id)}
                         className={`border rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${
                           isSelected
                             ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/15 text-[#593622]'
@@ -1103,9 +1439,9 @@ export default function OrderForm({
                         <div className="flex items-center gap-2.5">
                           <input
                             type="radio"
-                            name="carpenterGroup"
+                            name={`carpenterGroup_${activeProductIndex}`}
                             checked={isSelected}
-                            onChange={() => setCarpenterId(carp.id)}
+                            onChange={() => handleSelectCarpenter(carp.id)}
                             className="text-amber-600 focus:ring-amber-500 shrink-0"
                           />
                           <div>
@@ -1134,8 +1470,8 @@ export default function OrderForm({
                       <input
                         type="number"
                         min="0"
-                        value={carpenterLabourRate}
-                        onChange={(e) => setCarpenterLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
+                        value={productsList[activeProductIndex]?.carpenterLabourRate ?? carpenterLabourRate}
+                        onChange={(e) => handleChangeCarpenterLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
                         placeholder="Enter carpenter labour rate"
                         className="w-full pl-7 pr-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
                       />
@@ -1148,8 +1484,8 @@ export default function OrderForm({
                     </label>
                     <input
                       type="date"
-                      value={carpenterDeliveryDate}
-                      onChange={(e) => setCarpenterDeliveryDate(e.target.value)}
+                      value={productsList[activeProductIndex]?.carpenterDeliveryDate ?? carpenterDeliveryDate}
+                      onChange={(e) => handleChangeCarpenterDeliveryDate(e.target.value)}
                       className="w-full px-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
                     />
                   </div>
@@ -1162,11 +1498,12 @@ export default function OrderForm({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {activePolish.map((pol) => {
                     const workload = getWorkload(pol.id);
-                    const isSelected = polishPersonId === pol.id;
+                    const activeProd = productsList[activeProductIndex];
+                    const isSelected = activeProd ? activeProd.polishPersonId === pol.id : polishPersonId === pol.id;
                     return (
                       <label
                         key={pol.id}
-                        onClick={() => setPolishPersonId(pol.id)}
+                        onClick={() => handleSelectPolish(pol.id)}
                         className={`border rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${
                           isSelected
                             ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/15 text-[#593622]'
@@ -1176,9 +1513,9 @@ export default function OrderForm({
                         <div className="flex items-center gap-2.5">
                           <input
                             type="radio"
-                            name="polishGroup"
+                            name={`polishGroup_${activeProductIndex}`}
                             checked={isSelected}
-                            onChange={() => setPolishPersonId(pol.id)}
+                            onChange={() => handleSelectPolish(pol.id)}
                             className="text-amber-600 focus:ring-amber-500 shrink-0"
                           />
                           <div>
@@ -1207,8 +1544,8 @@ export default function OrderForm({
                       <input
                         type="number"
                         min="0"
-                        value={polishLabourRate}
-                        onChange={(e) => setPolishLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
+                        value={productsList[activeProductIndex]?.polishLabourRate ?? polishLabourRate}
+                        onChange={(e) => handleChangePolishLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
                         placeholder="Enter polish person labour rate"
                         className="w-full pl-7 pr-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
                       />
@@ -1221,8 +1558,8 @@ export default function OrderForm({
                     </label>
                     <input
                       type="date"
-                      value={polishDeliveryDate}
-                      onChange={(e) => setPolishDeliveryDate(e.target.value)}
+                      value={productsList[activeProductIndex]?.polishDeliveryDate ?? polishDeliveryDate}
+                      onChange={(e) => handleChangePolishDeliveryDate(e.target.value)}
                       className="w-full px-3 py-2 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl text-xs focus:outline-none focus:ring-0 text-stone-700 font-semibold"
                     />
                   </div>
@@ -1380,67 +1717,92 @@ export default function OrderForm({
 
           {/* Dynamic Order Summary card */}
           <div className="rounded-xl border border-stone-150 bg-stone-50/50 p-4 space-y-3 text-xs leading-relaxed">
-            <p className="font-bold text-stone-800 uppercase tracking-wide border-b border-stone-150 pb-1.5">Order Summary</p>
-            <div className="space-y-1.5 text-stone-600 font-sans">
-              <div className="flex justify-between">
-                <span>Category:</span>
-                <strong className="text-stone-900">{category}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Sub-category:</span>
-                <strong className="text-stone-900">{subCategory}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Size constraint:</span>
-                <strong className="text-stone-900">{size === 'Custom' ? 'Custom' : size}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Design:</span>
-                <strong className="text-stone-900">{designType}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Material:</span>
-                <strong className="text-stone-900">{material}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Finish:</span>
-                <strong className="text-stone-900">{finish.split(' ')[0]}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Units counts:</span>
-                <strong className="text-stone-900">{noOfUnits}</strong>
-              </div>
-              {carpenterLabourRate !== '' && (
-                <div className="flex justify-between">
-                  <span>Carpenter Rate:</span>
-                  <strong className="text-stone-900">₹{carpenterLabourRate}</strong>
-                </div>
-              )}
-              {carpenterDeliveryDate && (
-                <div className="flex justify-between text-stone-500 text-[11px]">
-                  <span>Carpenter Target Date:</span>
-                  <strong>{carpenterDeliveryDate}</strong>
-                </div>
-              )}
-              {polishLabourRate !== '' && (
-                <div className="flex justify-between">
-                  <span>Polish Rate:</span>
-                  <strong className="text-stone-900">₹{polishLabourRate}</strong>
-                </div>
-              )}
-              {polishPersonId && polishDeliveryDate && (
-                <div className="flex justify-between text-stone-500 text-[11px]">
-                  <span>Polish Target Date:</span>
-                  <strong>{polishDeliveryDate}</strong>
-                </div>
-              )}
-              {custName && (
-                <div className="flex justify-between pt-1 border-t border-stone-150 font-serif">
-                  <span>Customer:</span>
-                  <strong className="text-stone-900 font-sans">{custName}</strong>
-                </div>
+            <div className="flex items-center justify-between border-b border-stone-150 pb-1.5">
+              <p className="font-bold text-stone-800 uppercase tracking-wide">Order Summary</p>
+              {productsList.length > 1 && (
+                <span className="text-[10px] text-[#593622] font-black bg-amber-100/80 px-2 py-0.5 rounded-md">
+                  Item {activeProductIndex + 1} of {productsList.length}
+                </span>
               )}
             </div>
+
+            {(() => {
+              const cur = productsList[activeProductIndex];
+              const displayCat = cur ? cur.category : category;
+              const displaySub = cur ? cur.subCategory : subCategory;
+              const displaySize = cur ? (cur.size === 'Custom' ? (cur.customSize || 'Custom') : cur.size) : (size === 'Custom' ? customSize || 'Custom' : size);
+              const displayDesign = cur ? cur.designType : designType;
+              const displayMat = cur ? cur.material : material;
+              const displayFinish = cur ? cur.finish : finish;
+              const displayQty = cur ? cur.qty : noOfUnits;
+              const displayCarpRate = cur ? cur.carpenterLabourRate : carpenterLabourRate;
+              const displayCarpDate = cur ? cur.carpenterDeliveryDate : carpenterDeliveryDate;
+              const displayPolRate = cur ? cur.polishLabourRate : polishLabourRate;
+              const displayPolDate = cur ? cur.polishDeliveryDate : polishDeliveryDate;
+
+              return (
+                <div className="space-y-1.5 text-stone-600 font-sans">
+                  <div className="flex justify-between">
+                    <span>Category:</span>
+                    <strong className="text-stone-900">{displayCat}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Sub-category:</span>
+                    <strong className="text-stone-900">{displaySub}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Size constraint:</span>
+                    <strong className="text-stone-900">{displaySize}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Design:</span>
+                    <strong className="text-stone-900">{displayDesign}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Material:</span>
+                    <strong className="text-stone-900">{displayMat}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Finish:</span>
+                    <strong className="text-stone-900">{displayFinish.split(' ')[0]}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Units counts:</span>
+                    <strong className="text-stone-900">{displayQty}</strong>
+                  </div>
+                  {displayCarpRate !== '' && (
+                    <div className="flex justify-between">
+                      <span>Carpenter Rate:</span>
+                      <strong className="text-stone-900">₹{displayCarpRate}</strong>
+                    </div>
+                  )}
+                  {displayCarpDate && (
+                    <div className="flex justify-between text-stone-500 text-[11px]">
+                      <span>Carpenter Target Date:</span>
+                      <strong>{displayCarpDate}</strong>
+                    </div>
+                  )}
+                  {displayPolRate !== '' && (
+                    <div className="flex justify-between">
+                      <span>Polish Rate:</span>
+                      <strong className="text-stone-900">₹{displayPolRate}</strong>
+                    </div>
+                  )}
+                  {displayPolDate && (
+                    <div className="flex justify-between text-stone-500 text-[11px]">
+                      <span>Polish Target Date:</span>
+                      <strong>{displayPolDate}</strong>
+                    </div>
+                  )}
+                  {custName && (
+                    <div className="flex justify-between pt-1 border-t border-stone-150 font-serif">
+                      <span>Customer:</span>
+                      <strong className="text-stone-900 font-sans">{custName}</strong>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
