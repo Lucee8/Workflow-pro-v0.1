@@ -12,19 +12,13 @@ import {
   CheckCircle2,
   Wallet,
   Clock,
-  Phone,
   ChevronRight,
   Bed,
   Utensils,
   Armchair,
   Box,
   Check,
-  TrendingUp,
-  Calendar,
-  Layers,
-  Sparkles,
   ClipboardList,
-  AlertCircle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -112,7 +106,7 @@ export default function CarpenterProfileDashboard({
     return { start, end, prevStart, prevEnd };
   }, [dateFilter, customStartDate, customEndDate]);
 
-  // Filter orders belonging to target carpenter
+  // Filter orders belonging to target carpenter / staff member
   const carpenterOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -144,7 +138,7 @@ export default function CarpenterProfileDashboard({
     });
   }, [carpenterOrders, dateRange]);
 
-  // KPI Calculations
+  // KPI Calculations (Strict Real Database Queries)
   const kpis = useMemo(() => {
     const totalAssigned = ordersInPeriod.length;
     const prevTotalAssigned = prevOrdersInPeriod.length;
@@ -152,11 +146,11 @@ export default function CarpenterProfileDashboard({
     // Growth %
     const orderGrowth = prevTotalAssigned > 0
       ? Math.round(((totalAssigned - prevTotalAssigned) / prevTotalAssigned) * 100)
-      : totalAssigned > 0 ? 12 : 0;
+      : totalAssigned > 0 ? 100 : 0;
 
     // Total Assigned Value
     const assignedValue = ordersInPeriod.reduce(
-      (sum, o) => sum + (o.total_amount || (o.no_of_units || 1) * 10000),
+      (sum, o) => sum + (o.total_amount || 0),
       0
     );
 
@@ -169,18 +163,18 @@ export default function CarpenterProfileDashboard({
     // Completion Rate
     const completionRate = totalAssigned > 0
       ? Math.round((completedCount / totalAssigned) * 100)
-      : 75;
+      : 0;
 
     // Completed Order Value
     const completedValue = completedOrders.reduce(
-      (sum, o) => sum + (o.total_amount || (o.no_of_units || 1) * 10000),
+      (sum, o) => sum + (o.total_amount || 0),
       0
     );
 
     // Completion Target %
     const completedValueTarget = assignedValue > 0
       ? Math.round((completedValue / assignedValue) * 100)
-      : 77;
+      : 0;
 
     return {
       totalAssigned,
@@ -211,9 +205,9 @@ export default function CarpenterProfileDashboard({
     }).length;
 
     return {
-      active: active || 12,
-      pendingApprovals: pendingApprovals || 5,
-      completedToday: completedToday || 3,
+      active,
+      pendingApprovals,
+      completedToday,
     };
   }, [carpenterOrders]);
 
@@ -224,7 +218,7 @@ export default function CarpenterProfileDashboard({
       (o) => o.current_status === 'Completed' || o.current_status === 'Delivered' || o.carpenter_sub_status === 'completed'
     );
 
-    const overallRate = total > 0 ? Math.round((completed.length / total) * 100) : 87;
+    const overallRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
 
     // Calculate avg completion time in days
     let totalDays = 0;
@@ -234,16 +228,16 @@ export default function CarpenterProfileDashboard({
       if (o.order_date && o.updated_at) {
         const start = new Date(o.order_date).getTime();
         const end = new Date(o.updated_at).getTime();
-        const diffDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.max(0.5, (end - start) / (1000 * 60 * 60 * 24));
         totalDays += diffDays;
         counted++;
       }
     });
 
-    const avgDays = counted > 0 ? (totalDays / counted).toFixed(1) : '4.2';
+    const avgDays = counted > 0 ? (totalDays / counted).toFixed(1) : '0';
 
     return {
-      overallRate: Math.max(50, Math.min(100, overallRate)),
+      overallRate,
       avgDays,
     };
   }, [carpenterOrders]);
@@ -260,7 +254,7 @@ export default function CarpenterProfileDashboard({
     }> = [];
 
     ordersInPeriod.forEach((o) => {
-      const cust = customers.find((c) => c.id === o.customer_id)?.name || 'Valued Client';
+      const cust = customers.find((c) => c.id === o.customer_id)?.name || 'Client';
       const orderDate = new Date(o.order_date || o.created_at);
       const dayOfMonth = orderDate.getDate();
       const week: 1 | 2 | 3 | 4 = dayOfMonth <= 7 ? 1 : dayOfMonth <= 14 ? 2 : dayOfMonth <= 21 ? 3 : 4;
@@ -270,28 +264,19 @@ export default function CarpenterProfileDashboard({
       else if (o.current_status === 'Delivered') stage = 'Logistics';
       else if (o.current_status === 'Pending' || o.current_status === 'Design') stage = 'Pending';
 
-      const prodName = `${o.sub_category || o.category || 'Custom Product'} ${stage}`;
+      const prodName = `${o.sub_category || o.category || 'Order'} (${stage})`;
 
       events.push({
         id: o.id,
         title: prodName,
         customer: cust,
-        date: o.order_date || '2026-07-25',
+        date: o.order_date || new Date().toISOString().split('T')[0],
         stage,
         week,
       });
     });
 
-    // Fallback default timeline items matching reference design if database has few orders
-    if (events.length === 0) {
-      return [
-        { id: 't1', title: 'Dining Table Completed', customer: 'Bhavesh', date: 'Week 2', stage: 'Completed', week: 2 },
-        { id: 't2', title: 'Bed Delivered', customer: 'Sakshi', date: 'Week 2', stage: 'Logistics', week: 2 },
-        { id: 't3', title: 'Wardrobe Started', customer: 'Aniket', date: 'Week 3', stage: 'Working', week: 3 },
-      ];
-    }
-
-    return events.slice(0, 5);
+    return events.slice(0, 4);
   }, [ordersInPeriod, customers]);
 
   // Chart Data: Orders Completed This Month (grouped by Day of Week)
@@ -308,20 +293,6 @@ export default function CarpenterProfileDashboard({
       }
     });
 
-    // Fallback default bar heights for visual harmony if fresh database
-    const hasData = Object.values(counts).some((v) => v > 0);
-    if (!hasData) {
-      return [
-        { day: 'Mon', completed: 4 },
-        { day: 'Tue', completed: 7 },
-        { day: 'Wed', completed: 5 },
-        { day: 'Thu', completed: 9 },
-        { day: 'Fri', completed: 6 },
-        { day: 'Sat', completed: 8 },
-        { day: 'Sun', completed: 3 },
-      ];
-    }
-
     return days.map((day) => ({
       day,
       completed: counts[day] || 0,
@@ -331,25 +302,40 @@ export default function CarpenterProfileDashboard({
   // Product Category Statistics (Beds, Dining Tables, Sofa Sets, Wardrobes)
   const productStats = useMemo(() => {
     const cats = [
-      { key: 'bed', name: 'BED UNITS', defaultCount: 15, growth: '+4%', icon: Bed },
-      { key: 'table', name: 'DINING TABLES', defaultCount: 8, growth: '+2%', icon: Utensils },
-      { key: 'sofa', name: 'SOFA SETS', defaultCount: 6, growth: '-1%', icon: Armchair },
-      { key: 'wardrobe', name: 'WARDROBES', defaultCount: 7, growth: '+7%', icon: Box },
+      { key: 'bed', name: 'BED UNITS', icon: Bed },
+      { key: 'table', name: 'DINING TABLES', icon: Utensils },
+      { key: 'sofa', name: 'SOFA SETS', icon: Armchair },
+      { key: 'wardrobe', name: 'WARDROBES', icon: Box },
     ];
 
     return cats.map((cat) => {
-      const realCount = carpenterOrders.filter((o) => {
+      const currCount = ordersInPeriod.filter((o) => {
         const sub = (o.sub_category || '').toLowerCase();
         const mainCat = (o.category || '').toLowerCase();
         return sub.includes(cat.key) || mainCat.includes(cat.key);
       }).length;
 
+      const prevCount = prevOrdersInPeriod.filter((o) => {
+        const sub = (o.sub_category || '').toLowerCase();
+        const mainCat = (o.category || '').toLowerCase();
+        return sub.includes(cat.key) || mainCat.includes(cat.key);
+      }).length;
+
+      let growthStr = '0%';
+      if (prevCount > 0) {
+        const g = Math.round(((currCount - prevCount) / prevCount) * 100);
+        growthStr = g >= 0 ? `+${g}%` : `${g}%`;
+      } else if (currCount > 0) {
+        growthStr = '+100%';
+      }
+
       return {
         ...cat,
-        count: realCount > 0 ? String(realCount).padStart(2, '0') : String(cat.defaultCount).padStart(2, '0'),
+        count: String(currCount).padStart(2, '0'),
+        growth: growthStr,
       };
     });
-  }, [carpenterOrders]);
+  }, [ordersInPeriod, prevOrdersInPeriod]);
 
   // Recent Workshop Activity Logs (Limit 10)
   const recentActivities = useMemo(() => {
@@ -363,33 +349,6 @@ export default function CarpenterProfileDashboard({
         cId.toLowerCase() === targetUser.name.toLowerCase()
       );
     });
-
-    if (logs.length === 0) {
-      // Fallback activities matching design mock
-      return [
-        {
-          id: 'act1',
-          title: 'Completed Dining Table for Bhavesh',
-          orderNo: '#BWS-2940',
-          time: '2 hours ago',
-          type: 'completed',
-        },
-        {
-          id: 'act2',
-          title: 'Started Wardrobe for Sakshi',
-          orderNo: '#BWS-3011',
-          time: '5 hours ago',
-          type: 'working',
-        },
-        {
-          id: 'act3',
-          title: 'Assigned new Bed Order',
-          orderNo: '#BWS-3024',
-          time: '8 hours ago',
-          type: 'assigned',
-        },
-      ];
-    }
 
     return logs.slice(0, 10).map((log) => {
       const order = orders.find((o) => o.id === log.order_id);
@@ -414,7 +373,7 @@ export default function CarpenterProfileDashboard({
         id: log.id,
         title,
         orderNo: order ? `#${order.article_no || order.id.substring(0, 8)}` : '#BWS-ORDER',
-        time: 'Recently',
+        time: log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
         type,
       };
     });
@@ -487,7 +446,7 @@ export default function CarpenterProfileDashboard({
               <Bell size={16} />
             </button>
             <span className="absolute -top-1.5 -right-1.5 h-4 w-4 bg-rose-600 text-white font-mono text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-white shadow-2xs">
-              16
+              {workloadStatus.active}
             </span>
           </div>
         </div>
@@ -590,7 +549,7 @@ export default function CarpenterProfileDashboard({
           </span>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-3xl font-black text-stone-900 font-display">
-              {kpis.totalAssigned || 48}
+              {kpis.totalAssigned}
             </span>
             <span className="text-sm font-bold text-stone-500">Orders</span>
           </div>
@@ -602,16 +561,18 @@ export default function CarpenterProfileDashboard({
             <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 font-black text-base flex items-center justify-center w-11 h-11">
               ₹
             </div>
-            <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60">
-              High Value
-            </span>
+            {kpis.assignedValue > 100000 && (
+              <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60">
+                High Value
+              </span>
+            )}
           </div>
           <span className="text-[10px] font-mono font-bold tracking-widest text-stone-400 uppercase block mt-4">
             ASSIGNED ORDER VALUE
           </span>
           <div className="mt-1">
             <span className="text-3xl font-black text-stone-900 font-display">
-              ₹{formatRupee(kpis.assignedValue || 485000)}
+              ₹{formatRupee(kpis.assignedValue)}
             </span>
           </div>
         </div>
@@ -631,7 +592,7 @@ export default function CarpenterProfileDashboard({
           </span>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-3xl font-black text-stone-900 font-display">
-              {kpis.completedCount || 36}
+              {kpis.completedCount}
             </span>
             <span className="text-sm font-bold text-stone-500">Orders</span>
           </div>
@@ -652,7 +613,7 @@ export default function CarpenterProfileDashboard({
           </span>
           <div className="mt-1">
             <span className="text-3xl font-black text-stone-900 font-display">
-              ₹{formatRupee(kpis.completedValue || 372000)}
+              ₹{formatRupee(kpis.completedValue)}
             </span>
           </div>
         </div>
@@ -685,58 +646,55 @@ export default function CarpenterProfileDashboard({
             </div>
 
             {/* Timeline Horizontal Axis */}
-            <div className="relative pt-12 pb-8 px-4">
-              {/* Connecting line */}
-              <div className="absolute top-1/2 left-6 right-6 h-1 bg-stone-200 -translate-y-1/2 rounded-full"></div>
+            {timelineMilestones.length === 0 ? (
+              <div className="py-12 text-center text-stone-400 font-semibold text-xs font-mono tracking-wider uppercase bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">
+                No activity this month
+              </div>
+            ) : (
+              <div className="relative pt-12 pb-8 px-4">
+                {/* Connecting line */}
+                <div className="absolute top-1/2 left-6 right-6 h-1 bg-stone-200 -translate-y-1/2 rounded-full"></div>
 
-              {/* Timeline Milestones Overlay */}
-              <div className="grid grid-cols-4 relative z-10 text-center">
-                {/* Week 1 */}
-                <div className="relative flex flex-col items-center">
-                  <div className="w-3.5 h-3.5 rounded-full bg-stone-400 border-2 border-white shadow-2xs -mt-[5px]"></div>
-                  <span className="text-[11px] font-bold font-mono tracking-widest text-stone-400 uppercase mt-8 block">
-                    WEEK 1
-                  </span>
-                </div>
+                {/* Timeline Milestones Overlay */}
+                <div className="grid grid-cols-4 relative z-10 text-center">
+                  {[1, 2, 3, 4].map((wk) => {
+                    const wkEvents = timelineMilestones.filter((m) => m.week === wk);
+                    const mainEvt = wkEvents[0];
+                    let dotColor = 'bg-stone-400';
+                    let badgeColor = 'bg-stone-100 text-stone-700 border-stone-200';
 
-                {/* Week 2 */}
-                <div className="relative flex flex-col items-center">
-                  {/* Floating Tags Above/Below */}
-                  <div className="absolute -top-12 flex flex-col items-center">
-                    <span className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-3 py-1 rounded-full border border-emerald-300 shadow-2xs whitespace-nowrap">
-                      Dining Table Completed
-                    </span>
-                  </div>
-                  <div className="w-4 h-4 rounded-full bg-emerald-500 border-2 border-white shadow-xs z-20"></div>
-                  <span className="text-[11px] font-bold font-mono tracking-widest text-stone-400 uppercase mt-8 block">
-                    WEEK 2
-                  </span>
-                </div>
+                    if (mainEvt) {
+                      if (mainEvt.stage === 'Completed') {
+                        dotColor = 'bg-emerald-500';
+                        badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-300';
+                      } else if (mainEvt.stage === 'Logistics') {
+                        dotColor = 'bg-blue-500';
+                        badgeColor = 'bg-blue-50 text-blue-800 border-blue-300';
+                      } else {
+                        dotColor = 'bg-amber-500';
+                        badgeColor = 'bg-amber-50 text-amber-900 border-amber-300';
+                      }
+                    }
 
-                {/* Week 2 / 3 Logistics item */}
-                <div className="relative flex flex-col items-center">
-                  <div className="absolute -top-12 flex flex-col items-center">
-                    <span className="bg-blue-50 text-blue-800 text-[10px] font-bold px-3 py-1 rounded-full border border-blue-300 shadow-2xs whitespace-nowrap">
-                      Bed Delivered
-                    </span>
-                  </div>
-                  <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-xs z-20"></div>
-                </div>
-
-                {/* Week 3 / 4 Working item */}
-                <div className="relative flex flex-col items-center">
-                  <div className="absolute -top-12 flex flex-col items-center">
-                    <span className="bg-amber-50 text-amber-900 text-[10px] font-bold px-3 py-1 rounded-full border border-amber-300 shadow-2xs whitespace-nowrap">
-                      Wardrobe Started
-                    </span>
-                  </div>
-                  <div className="w-4 h-4 rounded-full bg-amber-500 border-2 border-white shadow-xs z-20"></div>
-                  <span className="text-[11px] font-bold font-mono tracking-widest text-stone-400 uppercase mt-8 block">
-                    WEEK 3
-                  </span>
+                    return (
+                      <div key={wk} className="relative flex flex-col items-center">
+                        {mainEvt && (
+                          <div className="absolute -top-12 flex flex-col items-center">
+                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border shadow-2xs whitespace-nowrap max-w-[130px] truncate ${badgeColor}`}>
+                              {mainEvt.title}
+                            </span>
+                          </div>
+                        )}
+                        <div className={`w-4 h-4 rounded-full ${dotColor} border-2 border-white shadow-xs z-20`}></div>
+                        <span className="text-[11px] font-bold font-mono tracking-widest text-stone-400 uppercase mt-8 block">
+                          WEEK {wk}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* ORDERS COMPLETED THIS MONTH CHART */}
@@ -775,7 +733,7 @@ export default function CarpenterProfileDashboard({
                     {chartData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={entry.completed > 6 ? '#f59e0b' : '#d97706'}
+                        fill={entry.completed > 0 ? '#f59e0b' : '#e7e5e4'}
                       />
                     ))}
                   </Bar>
@@ -791,7 +749,7 @@ export default function CarpenterProfileDashboard({
           <div className="bg-white p-5 rounded-3xl border border-stone-250 shadow-2xs space-y-4">
             <div className="flex items-center gap-3.5">
               <div className="w-13 h-13 bg-amber-500 font-extrabold text-[#1a110a] text-lg rounded-2xl flex items-center justify-center shadow-xs shrink-0">
-                {targetUser.initials || 'DM'}
+                {targetUser.initials || targetUser.name.substring(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <strong className="text-base font-bold text-stone-900 truncate block">
@@ -807,19 +765,19 @@ export default function CarpenterProfileDashboard({
               <div className="flex justify-between items-center">
                 <span className="text-stone-500 font-medium">Active Level:</span>
                 <span className="text-emerald-600 font-black tracking-wider uppercase">
-                  ACTIVE
+                  {targetUser.status ? targetUser.status.toUpperCase() : 'ACTIVE'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-stone-500 font-medium">Contact Line:</span>
                 <span className="text-stone-800 font-bold font-mono">
-                  {targetUser.phone || '9876543224'}
+                  {targetUser.phone || 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-stone-500 font-medium">Assigned Serial initials:</span>
                 <span className="text-stone-900 font-black font-mono">
-                  {targetUser.initials || 'DM'}
+                  {targetUser.initials || targetUser.name.substring(0, 2).toUpperCase()}
                 </span>
               </div>
             </div>
@@ -840,8 +798,8 @@ export default function CarpenterProfileDashboard({
                 </div>
                 <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#593622] rounded-full"
-                    style={{ width: `${Math.min(100, (workloadStatus.active / 20) * 100)}%` }}
+                    className="h-full bg-[#593622] rounded-full transition-all duration-500"
+                    style={{ width: `${workloadStatus.active > 0 ? Math.min(100, (workloadStatus.active / Math.max(10, workloadStatus.active)) * 100) : 0}%` }}
                   ></div>
                 </div>
               </div>
@@ -854,8 +812,8 @@ export default function CarpenterProfileDashboard({
                 </div>
                 <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-amber-300 rounded-full"
-                    style={{ width: `${Math.min(100, (workloadStatus.pendingApprovals / 10) * 100)}%` }}
+                    className="h-full bg-amber-300 rounded-full transition-all duration-500"
+                    style={{ width: `${workloadStatus.pendingApprovals > 0 ? Math.min(100, (workloadStatus.pendingApprovals / Math.max(10, workloadStatus.pendingApprovals)) * 100) : 0}%` }}
                   ></div>
                 </div>
               </div>
@@ -868,8 +826,8 @@ export default function CarpenterProfileDashboard({
                 </div>
                 <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${Math.min(100, (workloadStatus.completedToday / 5) * 100)}%` }}
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: `${workloadStatus.completedToday > 0 ? Math.min(100, (workloadStatus.completedToday / Math.max(5, workloadStatus.completedToday)) * 100) : 0}%` }}
                   ></div>
                 </div>
               </div>
@@ -953,42 +911,48 @@ export default function CarpenterProfileDashboard({
             </button>
           </div>
 
-          <div className="divide-y divide-stone-100">
-            {recentActivities.map((act) => (
-              <div
-                key={act.id}
-                className="py-3.5 flex items-center justify-between hover:bg-stone-50/80 px-2 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                      act.type === 'completed'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : act.type === 'working'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {act.type === 'completed' ? (
-                      <CheckCircle2 size={16} />
-                    ) : (
-                      <Clock size={16} />
-                    )}
+          {recentActivities.length === 0 ? (
+            <div className="py-8 text-center text-stone-400 font-medium text-xs font-mono">
+              No recent workshop activity found for this period.
+            </div>
+          ) : (
+            <div className="divide-y divide-stone-100">
+              {recentActivities.map((act) => (
+                <div
+                  key={act.id}
+                  className="py-3.5 flex items-center justify-between hover:bg-stone-50/80 px-2 rounded-xl transition-colors"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                        act.type === 'completed'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : act.type === 'working'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {act.type === 'completed' ? (
+                        <CheckCircle2 size={16} />
+                      ) : (
+                        <Clock size={16} />
+                      )}
+                    </div>
+                    <div>
+                      <strong className="text-sm font-bold text-stone-900 block">
+                        {act.title}
+                      </strong>
+                      <span className="text-xs text-stone-500 font-medium">
+                        Order <span className="font-mono">{act.orderNo}</span> • {act.time}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <strong className="text-sm font-bold text-stone-900 block">
-                      {act.title}
-                    </strong>
-                    <span className="text-xs text-stone-500 font-medium">
-                      Order <span className="font-mono">{act.orderNo}</span> • {act.time}
-                    </span>
-                  </div>
-                </div>
 
-                <ChevronRight size={16} className="text-stone-400" />
-              </div>
-            ))}
-          </div>
+                  <ChevronRight size={16} className="text-stone-400" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* PRODUCT STATISTICS (RIGHT 4 COLS - 2X2 GRID) */}

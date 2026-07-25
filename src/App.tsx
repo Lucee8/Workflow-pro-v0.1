@@ -614,44 +614,46 @@ export default function App() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pb-20 lg:pb-8">
           
           {/* Workshop Live Status Feed Header Row */}
-          <div className="flex justify-between items-center bg-white border border-stone-200/80 rounded-2xl p-4 mb-6 shadow-xs gap-4 workshop-live-feed-header print:hidden">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="bg-amber-100 text-[#593622] p-2.5 rounded-xl hidden sm:flex items-center justify-center">
-                <ShieldCheck size={20} className="stroke-[2.5]" />
-              </div>
-              <div className="min-w-0 text-left">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-extrabold text-[#593622] text-xs uppercase tracking-wider leading-none">Workshop Live Feed</h4>
-                  {firebaseConnected && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono tracking-wider uppercase bg-green-500/10 text-green-700 border border-green-500/20">
-                      <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                      {firebaseSeeding ? "Seeding..." : "Cloud Sync Live"}
-                    </span>
-                  )}
+          {currentTab !== 'profile' && (
+            <div className="flex justify-between items-center bg-white border border-stone-200/80 rounded-2xl p-4 mb-6 shadow-xs gap-4 workshop-live-feed-header print:hidden">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="bg-amber-100 text-[#593622] p-2.5 rounded-xl hidden sm:flex items-center justify-center">
+                  <ShieldCheck size={20} className="stroke-[2.5]" />
                 </div>
-                <p className="text-[11px] text-stone-500 mt-1 truncate">
-                  Poller active: Monitoring assignments for <span className="font-semibold text-stone-800">{currentUser.name}</span> ({currentUser.role.replace('_', ' ')})
-                </p>
+                <div className="min-w-0 text-left">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-extrabold text-[#593622] text-xs uppercase tracking-wider leading-none">Workshop Live Feed</h4>
+                    {firebaseConnected && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono tracking-wider uppercase bg-green-500/10 text-green-700 border border-green-500/20">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                        {firebaseSeeding ? "Seeding..." : "Cloud Sync Live"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-stone-500 mt-1 truncate">
+                    Poller active: Monitoring assignments for <span className="font-semibold text-stone-800">{currentUser.name}</span> ({currentUser.role.replace('_', ' ')})
+                  </p>
+                </div>
+              </div>
+              
+              <div className="shrink-0 flex items-center gap-3">
+                <button
+                  onClick={handleRestartApp}
+                  title="Restart App"
+                  className="bg-stone-50 border border-stone-200 hover:bg-stone-100 hover:text-[#593622] text-stone-600 p-2.5 rounded-xl flex items-center justify-center transition cursor-pointer shadow-2xs"
+                >
+                  <RefreshCw size={16} className="stroke-[2.5]" />
+                </button>
+                <NotificationCenter
+                  orders={db.orders}
+                  currentUser={currentUser}
+                  users={db.users}
+                  onViewOrder={handleViewOrder}
+                  onUpdateOrder={handleUpdateOrder}
+                />
               </div>
             </div>
-            
-            <div className="shrink-0 flex items-center gap-3">
-              <button
-                onClick={handleRestartApp}
-                title="Restart App"
-                className="bg-stone-50 border border-stone-200 hover:bg-stone-100 hover:text-[#593622] text-stone-600 p-2.5 rounded-xl flex items-center justify-center transition cursor-pointer shadow-2xs"
-              >
-                <RefreshCw size={16} className="stroke-[2.5]" />
-              </button>
-              <NotificationCenter
-                orders={db.orders}
-                currentUser={currentUser}
-                users={db.users}
-                onViewOrder={handleViewOrder}
-                onUpdateOrder={handleUpdateOrder}
-              />
-            </div>
-          </div>
+          )}
 
           {/* TAB: DASHBOARD VIEW (Admin Only) */}
           {currentTab === 'dashboard' && isAdmin && (
