@@ -53,6 +53,7 @@ import MaterialRequirementPlanning from './components/MaterialRequirementPlannin
 import CRMTab from './components/CRMTab';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
+import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2 } from 'lucide-react';
@@ -949,44 +950,29 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: PROFILE PAGE (Carpenter or Polish Person Only) */}
-          {currentTab === 'profile' && !isAdmin && (
+          {/* TAB: PROFILE PAGE (Carpenter Profile Dashboard) */}
+          {currentTab === 'profile' && (
             <motion.div
               key="profile"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="space-y-6"
             >
-              <div>
-                <h1 className="text-2xl font-black text-stone-900 tracking-tight font-display">My Team Member Settings</h1>
-                <p className="text-stone-500 text-xs">Review personal workload, telephone details, and workshop credentials</p>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-stone-250 max-w-sm space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 bg-amber-500 font-extrabold text-[#1a110a] text-sm tracking-wide rounded-full flex items-center justify-center">
-                    {currentUser.initials}
-                  </div>
-                  <div>
-                    <strong className="text-stone-900 text-xs text-sm block font-bold">{currentUser.name}</strong>
-                    <span className="text-[10px] uppercase font-mono text-stone-450 block font-black">{currentUser.role.replace('_', ' ')}</span>
-                  </div>
-                </div>
-                <div className="text-xs space-y-1 text-stone-500 border-t pt-3 font-sans">
-                  <div className="flex justify-between">
-                    <span>Active Level:</span>
-                    <strong className="text-green-600">ACTIVE</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Contact Line:</span>
-                    <strong className="text-stone-800">{currentUser.phone || '—'}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Assigned Serial initials:</span>
-                    <strong className="text-stone-900 font-mono">{currentUser.initials}</strong>
-                  </div>
-                </div>
-              </div>
+              <CarpenterProfileDashboard
+                currentUser={currentUser}
+                users={db.users}
+                orders={db.orders}
+                customers={db.customers}
+                statusLogs={db.statusLogs}
+                onRefresh={() => {
+                  syncFirestore(
+                    (remoteData) => {
+                      setDb((prev) => ({ ...prev, ...remoteData }));
+                    },
+                    (err) => console.error(err)
+                  );
+                }}
+              />
             </motion.div>
           )}
 
@@ -1021,4 +1007,3 @@ export default function App() {
     </div>
   );
 }
-  
