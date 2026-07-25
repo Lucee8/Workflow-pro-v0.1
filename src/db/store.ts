@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, CRMAgreement } from '../types';
+import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
 
 // Helper to generate UUIDs
 export function generateUUID(): string {
@@ -183,7 +183,6 @@ export interface AppState {
   crmNotes: CRMNote[];
   crmAttachments: CRMAttachment[];
   crmTimelineEvents: CRMTimelineEvent[];
-  crmAgreements: CRMAgreement[];
 }
 
 export function loadState(): AppState {
@@ -212,7 +211,6 @@ export function loadState(): AppState {
             crmNotes: parsed.crmNotes || [],
             crmAttachments: parsed.crmAttachments || [],
             crmTimelineEvents: parsed.crmTimelineEvents || [],
-            crmAgreements: parsed.crmAgreements || [],
           };
         }
       }
@@ -237,7 +235,6 @@ export function loadState(): AppState {
     crmNotes: [],
     crmAttachments: [],
     crmTimelineEvents: [],
-    crmAgreements: [],
   };
   saveState(state);
   return state;
@@ -251,36 +248,39 @@ export function saveState(state: AppState) {
   }
 }
 
-// Generate serial formula: YY/MM/IK(1st char of 1st name and 1st char of last name)/0000(sr.no. in series)
+// Generate serial formula: DD/MM/IK(1st char of 1st name and 1st char of last name)/0000(sr.no. in series)
 export function generateArticleNumber(
   category: string,
   carpenterId: string,
   allOrders: Order[],
-  allUsers: User[]
+  allUsers: User[],
+  offset: number = 0
 ): string {
   const date = new Date();
-  const yy = date.getFullYear().toString().slice(-2);
+  const dd = String(date.getDate()).padStart(2, '0');
   const mm = String(date.getMonth() + 1).padStart(2, '0');
 
   const carpenter = allUsers.find(u => u.id === carpenterId);
   let namePart = 'XX';
   if (carpenter) {
-    const parts = carpenter.name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      namePart = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    } else if (parts.length === 1 && parts[0]) {
-      namePart = parts[0].substring(0, 2).toUpperCase();
-      if (namePart.length < 2) {
-        namePart = (namePart + 'X').substring(0, 2);
-      }
+    if (carpenter.initials && carpenter.initials.trim().length >= 2) {
+      namePart = carpenter.initials.trim().toUpperCase();
     } else {
-      namePart = carpenter.initials || 'XX';
+      const parts = carpenter.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        namePart = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      } else if (parts.length === 1 && parts[0]) {
+        namePart = parts[0].substring(0, 2).toUpperCase();
+        if (namePart.length < 2) {
+          namePart = (namePart + 'X').substring(0, 2);
+        }
+      }
     }
   }
 
-  // Count existing orders globally as series count
-  const nextSerial = allOrders.length + 1;
+  // Count existing orders globally as series count + offset
+  const nextSerial = (allOrders ? allOrders.length : 0) + 1 + offset;
   const nnnn = String(nextSerial).padStart(4, '0');
 
-  return `${yy}/${mm}/${namePart}/${nnnn}`;
+  return `${dd}/${mm}/${namePart}/${nnnn}`;
 }

@@ -6,7 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  AppState 
+  AppState,
+  generateArticleNumber
 } from '../db/store';
 import { 
   User, 
@@ -518,39 +519,53 @@ export default function CRMTab({
         onSaveCRMQuotation({ ...latestQuote, status: 'Approved' });
       }
 
-      const orderId = generateId('order');
-      const articleNo = `${new Date().getFullYear().toString().slice(-2)}/${String(new Date().getMonth() + 1).padStart(2, '0')}/QU/${Math.floor(1000 + Math.random() * 9000)}`;
-      
-      const firstItem = latestQuote.items?.[0];
-      const newOrder: Order = {
-        id: orderId,
-        article_no: articleNo,
-        customer_id: latestQuote.customer_id,
-        category: 'Living Room',
-        sub_category: firstItem?.furnitureItem || 'Bespoke Item',
-        size: 'Custom',
-        custom_size: firstItem?.dimensions || 'Custom Size',
-        finish: 'Premium Lacquer Polish',
-        special_notes: `Converted from Quotation ${latestQuote.id}. ${latestQuote.notes || ''}`,
-        design_type: 'Custom',
-        material: firstItem?.material || 'Premium Plywood & Teak Veneer',
-        color_shade: 'Teak / Walnut',
-        no_of_units: firstItem?.quantity || 1,
-        carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
-        current_status: 'Design',
-        is_delayed: false,
-        priority: 'normal',
-        order_date: new Date().toISOString().split('T')[0],
-        delivery_date: latestQuote.validUntil,
-        portal_token: Math.random().toString(36).substring(2, 10),
-        portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        qr_token: `https://bhisesworkshop.com/order/${orderId}`,
-        created_at: new Date().toISOString(),
-        created_by: currentUser.id,
-        images: []
-      };
+      const baseOrderId = generateId('order');
+      const itemsList = latestQuote.items && latestQuote.items.length > 0
+        ? latestQuote.items
+        : [{ furnitureItem: 'Bespoke Item', quantity: 1, dimensions: 'Custom Size', material: 'Premium Plywood & Teak Veneer', unitPrice: latestQuote.totalAmount }];
 
-      onSaveOrder(newOrder);
+      const defaultCarp = users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod';
+      let primaryArticleNo = '';
+
+      itemsList.forEach((item, idx) => {
+        const orderId = itemsList.length > 1 ? `${baseOrderId}-${idx + 1}` : baseOrderId;
+        const articleNo = generateArticleNumber('Living Room', defaultCarp, db.orders || [], users, idx);
+        if (idx === 0) primaryArticleNo = articleNo;
+
+        const newOrder: Order = {
+          id: orderId,
+          parent_order_id: baseOrderId,
+          article_no: articleNo,
+          customer_id: latestQuote.customer_id,
+          category: 'Living Room',
+          sub_category: item.furnitureItem || 'Bespoke Item',
+          size: 'Custom',
+          custom_size: item.dimensions || 'Custom Size',
+          finish: 'Premium Lacquer Polish',
+          special_notes: `Converted from Quotation ${latestQuote.id}. ${latestQuote.notes || ''}`,
+          design_type: 'Custom',
+          material: item.material || 'Premium Plywood & Teak Veneer',
+          color_shade: 'Teak / Walnut',
+          no_of_units: item.quantity || 1,
+          carpenter_id: defaultCarp,
+          current_status: 'Design',
+          is_delayed: false,
+          priority: 'normal',
+          order_date: new Date().toISOString().split('T')[0],
+          delivery_date: latestQuote.validUntil,
+          portal_token: Math.random().toString(36).substring(2, 10),
+          portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          qr_token: `https://bhisesworkshop.com/order/${orderId}`,
+          created_at: new Date().toISOString(),
+          created_by: currentUser.id,
+          images: []
+        };
+
+        onSaveOrder(newOrder);
+      });
+
+      const orderId = baseOrderId;
+      const articleNo = primaryArticleNo;
 
       const crmPay: CRMPayment = {
         id: generateId('pay'),

@@ -198,12 +198,19 @@ export default function OrdersTab({
                   return (
                     <tr key={order.id} className="hover:bg-stone-50/50 transition">
                       <td className="py-3.5 px-4 font-mono font-black text-stone-900 group">
-                        <span className="flex items-center gap-1.5">
-                          {order.priority === 'urgent' && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" title="Urgent priority!" />
+                        <div className="flex flex-col">
+                          <span className="flex items-center gap-1.5">
+                            {order.priority === 'urgent' && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" title="Urgent priority!" />
+                            )}
+                            {order.article_no}
+                          </span>
+                          {order.parent_order_id && (
+                            <span className="text-[9.5px] font-mono font-normal text-amber-800/80 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60 w-fit mt-0.5">
+                              Parent: {order.parent_order_id}
+                            </span>
                           )}
-                          {order.article_no}
-                        </span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-stone-850">

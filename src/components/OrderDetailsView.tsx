@@ -475,6 +475,9 @@ export default function OrderDetailsView({
           <p className="text-stone-500 text-xs">
             Customer: <strong>{cust?.name || 'Walk-In'}</strong> ({cust?.phone || 'No Phone'}) | Assigned Carpenter:{' '}
             <strong>{carpenter?.name || 'Unassigned'}</strong>
+            {order.parent_order_id && (
+              <span> | Parent Order Ref: <strong className="font-mono text-[#593622]">{order.parent_order_id}</strong></span>
+            )}
           </p>
         </div>
 

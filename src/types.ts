@@ -63,7 +63,8 @@ export interface WoodSchedule {
 
 export interface Order {
   id: string; // UUID
-  article_no: string; // YY/MM/XX/NNNN
+  parent_order_id?: string; // FK to parent customer order ID
+  article_no: string; // DD/MM/XX/NNNN
   customer_id: string; // FK to customer
   category: string; // e.g. Bedroom, Living Room, Kitchen
   sub_category: string; // e.g. Wardrobe, Bed, Sofa
