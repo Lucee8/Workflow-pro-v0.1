@@ -14,7 +14,7 @@ import {
   CRMCustomer, 
   CRMQuotation, 
   CRMQuotationItem, 
-  CRMFollowUp, 
+  CRMFollowUp,  
   CRMPayment, 
   CRMNote, 
   CRMAttachment, 

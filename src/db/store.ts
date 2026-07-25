@@ -200,6 +200,37 @@ export function loadState(): AppState {
           localStorage.removeItem('mrp_wood_v2');
           localStorage.removeItem('mrp_consumption_logs');
         } else {
+          // Fix any duplicate article_no in existing orders
+          if (Array.isArray(parsed.orders)) {
+            const seen = new Set<string>();
+            let maxSerialSeen = 0;
+            parsed.orders.forEach((o: any) => {
+              if (o.article_no) {
+                const parts = o.article_no.split('/');
+                const num = parseInt(parts[parts.length - 1], 10);
+                if (!isNaN(num) && num > maxSerialSeen) {
+                  maxSerialSeen = num;
+                }
+              }
+            });
+
+            parsed.orders = parsed.orders.map((o: any) => {
+              if (!o.article_no || seen.has(o.article_no)) {
+                maxSerialSeen++;
+                const date = new Date();
+                const dd = String(date.getDate()).padStart(2, '0');
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const parts = o.article_no ? o.article_no.split('/') : [];
+                const carpenterPart = parts.length >= 3 ? parts[2] : 'XX';
+                const newArtNo = `${dd}/${mm}/${carpenterPart}/${String(maxSerialSeen).padStart(4, '0')}`;
+                seen.add(newArtNo);
+                return { ...o, article_no: newArtNo };
+              }
+              seen.add(o.article_no);
+              return o;
+            });
+          }
+
           return {
             ...parsed,
             payments: parsed.payments || [],
@@ -278,8 +309,25 @@ export function generateArticleNumber(
     }
   }
 
-  // Count existing orders globally as series count + offset
-  const nextSerial = (allOrders ? allOrders.length : 0) + 1 + offset;
+  // Parse highest existing serial number from all existing orders
+  let maxSerial = 0;
+  if (allOrders && Array.isArray(allOrders)) {
+    allOrders.forEach(o => {
+      if (o.article_no) {
+        const parts = o.article_no.split('/');
+        const lastPart = parts[parts.length - 1];
+        const num = parseInt(lastPart, 10);
+        if (!isNaN(num) && num > maxSerial) {
+          maxSerial = num;
+        }
+      }
+    });
+    if (allOrders.length > maxSerial) {
+      maxSerial = allOrders.length;
+    }
+  }
+
+  const nextSerial = maxSerial + 1 + offset;
   const nnnn = String(nextSerial).padStart(4, '0');
 
   return `${dd}/${mm}/${namePart}/${nnnn}`;
