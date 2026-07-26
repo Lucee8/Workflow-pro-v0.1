@@ -20,7 +20,10 @@ import {
   Table as TableIcon,
   LayoutGrid,
   Eye,
-  Check
+  Check,
+  Edit2,
+  Plus,
+  Save
 } from 'lucide-react';
 import { Order, Customer } from '../types';
 import { formatToDDMMYYYY } from '../utils';
@@ -101,6 +104,8 @@ export default function WoodManagementTab({
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [selectedRequest, setSelectedRequest] = useState<WoodRequirementRequest | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditingModalTable, setIsEditingModalTable] = useState(false);
+  const [modalParts, setModalParts] = useState<WoodRequirementItem[]>([]);
   const [printModalRequest, setPrintModalRequest] = useState<WoodRequirementRequest | null>(null);
   const [deleteConfirmReq, setDeleteConfirmReq] = useState<WoodRequirementRequest | null>(null);
 
@@ -111,8 +116,6 @@ export default function WoodManagementTab({
 
     // 1. Process Order wood schedules
     orders.forEach((ord) => {
-      if (!ord.wood_schedule) return;
-
       const orderKey = ord.id;
       if (deletedIds.includes(orderKey)) return;
 
@@ -122,18 +125,23 @@ export default function WoodManagementTab({
       const customerName = (ord as any).customer_name || cust?.name || 'Customer';
       const carpenterName = (ord as any).carpenter_name || 'Dinesh Mestry';
 
-      // Map parts to standard WoodRequirementItem
-      const rawParts = ord.wood_schedule.parts || [];
+      // Map parts to standard WoodRequirementItem safely from WoodPart or WoodRequirementItem
+      const rawParts = ord.wood_schedule?.parts || [];
       const woodScheduleItems: WoodRequirementItem[] = rawParts.map((p: any, idx: number) => {
-        const w = Number(p.widthInches) || 0;
-        const b = Number(p.breadthInches ?? p.thicknessInches ?? 0);
-        const lIn = p.lengthInches !== undefined ? Number(p.lengthInches) : (p.lengthFeet ? Number(p.lengthFeet) * 12 : 0);
-        const qty = Number(p.qty) || 1;
-        const cft = p.cftVol !== undefined ? Number(p.cftVol) : (p.calculatedCFT !== undefined ? Number(p.calculatedCFT) : ((w * b * lIn * qty) / 1728));
+        const name = p.part_name || p.partName || p.sectionName || `Component ${idx + 1}`;
+        const w = Number(p.width ?? p.widthInches ?? 0);
+        const b = Number(p.breadth ?? p.breadthInches ?? p.thicknessInches ?? 0);
+        // length in WorkerDashboard is feet (p.length). Length in inches = length * 12 or p.lengthInches
+        const lFt = p.length !== undefined ? Number(p.length) : (p.lengthFeet !== undefined ? Number(p.lengthFeet) : (p.lengthInches ? Number(p.lengthInches) / 12 : 0));
+        const lIn = p.lengthInches !== undefined ? Number(p.lengthInches) : lFt * 12;
+        const qty = Number(p.quantity ?? p.qty ?? 1);
+        const cft = p.cftVol !== undefined
+          ? Number(p.cftVol)
+          : (p.calculatedCFT !== undefined ? Number(p.calculatedCFT) : ((w * b * lFt * qty) / 144));
 
         return {
           id: p.id || `part-${idx + 1}`,
-          sectionName: p.partName || p.sectionName || `Component ${idx + 1}`,
+          sectionName: name,
           lengthInches: lIn,
           widthInches: w,
           thicknessInches: b,
@@ -143,8 +151,8 @@ export default function WoodManagementTab({
       });
 
       const totalCFT = woodScheduleItems.reduce((sum, item) => sum + (item.calculatedCFT || 0), 0);
-
       const currentStatus = statusMap[ord.id] || 'Pending';
+      const catalogueName = ord.wood_schedule?.catalogue_name || ord.material || (ord.category ? `${ord.category} Catalogue` : 'Timber Catalogue');
 
       list.push({
         id: ord.id,
@@ -156,10 +164,10 @@ export default function WoodManagementTab({
         carpenterName: carpenterName,
         contactNumber: cust?.phone || '+91 98765 43210',
         submissionDate: ord.updated_at ? formatToDDMMYYYY(ord.updated_at) : (ord.created_at ? formatToDDMMYYYY(ord.created_at) : formatToDDMMYYYY(new Date())),
-        woodType: ord.wood_schedule.catalogue_name || ord.material || 'Solid Teak Wood',
+        woodType: catalogueName,
         totalVolumeCFT: Number(totalCFT.toFixed(2)),
         status: currentStatus,
-        notes: ord.wood_schedule.model_name ? `Model: ${ord.wood_schedule.model_name} | Size: ${ord.wood_schedule.size_of_product || 'Standard'}` : undefined,
+        notes: ord.wood_schedule?.model_name ? `Model: ${ord.wood_schedule.model_name} | Size: ${ord.wood_schedule.size_of_product || 'Standard'}` : undefined,
         woodSchedule: woodScheduleItems
       });
     });
@@ -235,7 +243,72 @@ export default function WoodManagementTab({
 
   const handleOpenSheetModal = (req: WoodRequirementRequest) => {
     setSelectedRequest(req);
+    setModalParts(req.woodSchedule || []);
+    setIsEditingModalTable(false);
     setIsModalOpen(true);
+  };
+
+  const handleAddModalRow = () => {
+    const newPart: WoodRequirementItem = {
+      id: `mpart-${Date.now()}-${Math.random()}`,
+      sectionName: 'New Component Part',
+      widthInches: 3,
+      thicknessInches: 2,
+      lengthInches: 72, // 6 feet
+      qty: 1,
+      calculatedCFT: (3 * 2 * 6 * 1) / 144
+    };
+    setModalParts((prev) => [...prev, newPart]);
+  };
+
+  const handleUpdateModalRow = (id: string, field: keyof WoodRequirementItem, value: any) => {
+    setModalParts((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+        const w = Number(updated.widthInches) || 0;
+        const b = Number(updated.thicknessInches) || 0;
+        const lIn = Number(updated.lengthInches) || 0;
+        const qty = Number(updated.qty) || 0;
+        updated.calculatedCFT = Number(((w * b * (lIn / 12) * qty) / 144).toFixed(3));
+        return updated;
+      })
+    );
+  };
+
+  const handleRemoveModalRow = (id: string) => {
+    setModalParts((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const handleSaveModalTable = () => {
+    if (!selectedRequest) return;
+
+    if (selectedRequest.orderId && onOrderUpdate) {
+      const targetOrder = orders.find((o) => o.id === selectedRequest.orderId);
+      if (targetOrder) {
+        const updatedWoodParts = modalParts.map((item) => ({
+          id: item.id,
+          part_name: item.sectionName,
+          width: Number(item.widthInches) || 0,
+          breadth: Number(item.thicknessInches) || 0,
+          length: Number(((Number(item.lengthInches) || 0) / 12).toFixed(2)),
+          quantity: Number(item.qty) || 1
+        }));
+
+        const updatedOrder: Order = {
+          ...targetOrder,
+          updated_at: new Date().toISOString(),
+          wood_schedule: {
+            ...(targetOrder.wood_schedule || { catalogue_name: selectedRequest.woodType, model_name: selectedRequest.articleNo, size_of_product: 'Standard', sqft: 0, image_link: '' }),
+            parts: updatedWoodParts
+          }
+        };
+
+        onOrderUpdate(updatedOrder);
+      }
+    }
+
+    setIsEditingModalTable(false);
   };
 
   const handlePrintRequest = (req: WoodRequirementRequest) => {
@@ -468,11 +541,11 @@ export default function WoodManagementTab({
             <table className="w-full text-left border-collapse text-xs font-sans">
               <thead>
                 <tr className="bg-stone-900 text-amber-300 font-extrabold uppercase text-[10px] tracking-wider border-b border-stone-800">
-                  <th className="py-3.5 px-4 font-mono">1. Article Number</th>
-                  <th className="py-3.5 px-4 font-mono">2. Order Number</th>
-                  <th className="py-3.5 px-4">3. Customer Name</th>
-                  <th className="py-3.5 px-4 min-w-[280px]">4. Wood Schedule Calculation Table</th>
-                  <th className="py-3.5 px-4">Carpenter & Wood Type</th>
+                  <th className="py-3.5 px-4 font-mono">Article Number</th>
+                  <th className="py-3.5 px-4 font-mono">Order Number</th>
+                  <th className="py-3.5 px-4">Customer Name</th>
+                  <th className="py-3.5 px-4">Wood Species / Catalogue Name</th>
+                  <th className="py-3.5 px-4 min-w-[280px]">Wood Schedule Calculation Table</th>
                   <th className="py-3.5 px-4 text-right">Total Vol (CFT)</th>
                   <th className="py-3.5 px-4 text-center">Status</th>
                   <th className="py-3.5 px-4 text-center">Actions</th>
@@ -511,7 +584,20 @@ export default function WoodManagementTab({
                         </div>
                       </td>
 
-                      {/* 4. Wood Schedule Calculation Table (Summary & Link/Modal button) */}
+                      {/* 4. Wood Species / Catalogue Name */}
+                      <td className="py-4 px-4 text-xs whitespace-nowrap">
+                        <div className="font-extrabold text-[#593622]">
+                          {req.woodType}
+                        </div>
+                        <div className="text-[11px] font-semibold text-stone-700 flex items-center gap-1 mt-0.5">
+                          <HardHat size={12} className="text-[#593622]" /> {req.carpenterName}
+                        </div>
+                        <div className="text-[10px] text-stone-400 font-mono mt-0.5">
+                          Date: {req.submissionDate}
+                        </div>
+                      </td>
+
+                      {/* 5. Wood Schedule Calculation Table */}
                       <td className="py-4 px-4">
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2">
@@ -535,7 +621,7 @@ export default function WoodManagementTab({
                                     {part.sectionName}
                                   </span>
                                   <span className="text-stone-500">
-                                    {part.widthInches}"×{part.thicknessInches}"×{part.lengthInches}" (x{part.qty})
+                                    {part.widthInches}"×{part.thicknessInches}"×{(part.lengthInches / 12).toFixed(1)}' (x{part.qty})
                                   </span>
                                   <span className="font-bold text-[#593622]">
                                     {part.calculatedCFT.toFixed(2)} CFT
@@ -556,21 +642,8 @@ export default function WoodManagementTab({
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-amber-300 rounded-lg text-xs font-extrabold transition shadow-2xs cursor-pointer"
                           >
                             <FileSpreadsheet size={13} />
-                            <span>View Complete Table ({req.woodSchedule.length} parts)</span>
+                            <span>View / Edit Complete Table ({req.woodSchedule.length} parts)</span>
                           </button>
-                        </div>
-                      </td>
-
-                      {/* Carpenter & Wood Type */}
-                      <td className="py-4 px-4 text-xs">
-                        <div className="font-semibold text-stone-800 flex items-center gap-1">
-                          <HardHat size={12} className="text-[#593622]" /> {req.carpenterName}
-                        </div>
-                        <div className="text-[11px] text-stone-500 mt-0.5">
-                          {req.woodType}
-                        </div>
-                        <div className="text-[10px] text-stone-400 font-mono mt-0.5">
-                          Date: {req.submissionDate}
                         </div>
                       </td>
 
@@ -908,45 +981,162 @@ export default function WoodManagementTab({
               </div>
 
               {/* Itemized Wood Schedule Calculation Table */}
-              <div className="overflow-x-auto rounded-xl border border-stone-200">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-stone-100 text-stone-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-stone-200">
-                      <th className="py-2.5 px-3">#</th>
-                      <th className="py-2.5 px-3">Section / Part Name</th>
-                      <th className="py-2.5 px-3 text-center">Length (in)</th>
-                      <th className="py-2.5 px-3 text-center">Width (in)</th>
-                      <th className="py-2.5 px-3 text-center">Thick / Breadth (in)</th>
-                      <th className="py-2.5 px-3 text-center">Qty</th>
-                      <th className="py-2.5 px-3 text-right">Volume (CFT)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-200">
-                    {selectedRequest.woodSchedule.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-stone-50">
-                        <td className="py-2.5 px-3 font-mono text-stone-400">{idx + 1}</td>
-                        <td className="py-2.5 px-3 font-bold text-stone-900">{item.sectionName}</td>
-                        <td className="py-2.5 px-3 text-center font-mono">{item.lengthInches}"</td>
-                        <td className="py-2.5 px-3 text-center font-mono">{item.widthInches}"</td>
-                        <td className="py-2.5 px-3 text-center font-mono">{item.thicknessInches}"</td>
-                        <td className="py-2.5 px-3 text-center font-extrabold text-stone-900">{item.qty}</td>
-                        <td className="py-2.5 px-3 text-right font-black text-[#593622] font-mono">
-                          {item.calculatedCFT.toFixed(2)} CFT
-                        </td>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
+                    <FileSpreadsheet size={14} className="text-[#593622]" />
+                    <span>Wood Schedule Parts Table</span>
+                  </h3>
+                  {!isEditingModalTable ? (
+                    <button
+                      onClick={() => setIsEditingModalTable(true)}
+                      className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-amber-300"
+                    >
+                      <Edit2 size={13} />
+                      <span>Edit Table</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleAddModalRow}
+                        className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-stone-300"
+                      >
+                        <Plus size={13} />
+                        <span>Add Row</span>
+                      </button>
+                      <button
+                        onClick={handleSaveModalTable}
+                        className="px-3 py-1 bg-[#593622] hover:bg-[#402414] text-amber-300 rounded-lg text-xs font-extrabold transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <Save size={13} />
+                        <span>Save & Sync</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setModalParts(selectedRequest.woodSchedule || []);
+                          setIsEditingModalTable(false);
+                        }}
+                        className="px-2.5 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border border-stone-200">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-stone-100 text-stone-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-stone-200">
+                        <th className="py-2.5 px-3">#</th>
+                        <th className="py-2.5 px-3 min-w-[140px]">Part Name</th>
+                        <th className="py-2.5 px-3 text-center min-w-[80px]">Width (in)</th>
+                        <th className="py-2.5 px-3 text-center min-w-[80px]">Thick (in)</th>
+                        <th className="py-2.5 px-3 text-center min-w-[80px]">Length (in)</th>
+                        <th className="py-2.5 px-3 text-center min-w-[70px]">Qty</th>
+                        <th className="py-2.5 px-3 text-right">Vol (CFT)</th>
+                        {isEditingModalTable && <th className="py-2.5 px-2 text-center w-10">Action</th>}
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-[#593622]/10 border-t-2 border-[#593622] font-extrabold text-[#593622]">
-                      <td colSpan={6} className="py-3 px-3 text-right text-xs uppercase tracking-wider">
-                        Total Wood Requirement Volume:
-                      </td>
-                      <td className="py-3 px-3 text-right text-sm font-black font-display">
-                        {selectedRequest.totalVolumeCFT.toFixed(2)} CFT
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {!isEditingModalTable ? (
+                        modalParts.length > 0 ? (
+                          modalParts.map((item, idx) => (
+                            <tr key={item.id} className="hover:bg-stone-50">
+                              <td className="py-2.5 px-3 font-mono text-stone-400">{idx + 1}</td>
+                              <td className="py-2.5 px-3 font-bold text-stone-900">{item.sectionName}</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.widthInches}"</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.thicknessInches}"</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.lengthInches}" ({(item.lengthInches / 12).toFixed(1)}')</td>
+                              <td className="py-2.5 px-3 text-center font-extrabold text-stone-900">{item.qty}</td>
+                              <td className="py-2.5 px-3 text-right font-black text-[#593622] font-mono">
+                                {item.calculatedCFT.toFixed(2)} CFT
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={7} className="py-6 text-center text-stone-400 italic">
+                              No wood schedule rows entered yet. Click "Edit Table" to add parts manually.
+                            </td>
+                          </tr>
+                        )
+                      ) : (
+                        modalParts.map((item, idx) => (
+                          <tr key={item.id} className="hover:bg-amber-50/50">
+                            <td className="py-2 px-3 font-mono text-stone-400">{idx + 1}</td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                type="text"
+                                value={item.sectionName}
+                                onChange={(e) => handleUpdateModalRow(item.id, 'sectionName', e.target.value)}
+                                className="w-full px-2 py-1 bg-white border border-stone-300 rounded text-xs font-semibold focus:outline-hidden focus:border-[#593622]"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <input
+                                type="number"
+                                step="0.25"
+                                value={item.widthInches || ''}
+                                onChange={(e) => handleUpdateModalRow(item.id, 'widthInches', Number(e.target.value))}
+                                className="w-16 px-1.5 py-1 text-center bg-white border border-stone-300 rounded text-xs font-mono focus:outline-hidden focus:border-[#593622]"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <input
+                                type="number"
+                                step="0.25"
+                                value={item.thicknessInches || ''}
+                                onChange={(e) => handleUpdateModalRow(item.id, 'thicknessInches', Number(e.target.value))}
+                                className="w-16 px-1.5 py-1 text-center bg-white border border-stone-300 rounded text-xs font-mono focus:outline-hidden focus:border-[#593622]"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={item.lengthInches || ''}
+                                onChange={(e) => handleUpdateModalRow(item.id, 'lengthInches', Number(e.target.value))}
+                                className="w-20 px-1.5 py-1 text-center bg-white border border-stone-300 rounded text-xs font-mono focus:outline-hidden focus:border-[#593622]"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.qty || 1}
+                                onChange={(e) => handleUpdateModalRow(item.id, 'qty', Number(e.target.value))}
+                                className="w-14 px-1 py-1 text-center bg-white border border-stone-300 rounded text-xs font-mono focus:outline-hidden focus:border-[#593622]"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-black text-[#593622] font-mono whitespace-nowrap">
+                              {item.calculatedCFT.toFixed(2)} CFT
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <button
+                                onClick={() => handleRemoveModalRow(item.id)}
+                                className="p-1 text-stone-400 hover:text-rose-600 rounded hover:bg-rose-50 transition cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-[#593622]/10 border-t-2 border-[#593622] font-extrabold text-[#593622]">
+                        <td colSpan={isEditingModalTable ? 6 : 6} className="py-3 px-3 text-right text-xs uppercase tracking-wider">
+                          Total Volume:
+                        </td>
+                        <td className="py-3 px-3 text-right text-sm font-black font-display">
+                          {modalParts.reduce((sum, p) => sum + (p.calculatedCFT || 0), 0).toFixed(2)} CFT
+                        </td>
+                        {isEditingModalTable && <td></td>}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
 
               {selectedRequest.notes && (
