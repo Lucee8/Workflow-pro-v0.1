@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { User, Order, StatusLog, Customer } from '../types';
-import {
+import {  
   ShieldCheck,
   RefreshCw,
   Bell,
@@ -138,6 +138,20 @@ export default function CarpenterProfileDashboard({
     });
   }, [carpenterOrders, dateRange]);
 
+  // Helper to extract labour rate for target user on a given order
+  const getLabourRate = (o: Order, user: User): number => {
+    if (!o) return 0;
+    if (user.role === 'polish_person' || o.polish_person_id === user.id) {
+      const pRate = o.polish_labour_rate;
+      if (typeof pRate === 'number' && !isNaN(pRate)) return pRate;
+      if (pRate !== undefined && pRate !== null && !isNaN(Number(pRate))) return Number(pRate);
+    }
+    const cRate = o.carpenter_labour_rate;
+    if (typeof cRate === 'number' && !isNaN(cRate)) return cRate;
+    if (cRate !== undefined && cRate !== null && !isNaN(Number(cRate))) return Number(cRate);
+    return 0;
+  };
+
   // KPI Calculations (Strict Real Database Queries)
   const kpis = useMemo(() => {
     const totalAssigned = ordersInPeriod.length;
@@ -148,9 +162,9 @@ export default function CarpenterProfileDashboard({
       ? Math.round(((totalAssigned - prevTotalAssigned) / prevTotalAssigned) * 100)
       : totalAssigned > 0 ? 100 : 0;
 
-    // Total Assigned Value
+    // Total Assigned Labour Value
     const assignedValue = ordersInPeriod.reduce(
-      (sum, o) => sum + (o.total_amount || 0),
+      (sum, o) => sum + getLabourRate(o, targetUser),
       0
     );
 
@@ -165,9 +179,9 @@ export default function CarpenterProfileDashboard({
       ? Math.round((completedCount / totalAssigned) * 100)
       : 0;
 
-    // Completed Order Value
+    // Completed Labour Earnings
     const completedValue = completedOrders.reduce(
-      (sum, o) => sum + (o.total_amount || 0),
+      (sum, o) => sum + getLabourRate(o, targetUser),
       0
     );
 
@@ -185,7 +199,7 @@ export default function CarpenterProfileDashboard({
       completedValue,
       completedValueTarget,
     };
-  }, [ordersInPeriod, prevOrdersInPeriod]);
+  }, [ordersInPeriod, prevOrdersInPeriod, targetUser]);
 
   // Workload Status Breakdown
   const workloadStatus = useMemo(() => {
@@ -555,7 +569,7 @@ export default function CarpenterProfileDashboard({
           </div>
         </div>
 
-        {/* Card 2: Assigned Order Value */}
+        {/* Card 2: Assigned Labour Value */}
         <div className="bg-white p-5 rounded-2xl border border-stone-250 shadow-2xs hover:shadow-md transition-shadow relative overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 font-black text-base flex items-center justify-center w-11 h-11">
@@ -568,7 +582,7 @@ export default function CarpenterProfileDashboard({
             )}
           </div>
           <span className="text-[10px] font-mono font-bold tracking-widest text-stone-400 uppercase block mt-4">
-            ASSIGNED ORDER VALUE
+            ASSIGNED LABOUR VALUE
           </span>
           <div className="mt-1">
             <span className="text-3xl font-black text-stone-900 font-display">
@@ -598,7 +612,7 @@ export default function CarpenterProfileDashboard({
           </div>
         </div>
 
-        {/* Card 4: Completed Order Value */}
+        {/* Card 4: Completed Labour Earnings */}
         <div className="bg-white p-5 rounded-2xl border border-stone-250 shadow-2xs hover:shadow-md transition-shadow relative overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="p-3 bg-yellow-50 text-yellow-800 rounded-xl border border-yellow-100">
@@ -609,7 +623,7 @@ export default function CarpenterProfileDashboard({
             </span>
           </div>
           <span className="text-[10px] font-mono font-bold tracking-widest text-stone-400 uppercase block mt-4">
-            COMPLETED ORDER VALUE
+            COMPLETED LABOUR EARNINGS
           </span>
           <div className="mt-1">
             <span className="text-3xl font-black text-stone-900 font-display">
