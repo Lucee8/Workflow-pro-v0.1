@@ -52,127 +52,40 @@ export interface WoodRequirementRequest {
   woodSchedule: WoodRequirementItem[];
 }
 
-const INITIAL_WOOD_REQUESTS: WoodRequirementRequest[] = [
-  {
-    id: 'WR-2026-001',
-    workOrderNo: 'WO-9082',
-    articleNo: 'ART-2026-042',
-    productName: 'Nagpur Teak Dining Table (6-Seater)',
-    customerName: 'Rajesh Patil',
-    carpenterName: 'Ramesh Sutar',
-    contactNumber: '+91 98230 11223',
-    submissionDate: '23/07/2026',
-    woodType: 'Nagpur Teak Wood (Grade A)',
-    totalVolumeCFT: 14.85,
-    status: 'Pending',
-    notes: 'Includes 10% allowance for curved corner legs & top frame beveling.',
-    woodSchedule: [
-      { id: 'ws-1', sectionName: 'Table Top Planks', lengthInches: 72, widthInches: 6, thicknessInches: 1.5, qty: 6, calculatedCFT: 2.7 },
-      { id: 'ws-2', sectionName: 'Main Heavy Legs', lengthInches: 30, widthInches: 4, thicknessInches: 4, qty: 4, calculatedCFT: 1.33 },
-      { id: 'ws-3', sectionName: 'Under Frame Apron', lengthInches: 66, widthInches: 4, thicknessInches: 1.25, qty: 2, calculatedCFT: 0.95 },
-      { id: 'ws-4', sectionName: 'Cross Support Beams', lengthInches: 36, widthInches: 3, thicknessInches: 1.5, qty: 4, calculatedCFT: 0.56 },
-    ],
-  },
-  {
-    id: 'WR-2026-002',
-    workOrderNo: 'WO-9104',
-    articleNo: 'ART-2026-088',
-    productName: 'Royal Teak King Size Bed with Hydraulic Storage',
-    customerName: 'Aniket Deshmukh',
-    carpenterName: 'Suresh Vishwakarma',
-    contactNumber: '+91 98765 43210',
-    submissionDate: '22/07/2026',
-    woodType: 'Ghana Teak Wood (Grade-A)',
-    totalVolumeCFT: 22.40,
-    status: 'Approved',
-    notes: 'Headboard carving borders pre-cut from 2" solid planks.',
-    woodSchedule: [
-      { id: 'ws-5', sectionName: 'Headboard Carving Pillars', lengthInches: 78, widthInches: 4, thicknessInches: 2, qty: 2, calculatedCFT: 2.89 },
-      { id: 'ws-6', sectionName: 'Side Rails / Skirting', lengthInches: 80, widthInches: 10, thicknessInches: 1.25, qty: 2, calculatedCFT: 6.94 },
-      { id: 'ws-7', sectionName: 'Footboard Main Panel', lengthInches: 74, widthInches: 18, thicknessInches: 1.5, qty: 1, calculatedCFT: 8.21 },
-      { id: 'ws-8', sectionName: 'Internal Frame Posts', lengthInches: 72, widthInches: 3, thicknessInches: 2, qty: 6, calculatedCFT: 4.36 },
-    ],
-  },
-  {
-    id: 'WR-2026-003',
-    workOrderNo: 'WO-9045',
-    articleNo: 'ART-2026-015',
-    productName: 'Custom Teak Wood Wardrobe (4-Door)',
-    customerName: 'Sunita Sharma',
-    carpenterName: 'Prakash Panchal',
-    contactNumber: '+91 99221 88776',
-    submissionDate: '21/07/2026',
-    woodType: 'Sagwan Sawn Timber',
-    totalVolumeCFT: 31.10,
-    status: 'Pending',
-    notes: 'Shutters frame requires defect-free seasoned teak.',
-    woodSchedule: [
-      { id: 'ws-9', sectionName: 'Door Shutter Outer Frame', lengthInches: 84, widthInches: 4, thicknessInches: 1.5, qty: 8, calculatedCFT: 11.67 },
-      { id: 'ws-10', sectionName: 'Internal Shelves Border', lengthInches: 40, widthInches: 2, thicknessInches: 1, qty: 12, calculatedCFT: 6.67 },
-      { id: 'ws-11', sectionName: 'Drawer Face Beaded Trim', lengthInches: 36, widthInches: 8, thicknessInches: 1.25, qty: 6, calculatedCFT: 12.76 },
-    ],
-  },
-  {
-    id: 'WR-2026-004',
-    workOrderNo: 'WO-9120',
-    articleNo: 'ART-2026-104',
-    productName: 'Traditional Wooden Mandir with Dome Carving',
-    customerName: 'Mahesh Kulkarni',
-    carpenterName: 'Dinesh Sutar',
-    contactNumber: '+91 98210 55443',
-    submissionDate: '20/07/2026',
-    woodType: 'C.P. Teak Wood (1st Class)',
-    totalVolumeCFT: 8.75,
-    status: 'Approved',
-    notes: 'Special dome pieces turned on workshop lathe machine.',
-    woodSchedule: [
-      { id: 'ws-12', sectionName: 'Main Pillar Pillars (Gabhara)', lengthInches: 36, widthInches: 3, thicknessInches: 3, qty: 4, calculatedCFT: 2.25 },
-      { id: 'ws-13', sectionName: 'Shikhar / Dome Block', lengthInches: 18, widthInches: 12, thicknessInches: 4, qty: 1, calculatedCFT: 3.00 },
-      { id: 'ws-14', sectionName: 'Base Plinth Box Frame', lengthInches: 30, widthInches: 18, thicknessInches: 1.5, qty: 2, calculatedCFT: 3.50 },
-    ],
-  },
-  {
-    id: 'WR-2026-005',
-    workOrderNo: 'WO-9011',
-    articleNo: 'ART-2026-056',
-    productName: 'Sofa Structure Frame & Armrest (3+1+1)',
-    customerName: 'Prashant Joshi',
-    carpenterName: 'Vijay Suthar',
-    contactNumber: '+91 97654 32109',
-    submissionDate: '18/07/2026',
-    woodType: 'Steam Beech Wood Timber',
-    totalVolumeCFT: 18.20,
-    status: 'Rejected',
-    notes: 'Exceeds standard 15 CFT limit for 3-seater frame. Recalculation required.',
-    woodSchedule: [
-      { id: 'ws-15', sectionName: '3-Seater Back Rest Structure', lengthInches: 76, widthInches: 3, thicknessInches: 2, qty: 4, calculatedCFT: 6.33 },
-      { id: 'ws-16', sectionName: 'Armrest Top Curved Cap', lengthInches: 32, widthInches: 5, thicknessInches: 2.5, qty: 4, calculatedCFT: 5.92 },
-      { id: 'ws-17', sectionName: 'Single Chair Frames (x2)', lengthInches: 30, widthInches: 3, thicknessInches: 2, qty: 8, calculatedCFT: 5.95 },
-    ],
-  },
-  {
-    id: 'WR-2026-006',
-    workOrderNo: 'WO-9135',
-    articleNo: 'ART-2026-112',
-    productName: 'Executive Office Table with Drawer Pedestal',
-    customerName: 'Vikram Mehta',
-    carpenterName: 'Ramesh Sutar',
-    contactNumber: '+91 98230 11223',
-    submissionDate: '23/07/2026',
-    woodType: 'Nagpur Teak Wood (Grade A)',
-    totalVolumeCFT: 12.60,
-    status: 'Pending',
-    notes: 'Leatherette top inlay border in solid teak molding.',
-    woodSchedule: [
-      { id: 'ws-18', sectionName: 'Table Top Beaded Border', lengthInches: 60, widthInches: 3, thicknessInches: 1.5, qty: 4, calculatedCFT: 3.75 },
-      { id: 'ws-19', sectionName: 'Leg Supports & modesty panel', lengthInches: 28, widthInches: 4, thicknessInches: 3, qty: 4, calculatedCFT: 4.66 },
-      { id: 'ws-20', sectionName: 'Drawer Face Beading', lengthInches: 18, widthInches: 6, thicknessInches: 1, qty: 6, calculatedCFT: 4.19 },
-    ],
-  }
-];
+const INITIAL_WOOD_REQUESTS: WoodRequirementRequest[] = [];
 
 export default function WoodManagementTab() {
-  const [requests, setRequests] = useState<WoodRequirementRequest[]>(INITIAL_WOOD_REQUESTS);
+  const [requests, setRequests] = useState<WoodRequirementRequest[]>(() => {
+    const saved = localStorage.getItem('bhisez_wood_management_requests');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Filter out demo records if any exist in local storage
+          const filtered = parsed.filter(
+            (r: any) =>
+              r &&
+              r.id &&
+              !r.id.startsWith('WR-2026-00') &&
+              r.customerName !== 'Rajesh Patil' &&
+              r.customerName !== 'Aniket Deshmukh' &&
+              r.customerName !== 'Sunita Sharma' &&
+              r.customerName !== 'Mahesh Kulkarni' &&
+              r.customerName !== 'Prashant Joshi' &&
+              r.customerName !== 'Vikram Mehta'
+          );
+          return filtered;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return INITIAL_WOOD_REQUESTS;
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('bhisez_wood_management_requests', JSON.stringify(requests));
+  }, [requests]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [selectedRequest, setSelectedRequest] = useState<WoodRequirementRequest | null>(null);
