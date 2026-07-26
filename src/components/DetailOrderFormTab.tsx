@@ -2,6 +2,7 @@ import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
 import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
+import { generateNextParentOrderId, getKolkataYearMonth } from '../db/orderIdService';
 import logoImg from '../assets/images/logo.png';
 
 interface AgreementItem {
@@ -82,34 +83,7 @@ export default function DetailOrderFormTab({
   const isUpdatingRef = React.useRef(false);
 
   function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders, quoteList: any[] = crmQuotations) {
-    const dateToUse = targetDate || new Date().toISOString().split('T')[0];
-    let yy = '';
-    let mm = '';
-    if (dateToUse && dateToUse.includes('-')) {
-      const parts = dateToUse.split('-');
-      if (parts[0] && parts[0].length === 4) {
-        yy = parts[0].slice(-2);
-        mm = (parts[1] || '').padStart(2, '0');
-      } else if (parts[2] && parts[2].length === 4) {
-        yy = parts[2].slice(-2);
-        mm = (parts[1] || '').padStart(2, '0');
-      }
-    } else if (dateToUse && dateToUse.includes('/')) {
-      const parts = dateToUse.split('/');
-      if (parts[2] && parts[2].length === 4) {
-        yy = parts[2].slice(-2);
-        mm = (parts[1] || '').padStart(2, '0');
-      } else if (parts[0] && parts[0].length === 4) {
-        yy = parts[0].slice(-2);
-        mm = (parts[1] || '').padStart(2, '0');
-      }
-    }
-
-    if (!yy || !mm) {
-      const d = new Date();
-      yy = d.getFullYear().toString().slice(-2);
-      mm = String(d.getMonth() + 1).padStart(2, '0');
-    }
+    const { yy, mm } = getKolkataYearMonth();
     const prefix = `ORD${yy}${mm}`;
     
     let maxSerial = 0;
@@ -128,8 +102,8 @@ export default function DetailOrderFormTab({
     if (orderList && orderList.length > 0) {
       orderList.forEach((o: any) => {
         processIdString(o.id);
+        processIdString(o.parent_order_id);
         processIdString(o.orderNo);
-        processIdString(o.article_no);
       });
     }
 

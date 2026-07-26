@@ -6,6 +6,7 @@
 import React from 'react';
 import { Customer, User, Order, OrderPriority, OrderStage } from '../types';
 import { generateUUID, generateArticleNumber } from '../db/store';
+import { generateNextParentOrderId, parseParentOrderSequence } from '../db/orderIdService';
 import { 
   Users, 
   HelpCircle, 
@@ -681,7 +682,7 @@ export default function OrderForm({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleFormSubmission = (e: React.FormEvent) => {
+  const handleFormSubmission = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateStep(step)) return;
 
@@ -712,30 +713,17 @@ export default function OrderForm({
     const draftTotalInvoiced = initialDraft ? ((draftFinalRate * draftQty) + draftPacking + draftTransportation) : undefined;
     const draftAdvancePaid = initialDraft ? draftAdvance : undefined;
 
-    const baseOrderId = (initialDraft && initialDraft.orderNo)
-      ? initialDraft.orderNo
-      : (() => {
-          const dateToUse = orderDate || new Date().toISOString().split('T')[0];
-          const parts = dateToUse.split(/[-/]/);
-          let yy = new Date().getFullYear().toString().slice(-2);
-          let mm = String(new Date().getMonth() + 1).padStart(2, '0');
-          if (parts.length >= 3) {
-            if (parts[0].length === 4) { yy = parts[0].slice(-2); mm = parts[1].padStart(2, '0'); }
-            else if (parts[2].length === 4) { yy = parts[2].slice(-2); mm = parts[1].padStart(2, '0'); }
-          }
-          const prefix = `ORD${yy}${mm}`;
-          let maxSerial = 0;
-          (orders || []).forEach((o) => {
-            if (o.id) {
-              const clean = o.id.replace(/[-_\s/]/g, '').toUpperCase();
-              if (clean.startsWith(prefix)) {
-                const num = parseInt(clean.substring(prefix.length), 10);
-                if (!isNaN(num) && num > maxSerial) maxSerial = num;
-              }
-            }
-          });
-          return `${prefix}${String(maxSerial + 1).padStart(3, '0')}`;
-        })();
+    let baseOrderId = '';
+    let orderSequence = 1;
+
+    if (initialDraft && initialDraft.orderNo) {
+      baseOrderId = initialDraft.orderNo;
+      orderSequence = parseParentOrderSequence(baseOrderId);
+    } else {
+      const generated = await generateNextParentOrderId();
+      baseOrderId = generated.parentOrderId;
+      orderSequence = generated.orderSequence;
+    }
 
     const listToSave = productsList.length > 0 ? productsList : [
       {
@@ -776,6 +764,7 @@ export default function OrderForm({
       const newOrder: Order = {
         id: orderId,
         parent_order_id: baseOrderId,
+        order_sequence: orderSequence,
         article_no: artNo,
         customer_id: targetCustomerId,
         category: prod.category || category,

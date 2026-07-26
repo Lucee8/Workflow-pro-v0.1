@@ -10,6 +10,7 @@ import {
   generateArticleNumber
 } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
+import { generateNextParentOrderId, parseParentOrderSequence } from '../db/orderIdService';
 import { 
   User, 
   CRMCustomer, 
@@ -505,7 +506,7 @@ export default function CRMTab({
     }
   };
 
-  const checkAndTriggerOrderCreation = (customer: CRMCustomer) => {
+  const checkAndTriggerOrderCreation = async (customer: CRMCustomer) => {
     const alreadyOrdered = db.orders?.some(o => o.customer_id === customer.id && (o.special_notes?.includes('Converted from Quotation') || o.special_notes?.includes('Directly confirmed from CRM')));
     if (alreadyOrdered) {
       console.log("Order already exists for this customer.");
@@ -520,7 +521,8 @@ export default function CRMTab({
         onSaveCRMQuotation({ ...latestQuote, status: 'Approved' });
       }
 
-      const baseOrderId = generateId('order');
+      const { parentOrderId, orderSequence } = await generateNextParentOrderId();
+      const baseOrderId = parentOrderId;
       const itemsList = latestQuote.items && latestQuote.items.length > 0
         ? latestQuote.items
         : [{ furnitureItem: 'Bespoke Item', quantity: 1, dimensions: 'Custom Size', material: 'Premium Plywood & Teak Veneer', unitPrice: latestQuote.totalAmount }];
@@ -536,6 +538,7 @@ export default function CRMTab({
         const newOrder: Order = {
           id: orderId,
           parent_order_id: baseOrderId,
+          order_sequence: orderSequence,
           article_no: articleNo,
           customer_id: latestQuote.customer_id,
           category: 'Living Room',
@@ -591,11 +594,15 @@ export default function CRMTab({
         operator: currentUser.name
       });
     } else {
-      const orderId = generateId('order');
-      const articleNo = `${new Date().getFullYear().toString().slice(-2)}/${String(new Date().getMonth() + 1).padStart(2, '0')}/CRM/${Math.floor(1000 + Math.random() * 9000)}`;
+      const { parentOrderId, orderSequence } = await generateNextParentOrderId();
+      const orderId = parentOrderId;
+      const defaultCarp = users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod';
+      const articleNo = generateArticleNumber('Living Room', defaultCarp, db.orders || [], users, 0);
       
       const newOrder: Order = {
         id: orderId,
+        parent_order_id: parentOrderId,
+        order_sequence: orderSequence,
         article_no: articleNo,
         customer_id: customer.id,
         category: 'Living Room',
@@ -608,7 +615,7 @@ export default function CRMTab({
         material: 'Premium Plywood & Teak Wood',
         color_shade: 'Teak / Walnut',
         no_of_units: 1,
-        carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
+        carpenter_id: defaultCarp,
         current_status: 'Design',
         is_delayed: false,
         priority: 'normal',
