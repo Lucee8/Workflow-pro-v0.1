@@ -31,18 +31,7 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=650&auto=format&fit=crop';
     }
-    parts = [
-      { id: 'part_1', part_name: 'BACKSIDE LEGS', width: 3, breadth: 3, length: 3.5, quantity: 2 },
-      { id: 'part_2', part_name: 'FRONT LEGS', width: 3, breadth: 3, length: 1.5, quantity: 3 },
-      { id: 'part_3', part_name: 'SIDE FRAMES', width: 4, breadth: 1.5, length: 7, quantity: 2 },
-      { id: 'part_4', part_name: 'FRAME', width: 4, breadth: 1.5, length: 5, quantity: 3 },
-      { id: 'part_5', part_name: 'FRAME COMPONENTS', width: 3, breadth: 1.5, length: 5, quantity: 2 },
-      { id: 'part_6', part_name: 'SUPPORT PIECES', width: 2.5, breadth: 2.5, length: 5, quantity: 3 },
-      { id: 'part_7', part_name: 'HEAD REST CROSSBAR', width: 6, breadth: 1, length: 5, quantity: 1 },
-      { id: 'part_8', part_name: 'HEAD REST SLATS', width: 14, breadth: 1, length: 2.5, quantity: 2 },
-      { id: 'part_9', part_name: 'PANEL MADHLI PATTI', width: 4, breadth: 1.5, length: 1.5, quantity: 1 },
-      { id: 'part_10', part_name: 'BOTTOM SUPPORT', width: 2.5, breadth: 1.5, length: 6, quantity: 3 },
-    ];
+    parts = [];
   } else if (sub.includes('wardrobe') || sub.includes('cabinet') || sub.includes('almirah') || cat.includes('kitchen')) {
     catalogueName = 'Wardrobes & Cabinets';
     modelName = 'CAB-02';
@@ -51,14 +40,7 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=650&auto=format&fit=crop';
     }
-    parts = [
-      { id: 'part_1', part_name: 'SIDE PANELS', width: 0.75, breadth: 24, length: 7, quantity: 2 },
-      { id: 'part_2', part_name: 'TOP & BOTTOM BOARDS', width: 0.75, breadth: 24, length: 4, quantity: 2 },
-      { id: 'part_3', part_name: 'INTERNAL SHELVES', width: 0.75, breadth: 22, length: 4, quantity: 4 },
-      { id: 'part_4', part_name: 'BACK PANEL PLYWOOD', width: 0.25, breadth: 48, length: 7, quantity: 1 },
-      { id: 'part_5', part_name: 'SHUTTER DOORS', width: 0.75, breadth: 24, length: 6.5, quantity: 2 },
-      { id: 'part_6', part_name: 'BASE PLINTH RIM', width: 4, breadth: 1.5, length: 4, quantity: 2 },
-    ];
+    parts = [];
   } else if (sub.includes('table') || sub.includes('desk') || cat.includes('living')) {
     catalogueName = 'Tables Catalogue';
     modelName = 'TAB-15';
@@ -67,13 +49,7 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=650&auto=format&fit=crop';
     }
-    parts = [
-      { id: 'part_1', part_name: 'TABLE TOP COUNTER', width: 1.5, breadth: 30, length: 5, quantity: 1 },
-      { id: 'part_2', part_name: 'HEAVY FOUR LEGS', width: 3, breadth: 3, length: 2.5, quantity: 4 },
-      { id: 'part_3', part_name: 'LONG SIDE APRONS', width: 4, breadth: 1, length: 4.5, quantity: 2 },
-      { id: 'part_4', part_name: 'SHORT END APRONS', width: 4, breadth: 1, length: 2, quantity: 2 },
-      { id: 'part_5', part_name: 'DRAWER FACE BOARDS', width: 2, breadth: 0.75, length: 1.8, quantity: 2 },
-    ];
+    parts = [];
   } else if (sub.includes('sofa') || sub.includes('chair') || sub.includes('couch')) {
     catalogueName = 'Sofa Collections';
     modelName = 'SOF-03';
@@ -82,13 +58,7 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=650&auto=format&fit=crop';
     }
-    parts = [
-      { id: 'part_1', part_name: 'OUTER BOTTOM FRAME', width: 3, breadth: 1.5, length: 6.5, quantity: 2 },
-      { id: 'part_2', part_name: 'OUTER SIDE SUPPORT', width: 3, breadth: 1.5, length: 3, quantity: 2 },
-      { id: 'part_3', part_name: 'SUPPORT CROSS MEMBERS', width: 2.5, breadth: 1.5, length: 3, quantity: 4 },
-      { id: 'part_4', part_name: 'BASE BRACING LEGS', width: 3, breadth: 3, length: 0.75, quantity: 4 },
-      { id: 'part_5', part_name: 'BACK REST FRAMES', width: 2.5, breadth: 1.5, length: 6.5, quantity: 3 },
-    ];
+    parts = [];
   } else {
     // Default fallback
     catalogueName = 'General Timber Catalogue';
@@ -98,10 +68,7 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
     }
-    parts = [
-      { id: 'part_1', part_name: 'MAIN STRUT BEAMS', width: 2, breadth: 2, length: 4, quantity: 4 },
-      { id: 'part_2', part_name: 'CROSS SUPPORT RAILS', width: 1.5, breadth: 1.5, length: 3, quantity: 6 },
-    ];
+    parts = [];
   }
 
   return {
@@ -825,13 +792,24 @@ export default function WorkerDashboard({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">2. Wood Schedule Calculation Table</h4>
-                      <button
-                        type="button"
-                        onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
-                        className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans"
-                      >
-                        <Plus size={10} /> Add Part Row
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {parts.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setParts([])}
+                            className="inline-flex items-center gap-1 bg-stone-200 hover:bg-stone-300 text-stone-700 p-1 px-2.5 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                          >
+                            <Trash2 size={10} /> Clear Table
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
+                          className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                        >
+                          <Plus size={10} /> Add Part Row
+                        </button>
+                      </div>
                     </div>
 
                     <div className="border border-stone-250 rounded-xl overflow-hidden shadow-xs">
@@ -943,7 +921,7 @@ export default function WorkerDashboard({
                             ) : (
                               <tr>
                                 <td colSpan={7} className="py-8 text-center text-stone-400 italic font-medium font-sans">
-                                  No components added yet. Tap "Add Part Row" or use the quick templates to prefill the table.
+                                  No components added yet. Tap "+ Add Part Row" above to enter wood schedule items manually.
                                 </td>
                               </tr>
                             )}
