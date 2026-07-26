@@ -341,30 +341,8 @@ export default function DetailOrderFormTab({
   const [polishShade, setPolishShade] = React.useState('');
   const [paymentMode, setPaymentMode] = React.useState<'CASH' | 'BANK'>('CASH');
   const [typeOfPolish, setTypeOfPolish] = React.useState<'HAND' | 'MACHINE'>('HAND');
-  const [isGeneratingOrderNo, setIsGeneratingOrderNo] = React.useState(false);
 
-  const ensureOrderNo = async (): Promise<string> => {
-    if (orderNo && orderNo !== 'Generated when order is saved' && orderNo.trim() !== '') {
-      return orderNo;
-    }
-    setIsGeneratingOrderNo(true);
-    try {
-      const generated = await generateNextParentOrderId();
-      setOrderNo(generated.parentOrderId);
-      setIsGeneratingOrderNo(false);
-      return generated.parentOrderId;
-    } catch (err) {
-      console.error('Failed to generate parent order ID:', err);
-      setIsGeneratingOrderNo(false);
-      return orderNo;
-    }
-  };
-
-  const handleGenerateOrderNo = async () => {
-    await ensureOrderNo();
-  };
-
-  const handleSendToWorkOrder = async () => {
+  const handleSendToWorkOrder = () => {
     if (!customerName.trim()) {
       alert('Please fill in the Customer Name.');
       return;
@@ -377,8 +355,6 @@ export default function DetailOrderFormTab({
       alert('Please specify Custom Size details.');
       return;
     }
-
-    const finalOrderNo = await ensureOrderNo();
 
     const draft = {
       items, // Send all items in the combined agreement!
@@ -413,7 +389,7 @@ export default function DetailOrderFormTab({
       polishShade,
       paymentMode,
       typeOfPolish,
-      orderNo: finalOrderNo,
+      orderNo,
       articleNo,
       toArticleNo
     };
@@ -736,11 +712,8 @@ export default function DetailOrderFormTab({
     }
   }, [preselectedQuotationId, crmQuotations]);
 
-  const handlePrint = async () => {
-    await ensureOrderNo();
-    setTimeout(() => {
-      window.print();
-    }, 100);
+  const handlePrint = () => {
+    window.print();
   };
 
   const getWhatsAppUrl = () => {
@@ -1058,20 +1031,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider">Order No</label>
-                {(!orderNo || orderNo === 'Generated when order is saved') && (
-                  <button
-                    type="button"
-                    onClick={handleGenerateOrderNo}
-                    disabled={isGeneratingOrderNo}
-                    className="text-[10px] font-extrabold text-[#593622] hover:text-[#402414] hover:underline flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <Sparkles size={11} />
-                    {isGeneratingOrderNo ? 'Generating...' : 'Generate Order Number'}
-                  </button>
-                )}
-              </div>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">Order No</label>
               <input
                 type="text"
                 value={orderNo}
