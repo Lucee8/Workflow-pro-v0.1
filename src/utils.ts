@@ -79,3 +79,58 @@ export function parseToInputDate(dateInput: any): string {
 
   return dateStr;
 }
+
+/**
+ * Extracts the numeric serial at the end of an article number.
+ * Examples:
+ *  "25/07/SK/0008" -> 8
+ *  "0008"          -> 8
+ *  "ART-2026-008"  -> 8
+ */
+export function getArticleSerial(articleNo: string | undefined | null): number {
+  if (!articleNo) return 0;
+  const str = String(articleNo).trim();
+  // Try splitting by slash, dash, underscore, space
+  const parts = str.split(/[/_\-\s]+/);
+  if (parts.length > 0) {
+    const lastPart = parts[parts.length - 1];
+    const num = parseInt(lastPart.replace(/\D/g, ''), 10);
+    if (!isNaN(num)) return num;
+  }
+  // Fallback regex to match trailing digits
+  const match = str.match(/(\d+)\D*$/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num)) return num;
+  }
+  return 0;
+}
+
+/**
+ * Comparator function to sort orders by numeric serial at the end of articleNumber / article_no descending.
+ * The latest article (e.g. 0008) appears first.
+ */
+export function compareOrdersByArticleSerialDesc<T extends { article_no?: string; articleNumber?: string; created_at?: string; order_date?: string }>(
+  a: T,
+  b: T
+): number {
+  const artA = a.article_no || a.articleNumber || '';
+  const artB = b.article_no || b.articleNumber || '';
+
+  const serialA = getArticleSerial(artA);
+  const serialB = getArticleSerial(artB);
+
+  if (serialB !== serialA) {
+    return serialB - serialA; // Descending order: 0008, 0007, 0006...
+  }
+
+  // Fallback lexicographical comparison
+  const strCompare = artB.localeCompare(artA, undefined, { numeric: true, sensitivity: 'base' });
+  if (strCompare !== 0) return strCompare;
+
+  // Final fallback to date
+  const dateA = new Date(a.created_at || a.order_date || 0).getTime();
+  const dateB = new Date(b.created_at || b.order_date || 0).getTime();
+  return dateB - dateA;
+}
+

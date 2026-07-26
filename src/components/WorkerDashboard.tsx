@@ -6,6 +6,7 @@
 import React from 'react';
 import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart } from '../types';
 import { generateUUID } from '../db/store';
+import { compareOrdersByArticleSerialDesc } from '../utils';
 import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X } from 'lucide-react';
 
 function getDefaultWoodSchedule(order: Order): WoodSchedule {
@@ -139,7 +140,7 @@ export default function WorkerDashboard({
       // Polish person sees work only after carpentry passes QC Check 1
       return o.polish_person_id === currentUser.id && o.current_status !== 'Pending' && o.current_status !== 'Design' && o.current_status !== 'Carpentry' && o.current_status !== 'QC Check 1';
     }
-  });
+  }).sort(compareOrdersByArticleSerialDesc);
 
   // State: selected order for active edit
   const [activeOrder, setActiveOrder] = React.useState<Order | null>(null);

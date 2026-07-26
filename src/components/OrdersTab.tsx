@@ -6,7 +6,7 @@
 import React from 'react';
 import { Order, User, Customer, OrderStage, OrderPriority, Payment } from '../types';
 import { Search, Eye, PlusCircle, AlertCircle, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, CreditCard, Trash2 } from 'lucide-react';
-import { formatToDDMMYYYY } from '../utils';
+import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 
 interface OrdersTabProps {
   orders: Order[];
@@ -67,11 +67,7 @@ export default function OrdersTab({
     const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();
 
     return matchesSearch && matchesStage && matchesStatus && matchesPriority;
-  }).sort((a, b) => {
-    const dateA = new Date(a.created_at || a.order_date).getTime();
-    const dateB = new Date(b.created_at || b.order_date).getTime();
-    return dateB - dateA;
-  });
+  }).sort(compareOrdersByArticleSerialDesc);
 
   // Pagination index helper
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage) || 1;

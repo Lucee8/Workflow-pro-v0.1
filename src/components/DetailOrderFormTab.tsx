@@ -1,7 +1,7 @@
 import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
 import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight } from 'lucide-react';
-import { formatToDDMMYYYY } from '../utils';
+import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 import logoImg from '../assets/images/logo.png';
 
 interface AgreementItem {
@@ -948,7 +948,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 ))}
               </optgroup>
               <optgroup label="Active Workshop Orders">
-                {orders.map((ord) => {
+                {[...orders].sort(compareOrdersByArticleSerialDesc).map((ord) => {
                   const cust = customers.find((c) => c.id === ord.customer_id);
                   return (
                     <option key={`order_${ord.id}`} value={`order_${ord.id}`}>

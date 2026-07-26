@@ -9,12 +9,13 @@ import {
   AppState,
   generateArticleNumber
 } from '../db/store';
+import { compareOrdersByArticleSerialDesc } from '../utils';
 import { 
   User, 
   CRMCustomer, 
   CRMQuotation, 
   CRMQuotationItem, 
-  CRMFollowUp,  
+  CRMFollowUp, 
   CRMPayment, 
   CRMNote, 
   CRMAttachment, 
@@ -994,7 +995,7 @@ export default function CRMTab({
   });
 
   const selectedCustomer = db.crmCustomers?.find(c => c.id === selectedCustomerId);
-  const selectedCustOrders = selectedCustomer ? db.orders?.filter(o => o.customer_id === selectedCustomer.id) || [] : [];
+  const selectedCustOrders = selectedCustomer ? (db.orders?.filter(o => o.customer_id === selectedCustomer.id) || []).sort(compareOrdersByArticleSerialDesc) : [];
   const selectedCustQuotes = selectedCustomer ? db.crmQuotations?.filter(q => q.customer_id === selectedCustomer.id) || [] : [];
   const selectedCustFollowups = selectedCustomer ? db.crmFollowUps?.filter(f => f.customer_id === selectedCustomer.id) || [] : [];
   const selectedCustPayments = selectedCustomer ? db.crmPayments?.filter(p => p.customer_id === selectedCustomer.id) || [] : [];

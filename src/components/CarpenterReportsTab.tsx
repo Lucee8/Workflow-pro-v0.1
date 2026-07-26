@@ -6,6 +6,7 @@
 import React from 'react';
 import { User, Order } from '../types';
 import { AppState } from '../db/store';
+import { compareOrdersByArticleSerialDesc } from '../utils';
 import {
   Users,
   Clock,
@@ -1122,7 +1123,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
                     (db.orders || []).filter(o => 
                       (o.carpenter_id === selectedCarpenterDetails.id || o.polish_person_id === selectedCarpenterDetails.id) &&
                       o.current_status !== 'Ready to Dispatch' && o.current_status !== 'Dispatched'
-                    ).map(o => {
+                    ).sort(compareOrdersByArticleSerialDesc).map(o => {
                       const isOverdue = o.is_delayed || (o.delivery_date && o.delivery_date < todayStr);
                       return (
                         <div key={o.id} className="p-3 bg-white border border-stone-200 rounded-xl hover:border-stone-300 transition flex items-center justify-between gap-4">
