@@ -716,7 +716,7 @@ export default function OrderForm({
     let baseOrderId = '';
     let orderSequence = 1;
 
-    if (initialDraft && initialDraft.orderNo && initialDraft.orderNo !== 'Generated when order is saved') {
+    if (initialDraft && initialDraft.orderNo) {
       baseOrderId = initialDraft.orderNo;
       orderSequence = parseParentOrderSequence(baseOrderId);
     } else {
