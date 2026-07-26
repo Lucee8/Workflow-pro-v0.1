@@ -3259,7 +3259,9 @@ export default function CRMTab({
         const customer = db.crmCustomers?.find(c => c.id === viewingEstimateQuote.customer_id);
         const itemsList = viewingEstimateQuote.items || [];
         const itemSubtotal = itemsList.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
-        const totalDiscount = itemsList.reduce((acc, item) => acc + (item.discount || 0), 0);
+        const totalDiscount = (viewingEstimateQuote.discount !== undefined && Number(viewingEstimateQuote.discount) >= 0)
+          ? Number(viewingEstimateQuote.discount)
+          : itemsList.reduce((acc, item) => acc + (item.discount || 0), 0);
         const taxableAmount = Math.max(0, itemSubtotal - totalDiscount);
         const totalGstAmount = itemsList.reduce((acc, item) => {
           const itemTaxable = Math.max(0, (item.unitPrice * item.quantity) - (item.discount || 0));
@@ -3692,17 +3694,12 @@ export default function CRMTab({
                     <div className="grid grid-cols-12 border-t border-slate-400">
                       <div className="col-span-8 border-r border-slate-400 bg-white min-h-[140px]"></div>
                       <div className="col-span-4 flex flex-col font-medium text-xs divide-y divide-slate-400">
-                        <div className="grid grid-cols-2 p-2">
-                          <span className="text-slate-600">Sub Total</span>
-                          <span className="text-right font-bold text-slate-900 pr-1">: ₹{itemSubtotal.toLocaleString('en-IN')}.00</span>
+                        <div className="grid grid-cols-2 p-2 text-rose-800 bg-rose-50/20">
+                          <span className="font-semibold text-rose-950">Discount</span>
+                          <span className="text-right font-bold pr-1">
+                            : {totalDiscount > 0 ? `-₹${totalDiscount.toLocaleString('en-IN')}.00` : `₹0.00`}
+                          </span>
                         </div>
-                        
-                        {totalDiscount > 0 && (
-                          <div className="grid grid-cols-2 p-2 text-rose-800 bg-rose-50/20">
-                            <span>Discount</span>
-                            <span className="text-right font-bold pr-1">: -₹{totalDiscount.toLocaleString('en-IN')}.00</span>
-                          </div>
-                        )}
                         
                         {totalGstAmount > 0 && (
                           <div className="grid grid-cols-2 p-2">
