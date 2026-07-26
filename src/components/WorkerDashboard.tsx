@@ -639,6 +639,58 @@ export default function WorkerDashboard({
                   <div className="bg-stone-50 p-4 border border-stone-200 rounded-xl space-y-4">
                     <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">1. Product Identification Details</h4>
                     
+                    {/* Fetched Product Configuration & Specifications from Section 2 */}
+                    {activeOrder && (
+                      <div className="bg-white p-3.5 border border-amber-200/80 rounded-xl shadow-xs space-y-2.5">
+                        <div className="flex items-center justify-between pb-2 border-b border-stone-150">
+                          <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                            📋 Product Configuration & Specifications (Fetched from Order Specs)
+                          </span>
+                          <span className="text-[9px] font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200 font-mono">
+                            Article #{activeOrder.article_no}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-4 text-xs">
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Category</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.category || 'N/A'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sub-category</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.sub_category || 'N/A'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sizing Constraints</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">
+                              {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size || 'N/A'}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Design Blueprints</span>
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 font-bold text-[9px] border rounded bg-stone-50 text-stone-700 border-stone-200">
+                              {activeOrder.design_type || 'Standard'} Layout
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Structural Material</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.material || 'N/A'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Finish Polish</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.finish || 'N/A'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Color Shade</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.color_shade || 'N/A'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Units Count</span>
+                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.no_of_units || 1} pieces</strong>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
                       <div>
                         <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Catalogue Name</label>
@@ -719,44 +771,45 @@ export default function WorkerDashboard({
                       </div>
                     </div>
 
-                    {/* Design Reference Drawings list (If provided when creating the order) */}
-                    {activeOrder?.images && activeOrder.images.filter((img) => img.type === 'Design Reference').length > 0 && (
-                      <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 mt-2">
+                    {/* Fetched Reference Design Drawings list for this Order */}
+                    {activeOrder?.images && activeOrder.images.length > 0 && (
+                      <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5 space-y-2 mt-2">
                         <span className="block text-[10px] text-[#593622] font-extrabold uppercase tracking-wider">
-                          Original Design Reference Drawings (Uploaded on Order Creation)
+                          🖼️ Reference Design Images & Blueprint Drawings (Fetched from Order)
                         </span>
                         <div className="flex flex-wrap gap-2.5">
-                          {activeOrder.images
-                            .filter((img) => img.type === 'Design Reference')
-                            .map((img, idx) => (
-                              <div
-                                key={img.id || idx}
-                                onClick={() => {
-                                  setImageLink(img.url);
-                                  setShowRefImg(true);
-                                }}
-                                className={`group relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer transition ${
-                                  imageLink === img.url
-                                    ? 'border-[#593622] ring-2 ring-[#593622]/20 shadow-xs'
-                                    : 'border-stone-200 hover:border-stone-400'
-                                }`}
-                              >
-                                <img
-                                  referrerPolicy="no-referrer"
-                                  src={img.url}
-                                  alt={`Design Ref ${idx + 1}`}
-                                  className="object-cover w-full h-full transition duration-150 group-hover:scale-105"
-                                />
-                                {imageLink === img.url && (
-                                  <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#593622] text-white flex items-center justify-center text-[8px] font-bold">
-                                    ✓
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                          {activeOrder.images.map((img, idx) => (
+                            <div
+                              key={img.id || idx}
+                              onClick={() => {
+                                setImageLink(img.url);
+                                setShowRefImg(true);
+                              }}
+                              className={`group relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer transition ${
+                                imageLink === img.url
+                                  ? 'border-[#593622] ring-2 ring-[#593622]/20 shadow-xs'
+                                  : 'border-stone-200 hover:border-stone-400 bg-white'
+                              }`}
+                            >
+                              <img
+                                referrerPolicy="no-referrer"
+                                src={img.url}
+                                alt={`Design Ref ${idx + 1}`}
+                                className="object-cover w-full h-full transition duration-150 group-hover:scale-105"
+                              />
+                              <span className="absolute bottom-0 inset-x-0 bg-stone-900/70 text-white text-[8px] font-bold text-center py-0.5 truncate px-0.5">
+                                {img.type || 'Ref'}
+                              </span>
+                              {imageLink === img.url && (
+                                <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#593622] text-white flex items-center justify-center text-[8px] font-bold">
+                                  ✓
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                         <p className="text-[9px] text-[#593622]/80 font-medium">
-                          💡 Click any original design reference image above to load/view it in the Wood Schedule template as the primary blueprint!
+                          💡 Click any reference design image above to set/view it as the primary blueprint for this Wood Schedule!
                         </p>
                       </div>
                     )}
