@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Trees,
   Search,
-  Filter,
   CheckCircle2,
   XCircle,
   Clock,
@@ -11,19 +10,20 @@ import {
   Phone,
   User,
   Calendar,
-  Layers,
   HardHat,
   X,
   FileText,
-  ChevronRight,
   Info,
   Sparkles,
   Ruler,
-  Hash,
-  Share2,
-  Download,
-  Trash2
+  Trash2,
+  Table as TableIcon,
+  LayoutGrid,
+  Eye,
+  Check
 } from 'lucide-react';
+import { Order, Customer } from '../types';
+import { formatToDDMMYYYY } from '../utils';
 
 export interface WoodRequirementItem {
   id: string;
@@ -38,6 +38,7 @@ export interface WoodRequirementItem {
 
 export interface WoodRequirementRequest {
   id: string;
+  orderId?: string;
   workOrderNo: string;
   articleNo: string;
   productName: string;
@@ -52,40 +53,50 @@ export interface WoodRequirementRequest {
   woodSchedule: WoodRequirementItem[];
 }
 
-const INITIAL_WOOD_REQUESTS: WoodRequirementRequest[] = [];
+export interface WoodManagementTabProps {
+  orders?: Order[];
+  customers?: Customer[];
+  onOrderUpdate?: (updatedOrder: Order, log?: any) => void;
+}
 
-export default function WoodManagementTab() {
-  const [requests, setRequests] = useState<WoodRequirementRequest[]>(() => {
-    const saved = localStorage.getItem('bhisez_wood_management_requests');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          // Filter out demo records if any exist in local storage
-          const filtered = parsed.filter(
-            (r: any) =>
-              r &&
-              r.id &&
-              !r.id.startsWith('WR-2026-00') &&
-              r.customerName !== 'Rajesh Patil' &&
-              r.customerName !== 'Aniket Deshmukh' &&
-              r.customerName !== 'Sunita Sharma' &&
-              r.customerName !== 'Mahesh Kulkarni' &&
-              r.customerName !== 'Prashant Joshi' &&
-              r.customerName !== 'Vikram Mehta'
-          );
-          return filtered;
-        }
-      } catch (e) {
-        // ignore
-      }
+export default function WoodManagementTab({
+  orders = [],
+  customers = [],
+  onOrderUpdate
+}: WoodManagementTabProps) {
+  // Saved statuses per order ID / request ID
+  const [statusMap, setStatusMap] = useState<Record<string, 'Pending' | 'Approved' | 'Rejected'>>(() => {
+    try {
+      const saved = localStorage.getItem('bhisez_wood_request_statuses');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
     }
-    return INITIAL_WOOD_REQUESTS;
   });
 
-  React.useEffect(() => {
-    localStorage.setItem('bhisez_wood_management_requests', JSON.stringify(requests));
-  }, [requests]);
+  // Deleted request IDs
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('bhisez_wood_deleted_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Standalone requests created directly in Wood Management
+  const [manualRequests, setManualRequests] = useState<WoodRequirementRequest[]>(() => {
+    try {
+      const saved = localStorage.getItem('bhisez_wood_manual_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // View Mode: 'table' or 'grid'
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [selectedRequest, setSelectedRequest] = useState<WoodRequirementRequest | null>(null);
@@ -93,9 +104,100 @@ export default function WoodManagementTab() {
   const [printModalRequest, setPrintModalRequest] = useState<WoodRequirementRequest | null>(null);
   const [deleteConfirmReq, setDeleteConfirmReq] = useState<WoodRequirementRequest | null>(null);
 
+  // Automatically derive & synchronize Wood Schedule records from Orders in real time
+  const synchronizedRequests = useMemo(() => {
+    const list: WoodRequirementRequest[] = [];
+    const seenOrderIds = new Set<string>();
+
+    // 1. Process Order wood schedules
+    orders.forEach((ord) => {
+      if (!ord.wood_schedule) return;
+
+      const orderKey = ord.id;
+      if (deletedIds.includes(orderKey)) return;
+
+      seenOrderIds.add(orderKey);
+
+      const cust = customers.find((c) => c.id === ord.customer_id);
+      const customerName = (ord as any).customer_name || cust?.name || 'Customer';
+      const carpenterName = (ord as any).carpenter_name || 'Dinesh Mestry';
+
+      // Map parts to standard WoodRequirementItem
+      const rawParts = ord.wood_schedule.parts || [];
+      const woodScheduleItems: WoodRequirementItem[] = rawParts.map((p: any, idx: number) => {
+        const w = Number(p.widthInches) || 0;
+        const b = Number(p.breadthInches ?? p.thicknessInches ?? 0);
+        const lIn = p.lengthInches !== undefined ? Number(p.lengthInches) : (p.lengthFeet ? Number(p.lengthFeet) * 12 : 0);
+        const qty = Number(p.qty) || 1;
+        const cft = p.cftVol !== undefined ? Number(p.cftVol) : (p.calculatedCFT !== undefined ? Number(p.calculatedCFT) : ((w * b * lIn * qty) / 1728));
+
+        return {
+          id: p.id || `part-${idx + 1}`,
+          sectionName: p.partName || p.sectionName || `Component ${idx + 1}`,
+          lengthInches: lIn,
+          widthInches: w,
+          thicknessInches: b,
+          qty: qty,
+          calculatedCFT: Number(cft || 0)
+        };
+      });
+
+      const totalCFT = woodScheduleItems.reduce((sum, item) => sum + (item.calculatedCFT || 0), 0);
+
+      const currentStatus = statusMap[ord.id] || 'Pending';
+
+      list.push({
+        id: ord.id,
+        orderId: ord.id,
+        workOrderNo: ord.id,
+        articleNo: ord.article_no || 'N/A',
+        productName: `${ord.category || 'Furniture Item'}${ord.sub_category ? ` (${ord.sub_category})` : ''}`,
+        customerName: customerName,
+        carpenterName: carpenterName,
+        contactNumber: cust?.phone || '+91 98765 43210',
+        submissionDate: ord.updated_at ? formatToDDMMYYYY(ord.updated_at) : (ord.created_at ? formatToDDMMYYYY(ord.created_at) : formatToDDMMYYYY(new Date())),
+        woodType: ord.wood_schedule.catalogue_name || ord.material || 'Solid Teak Wood',
+        totalVolumeCFT: Number(totalCFT.toFixed(2)),
+        status: currentStatus,
+        notes: ord.wood_schedule.model_name ? `Model: ${ord.wood_schedule.model_name} | Size: ${ord.wood_schedule.size_of_product || 'Standard'}` : undefined,
+        woodSchedule: woodScheduleItems
+      });
+    });
+
+    // 2. Include manual requests if not deleted or duplicated
+    manualRequests.forEach((req) => {
+      if (deletedIds.includes(req.id)) return;
+      if (req.orderId && seenOrderIds.has(req.orderId)) return;
+
+      const currentStatus = statusMap[req.id] || req.status || 'Pending';
+      list.push({
+        ...req,
+        status: currentStatus
+      });
+    });
+
+    return list;
+  }, [orders, customers, statusMap, deletedIds, manualRequests]);
+
+  // Persist status updates
+  const handleUpdateStatus = (id: string, newStatus: 'Approved' | 'Rejected' | 'Pending') => {
+    const updatedMap = { ...statusMap, [id]: newStatus };
+    setStatusMap(updatedMap);
+    localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(updatedMap));
+
+    if (selectedRequest && selectedRequest.id === id) {
+      setSelectedRequest((prev) => (prev ? { ...prev, status: newStatus } : null));
+    }
+  };
+
   // Delete Request Handler
   const handleDeleteRequest = (id: string) => {
-    setRequests((prev) => prev.filter((r) => r.id !== id));
+    const updatedDeleted = [...deletedIds, id];
+    setDeletedIds(updatedDeleted);
+    localStorage.setItem('bhisez_wood_deleted_ids', JSON.stringify(updatedDeleted));
+
+    setManualRequests((prev) => prev.filter((r) => r.id !== id));
+
     if (selectedRequest && selectedRequest.id === id) {
       setSelectedRequest(null);
       setIsModalOpen(false);
@@ -103,47 +205,39 @@ export default function WoodManagementTab() {
     setDeleteConfirmReq(null);
   };
 
-  // Filtered requests based on search and status tabs
-  const filteredRequests = requests.filter((req) => {
-    const matchesSearch =
-      req.carpenterName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.articleNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.workOrderNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.contactNumber.includes(searchTerm);
+  // Search & Status Filter
+  const filteredRequests = useMemo(() => {
+    return synchronizedRequests.filter((req) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch =
+        !searchTerm ||
+        req.carpenterName.toLowerCase().includes(q) ||
+        req.customerName.toLowerCase().includes(q) ||
+        req.articleNo.toLowerCase().includes(q) ||
+        req.workOrderNo.toLowerCase().includes(q) ||
+        req.productName.toLowerCase().includes(q) ||
+        req.woodType.toLowerCase().includes(q);
 
-    const matchesStatus = statusFilter === 'All' || req.status === statusFilter;
+      const matchesStatus = statusFilter === 'All' || req.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    });
+  }, [synchronizedRequests, searchTerm, statusFilter]);
 
-  // Calculate summary stats
-  const totalCount = requests.length;
-  const pendingCount = requests.filter((r) => r.status === 'Pending').length;
-  const approvedCount = requests.filter((r) => r.status === 'Approved').length;
-  const totalApprovedCFT = requests
+  // Summary Metrics
+  const totalCount = synchronizedRequests.length;
+  const pendingCount = synchronizedRequests.filter((r) => r.status === 'Pending').length;
+  const approvedCount = synchronizedRequests.filter((r) => r.status === 'Approved').length;
+  const totalApprovedCFT = synchronizedRequests
     .filter((r) => r.status === 'Approved')
     .reduce((sum, r) => sum + r.totalVolumeCFT, 0);
-  const totalRequestedCFT = requests.reduce((sum, r) => sum + r.totalVolumeCFT, 0);
+  const totalRequestedCFT = synchronizedRequests.reduce((sum, r) => sum + r.totalVolumeCFT, 0);
 
-  // Status Change Handler (Local State)
-  const handleUpdateStatus = (id: string, newStatus: 'Approved' | 'Rejected' | 'Pending') => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
-    );
-    if (selectedRequest && selectedRequest.id === id) {
-      setSelectedRequest((prev) => (prev ? { ...prev, status: newStatus } : null));
-    }
-  };
-
-  // Open Sheet Modal
   const handleOpenSheetModal = (req: WoodRequirementRequest) => {
     setSelectedRequest(req);
     setIsModalOpen(true);
   };
 
-  // Print Handler
   const handlePrintRequest = (req: WoodRequirementRequest) => {
     setPrintModalRequest(req);
     setTimeout(() => {
@@ -185,7 +279,7 @@ export default function WoodManagementTab() {
             Wood Management
           </h1>
           <p className="text-stone-500 text-xs mt-0.5">
-            Review, audit, and approve timber CFT volume requirements submitted by carpenters for active work orders.
+            Auto-synchronized wood schedule calculation tables submitted by carpenters across active work orders.
           </p>
         </div>
 
@@ -194,7 +288,9 @@ export default function WoodManagementTab() {
           <Sparkles size={16} className="text-[#593622] shrink-0" />
           <div className="text-xs">
             <span className="font-extrabold block">Timber CFT Auditor</span>
-            <span className="text-[10px] text-stone-600 block">Total Requested: <strong>{totalRequestedCFT.toFixed(2)} CFT</strong></span>
+            <span className="text-[10px] text-stone-600 block">
+              Total Requested: <strong>{totalRequestedCFT.toFixed(2)} CFT</strong>
+            </span>
           </div>
         </div>
       </div>
@@ -207,8 +303,12 @@ export default function WoodManagementTab() {
             <FileText size={20} />
           </div>
           <div>
-            <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">Total Requests</span>
-            <span className="text-xl font-black text-stone-900 font-display">{totalCount} <span className="text-xs font-normal text-stone-400">sheets</span></span>
+            <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">
+              Total Requests
+            </span>
+            <span className="text-xl font-black text-stone-900 font-display">
+              {totalCount} <span className="text-xs font-normal text-stone-400">sheets</span>
+            </span>
           </div>
         </div>
 
@@ -218,8 +318,12 @@ export default function WoodManagementTab() {
             <Clock size={20} />
           </div>
           <div>
-            <span className="text-[10px] font-black text-amber-700 uppercase tracking-wider block">Pending Review</span>
-            <span className="text-xl font-black text-amber-900 font-display">{pendingCount} <span className="text-xs font-normal text-amber-600">awaiting</span></span>
+            <span className="text-[10px] font-black text-amber-700 uppercase tracking-wider block">
+              Pending Review
+            </span>
+            <span className="text-xl font-black text-amber-900 font-display">
+              {pendingCount} <span className="text-xs font-normal text-amber-600">awaiting</span>
+            </span>
           </div>
         </div>
 
@@ -229,8 +333,13 @@ export default function WoodManagementTab() {
             <CheckCircle2 size={20} />
           </div>
           <div>
-            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider block">Approved Timber</span>
-            <span className="text-xl font-black text-emerald-950 font-display">{totalApprovedCFT.toFixed(2)} <span className="text-xs font-semibold text-emerald-700">CFT</span></span>
+            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider block">
+              Approved Timber
+            </span>
+            <span className="text-xl font-black text-emerald-950 font-display">
+              {totalApprovedCFT.toFixed(2)}{' '}
+              <span className="text-xs font-semibold text-emerald-700">CFT</span>
+            </span>
           </div>
         </div>
 
@@ -240,13 +349,17 @@ export default function WoodManagementTab() {
             <Ruler size={20} />
           </div>
           <div>
-            <span className="text-[10px] font-black text-[#593622] uppercase tracking-wider block">Approved Sheets</span>
-            <span className="text-xl font-black text-stone-900 font-display">{approvedCount} <span className="text-xs font-normal text-stone-500">orders</span></span>
+            <span className="text-[10px] font-black text-[#593622] uppercase tracking-wider block">
+              Approved Sheets
+            </span>
+            <span className="text-xl font-black text-stone-900 font-display">
+              {approvedCount} <span className="text-xs font-normal text-stone-500">orders</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Control Bar: Filters & Search */}
+      {/* Control Bar: Search, Filters & View Toggle */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between">
         {/* Search Bar */}
         <div className="relative w-full md:w-80">
@@ -268,43 +381,67 @@ export default function WoodManagementTab() {
           )}
         </div>
 
-        {/* Status Filter Tabs */}
-        <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-          {(['All', 'Pending', 'Approved', 'Rejected'] as const).map((st) => {
-            const isActive = statusFilter === st;
-            let badgeCount = 0;
-            if (st === 'All') badgeCount = requests.length;
-            else if (st === 'Pending') badgeCount = pendingCount;
-            else if (st === 'Approved') badgeCount = approvedCount;
-            else badgeCount = requests.filter((r) => r.status === 'Rejected').length;
+        {/* Status Filter Tabs & Layout Toggle */}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl overflow-x-auto">
+            {(['All', 'Pending', 'Approved', 'Rejected'] as const).map((st) => {
+              const isActive = statusFilter === st;
+              let badgeCount = 0;
+              if (st === 'All') badgeCount = synchronizedRequests.length;
+              else if (st === 'Pending') badgeCount = pendingCount;
+              else if (st === 'Approved') badgeCount = approvedCount;
+              else badgeCount = synchronizedRequests.filter((r) => r.status === 'Rejected').length;
 
-            return (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                  isActive
-                    ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80 font-extrabold'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
-              >
-                <span>{st === 'All' ? 'All Requests' : st}</span>
-                <span
-                  className={`px-1.5 py-0.2 text-[10px] rounded-full font-mono ${
+              return (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                     isActive
-                      ? 'bg-stone-900 text-white'
-                      : 'bg-stone-200 text-stone-600'
+                      ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80 font-extrabold'
+                      : 'text-stone-500 hover:text-stone-800'
                   }`}
                 >
-                  {badgeCount}
-                </span>
-              </button>
-            );
-          })}
+                  <span>{st === 'All' ? 'All Requests' : st}</span>
+                  <span
+                    className={`px-1.5 py-0.2 text-[10px] rounded-full font-mono ${
+                      isActive ? 'bg-stone-900 text-white' : 'bg-stone-200 text-stone-600'
+                    }`}
+                  >
+                    {badgeCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* View Mode Toggle Button (Table / Cards) */}
+          <div className="flex items-center bg-stone-100 p-1 rounded-xl border border-stone-200">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                viewMode === 'table' ? 'bg-white text-stone-900 shadow-xs font-black' : 'text-stone-500'
+              }`}
+              title="Table View"
+            >
+              <TableIcon size={15} />
+              <span className="hidden sm:inline">Table</span>
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                viewMode === 'grid' ? 'bg-white text-stone-900 shadow-xs font-black' : 'text-stone-500'
+              }`}
+              title="Grid Cards View"
+            >
+              <LayoutGrid size={15} />
+              <span className="hidden sm:inline">Cards</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Request Cards Grid */}
+      {/* Main Content Area */}
       {filteredRequests.length === 0 ? (
         <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center space-y-3">
           <div className="h-12 w-12 rounded-full bg-stone-100 text-stone-400 mx-auto flex items-center justify-center">
@@ -312,24 +449,217 @@ export default function WoodManagementTab() {
           </div>
           <h3 className="text-base font-bold text-stone-800">No Wood Requests Found</h3>
           <p className="text-xs text-stone-500 max-w-md mx-auto">
-            No wood requirement requests match your current search query or status filter. Try clearing filters.
+            No wood schedule calculation table submissions match your current search query or filter. When carpenters save wood calculation tables in an order, they will automatically appear here.
           </p>
           <button
             onClick={() => {
               setSearchTerm('');
               setStatusFilter('All');
             }}
-            className="px-4 py-2 bg-[#593622] text-white rounded-xl text-xs font-bold hover:bg-[#402414] transition inline-flex items-center gap-1.5"
+            className="px-4 py-2 bg-[#593622] text-white rounded-xl text-xs font-bold hover:bg-[#402414] transition inline-flex items-center gap-1.5 cursor-pointer"
           >
             Clear Filters
           </button>
         </div>
+      ) : viewMode === 'table' ? (
+        /* TABLE VIEW (Highlighting 1. Article Number, 2. Order Number, 3. Customer Name, 4. Wood Schedule Calculation Table) */
+        <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs font-sans">
+              <thead>
+                <tr className="bg-stone-900 text-amber-300 font-extrabold uppercase text-[10px] tracking-wider border-b border-stone-800">
+                  <th className="py-3.5 px-4 font-mono">1. Article Number</th>
+                  <th className="py-3.5 px-4 font-mono">2. Order Number</th>
+                  <th className="py-3.5 px-4">3. Customer Name</th>
+                  <th className="py-3.5 px-4 min-w-[280px]">4. Wood Schedule Calculation Table</th>
+                  <th className="py-3.5 px-4">Carpenter & Wood Type</th>
+                  <th className="py-3.5 px-4 text-right">Total Vol (CFT)</th>
+                  <th className="py-3.5 px-4 text-center">Status</th>
+                  <th className="py-3.5 px-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-200/80">
+                {filteredRequests.map((req) => {
+                  const isPending = req.status === 'Pending';
+                  const isApproved = req.status === 'Approved';
+                  const isRejected = req.status === 'Rejected';
+
+                  return (
+                    <tr
+                      key={req.id}
+                      className="hover:bg-amber-50/30 transition-colors duration-150 group"
+                    >
+                      {/* 1. Article Number */}
+                      <td className="py-4 px-4 font-mono font-bold text-stone-800 whitespace-nowrap">
+                        <span className="bg-stone-100 text-stone-800 border border-stone-300 px-2.5 py-1 rounded-lg text-xs">
+                          {req.articleNo}
+                        </span>
+                      </td>
+
+                      {/* 2. Order Number */}
+                      <td className="py-4 px-4 font-mono font-black text-[#593622] whitespace-nowrap">
+                        <span className="bg-[#593622]/10 text-[#593622] px-2.5 py-1 rounded-lg border border-[#593622]/20 text-xs">
+                          {req.workOrderNo}
+                        </span>
+                      </td>
+
+                      {/* 3. Customer Name */}
+                      <td className="py-4 px-4 font-bold text-stone-900 whitespace-nowrap">
+                        <div>{req.customerName}</div>
+                        <div className="text-[10px] text-stone-500 font-normal mt-0.5">
+                          {req.productName}
+                        </div>
+                      </td>
+
+                      {/* 4. Wood Schedule Calculation Table (Summary & Link/Modal button) */}
+                      <td className="py-4 px-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-[#593622] text-xs">
+                              {req.woodSchedule.length} Component Part{req.woodSchedule.length === 1 ? '' : 's'}
+                            </span>
+                            <span className="text-[10px] text-stone-500 font-mono">
+                              ({req.totalVolumeCFT.toFixed(2)} CFT)
+                            </span>
+                          </div>
+
+                          {/* Embedded Mini Cut-List Summary Table */}
+                          {req.woodSchedule.length > 0 && (
+                            <div className="bg-stone-50 p-2 rounded-lg border border-stone-200 max-w-sm space-y-1 text-[11px]">
+                              {req.woodSchedule.slice(0, 2).map((part, pIdx) => (
+                                <div
+                                  key={part.id || pIdx}
+                                  className="flex items-center justify-between font-mono text-[10px] text-stone-700 border-b border-stone-200/60 pb-0.5 last:border-b-0 last:pb-0"
+                                >
+                                  <span className="font-sans font-bold text-stone-900 truncate max-w-[140px]">
+                                    {part.sectionName}
+                                  </span>
+                                  <span className="text-stone-500">
+                                    {part.widthInches}"×{part.thicknessInches}"×{part.lengthInches}" (x{part.qty})
+                                  </span>
+                                  <span className="font-bold text-[#593622]">
+                                    {part.calculatedCFT.toFixed(2)} CFT
+                                  </span>
+                                </div>
+                              ))}
+                              {req.woodSchedule.length > 2 && (
+                                <div className="text-[9px] text-stone-400 font-sans italic text-right">
+                                  + {req.woodSchedule.length - 2} more sections
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Primary Button to view complete calculation table in modal */}
+                          <button
+                            onClick={() => handleOpenSheetModal(req)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-amber-300 rounded-lg text-xs font-extrabold transition shadow-2xs cursor-pointer"
+                          >
+                            <FileSpreadsheet size={13} />
+                            <span>View Complete Table ({req.woodSchedule.length} parts)</span>
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Carpenter & Wood Type */}
+                      <td className="py-4 px-4 text-xs">
+                        <div className="font-semibold text-stone-800 flex items-center gap-1">
+                          <HardHat size={12} className="text-[#593622]" /> {req.carpenterName}
+                        </div>
+                        <div className="text-[11px] text-stone-500 mt-0.5">
+                          {req.woodType}
+                        </div>
+                        <div className="text-[10px] text-stone-400 font-mono mt-0.5">
+                          Date: {req.submissionDate}
+                        </div>
+                      </td>
+
+                      {/* Total CFT Volume */}
+                      <td className="py-4 px-4 text-right whitespace-nowrap font-display font-black text-sm text-[#593622]">
+                        {req.totalVolumeCFT.toFixed(2)} <span className="text-[10px] font-bold">CFT</span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-4 px-4 text-center whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${
+                            isPending
+                              ? 'bg-amber-50 text-amber-800 border-amber-300'
+                              : isApproved
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : 'bg-rose-50 text-rose-800 border-rose-300'
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isPending
+                                ? 'bg-amber-500 animate-pulse'
+                                : isApproved
+                                ? 'bg-emerald-600'
+                                : 'bg-rose-600'
+                            }`}
+                          />
+                          {req.status}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-4 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenSheetModal(req)}
+                            className="p-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg transition border border-stone-300"
+                            title="Inspect Wood Schedule Table"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          {isPending && (
+                            <button
+                              onClick={() => handleUpdateStatus(req.id, 'Approved')}
+                              className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition border border-emerald-300"
+                              title="Approve Wood Request"
+                            >
+                              <CheckCircle2 size={15} />
+                            </button>
+                          )}
+                          {isPending && (
+                            <button
+                              onClick={() => handleUpdateStatus(req.id, 'Rejected')}
+                              className="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg transition border border-rose-300"
+                              title="Reject Wood Request"
+                            >
+                              <XCircle size={15} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handlePrintRequest(req)}
+                            className="p-1.5 bg-white hover:bg-stone-100 text-stone-700 rounded-lg transition border border-stone-300"
+                            title="Print Schedule"
+                          >
+                            <Printer size={15} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmReq(req)}
+                            className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Delete Request"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* GRID CARDS VIEW */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredRequests.map((req) => {
             const isPending = req.status === 'Pending';
             const isApproved = req.status === 'Approved';
-            const isRejected = req.status === 'Rejected';
 
             return (
               <div
@@ -342,20 +672,19 @@ export default function WoodManagementTab() {
                     <span className="px-2.5 py-1 bg-[#593622] text-amber-300 font-mono text-[10px] font-black rounded-lg uppercase tracking-wider shadow-2xs">
                       {req.workOrderNo}
                     </span>
-                    <span className="text-stone-400 font-mono text-[11px] font-semibold">
-                      #{req.id}
+                    <span className="text-stone-500 font-mono text-[11px] font-bold bg-stone-200/60 px-2 py-0.5 rounded border border-stone-300/60">
+                      Article: {req.articleNo}
                     </span>
                   </div>
 
-                  {/* Right side: Status Badge + Delete Button */}
                   <div className="flex items-center gap-2">
                     <div
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${
                         isPending
-                          ? 'bg-amber-50 text-amber-800 border-amber-300/80'
+                          ? 'bg-amber-50 text-amber-800 border-amber-300'
                           : isApproved
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300/80'
-                          : 'bg-rose-50 text-rose-800 border-rose-300/80'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : 'bg-rose-50 text-rose-800 border-rose-300'
                       }`}
                     >
                       <span
@@ -375,7 +704,7 @@ export default function WoodManagementTab() {
                         e.stopPropagation();
                         setDeleteConfirmReq(req);
                       }}
-                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-100/70 rounded-lg transition border border-transparent hover:border-rose-200"
+                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-100/70 rounded-lg transition"
                       title="Delete Request"
                     >
                       <Trash2 size={15} />
@@ -385,15 +714,11 @@ export default function WoodManagementTab() {
 
                 {/* Card Body Information */}
                 <div className="p-5 space-y-4 flex-1">
-                  {/* Product Title & Article Number */}
                   <div>
                     <h3 className="font-bold text-stone-900 text-sm leading-snug line-clamp-2 group-hover:text-[#593622] transition-colors">
                       {req.productName}
                     </h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-mono font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
-                        Article: {req.articleNo}
-                      </span>
                       <span className="text-[11px] text-stone-500 font-medium truncate">
                         Cust: <strong className="text-stone-800">{req.customerName}</strong>
                       </span>
@@ -406,9 +731,7 @@ export default function WoodManagementTab() {
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400 block">
                         Total Wood Required
                       </span>
-                      <span className="text-xs font-bold text-[#593622]">
-                        {req.woodType}
-                      </span>
+                      <span className="text-xs font-bold text-[#593622]">{req.woodType}</span>
                     </div>
                     <div className="text-right">
                       <span className="text-lg font-black text-[#593622] font-display block leading-none">
@@ -422,7 +745,6 @@ export default function WoodManagementTab() {
 
                   {/* Metadata Grid */}
                   <div className="grid grid-cols-2 gap-3 text-xs border-t border-stone-100 pt-3">
-                    {/* Carpenter */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
                         <HardHat size={11} className="text-[#593622]" /> Carpenter
@@ -432,7 +754,6 @@ export default function WoodManagementTab() {
                       </span>
                     </div>
 
-                    {/* Contact Number */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
                         <Phone size={11} className="text-stone-500" /> Contact No.
@@ -445,7 +766,6 @@ export default function WoodManagementTab() {
                       </a>
                     </div>
 
-                    {/* Submission Date */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
                         <Calendar size={11} className="text-stone-500" /> Submitted Date
@@ -455,7 +775,6 @@ export default function WoodManagementTab() {
                       </span>
                     </div>
 
-                    {/* Customer Name */}
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
                         <User size={11} className="text-stone-500" /> Customer
@@ -466,7 +785,6 @@ export default function WoodManagementTab() {
                     </div>
                   </div>
 
-                  {/* Optional Carpenter Notes */}
                   {req.notes && (
                     <div className="text-[11px] text-stone-600 bg-stone-50 p-2.5 rounded-lg border border-stone-200/60 italic">
                       <span className="font-bold not-italic text-stone-800">Note: </span>
@@ -478,7 +796,6 @@ export default function WoodManagementTab() {
                 {/* Card Action Buttons Bar */}
                 <div className="p-3 bg-stone-50 border-t border-stone-200/80 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-1">
-                    {/* View Wood Sheet Button */}
                     <button
                       onClick={() => handleOpenSheetModal(req)}
                       className="flex-1 py-2 px-3 bg-[#593622] hover:bg-[#402414] active:scale-[0.98] text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
@@ -487,7 +804,6 @@ export default function WoodManagementTab() {
                       <span>View Wood Sheet</span>
                     </button>
 
-                    {/* Print Button */}
                     <button
                       onClick={() => handlePrintRequest(req)}
                       className="py-2 px-3 bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
@@ -498,12 +814,11 @@ export default function WoodManagementTab() {
                     </button>
                   </div>
 
-                  {/* Quick Status Action Toggle Dropdown */}
                   <div className="flex items-center gap-1">
                     {isPending && (
                       <button
                         onClick={() => handleUpdateStatus(req.id, 'Approved')}
-                        className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl transition border border-emerald-300/60"
+                        className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl transition border border-emerald-300/60 cursor-pointer"
                         title="Approve Wood Request"
                       >
                         <CheckCircle2 size={16} />
@@ -512,7 +827,7 @@ export default function WoodManagementTab() {
                     {isPending && (
                       <button
                         onClick={() => handleUpdateStatus(req.id, 'Rejected')}
-                        className="p-2 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl transition border border-rose-300/60"
+                        className="p-2 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl transition border border-rose-300/60 cursor-pointer"
                         title="Reject Wood Request"
                       >
                         <XCircle size={16} />
@@ -541,13 +856,13 @@ export default function WoodManagementTab() {
                     Carpenter Wood Schedule Sheet (लाकूड माप तक्ता)
                   </h2>
                   <p className="text-xs text-stone-400 font-mono">
-                    Req ID: {selectedRequest.id} | Work Order: {selectedRequest.workOrderNo}
+                    Article #{selectedRequest.articleNo} | Order: {selectedRequest.workOrderNo}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 text-stone-400 hover:text-white hover:bg-stone-800 rounded-xl transition"
+                className="p-2 text-stone-400 hover:text-white hover:bg-stone-800 rounded-xl transition cursor-pointer"
               >
                 <X size={20} />
               </button>
@@ -555,35 +870,44 @@ export default function WoodManagementTab() {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-5 font-sans">
-              {/* Informational banner */}
               <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2.5">
                 <Info size={16} className="text-amber-700 shrink-0" />
                 <span>
-                  Showing itemized cut-list dimensions submitted by carpenter <strong>{selectedRequest.carpenterName}</strong> for <strong>{selectedRequest.productName}</strong>.
+                  Showing itemized cut-list dimensions submitted by carpenter{' '}
+                  <strong>{selectedRequest.carpenterName}</strong> for{' '}
+                  <strong>{selectedRequest.productName}</strong>.
                 </span>
               </div>
 
               {/* Order Context Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200/80 text-xs">
                 <div>
-                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">Carpenter Name</span>
-                  <span className="font-bold text-stone-900">{selectedRequest.carpenterName}</span>
+                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">
+                    Article Number
+                  </span>
+                  <span className="font-bold text-stone-900 font-mono">{selectedRequest.articleNo}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">Customer Name</span>
+                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">
+                    Order Number
+                  </span>
+                  <span className="font-bold text-[#593622] font-mono">{selectedRequest.workOrderNo}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">
+                    Customer Name
+                  </span>
                   <span className="font-bold text-stone-900">{selectedRequest.customerName}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">Article Number</span>
-                  <span className="font-bold text-stone-900">{selectedRequest.articleNo}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">Wood Species</span>
+                  <span className="text-[10px] text-stone-400 font-extrabold uppercase block">
+                    Wood Species
+                  </span>
                   <span className="font-bold text-[#593622]">{selectedRequest.woodType}</span>
                 </div>
               </div>
 
-              {/* Itemized Table */}
+              {/* Itemized Wood Schedule Calculation Table */}
               <div className="overflow-x-auto rounded-xl border border-stone-200">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
@@ -592,7 +916,7 @@ export default function WoodManagementTab() {
                       <th className="py-2.5 px-3">Section / Part Name</th>
                       <th className="py-2.5 px-3 text-center">Length (in)</th>
                       <th className="py-2.5 px-3 text-center">Width (in)</th>
-                      <th className="py-2.5 px-3 text-center">Thick (in)</th>
+                      <th className="py-2.5 px-3 text-center">Thick / Breadth (in)</th>
                       <th className="py-2.5 px-3 text-center">Qty</th>
                       <th className="py-2.5 px-3 text-right">Volume (CFT)</th>
                     </tr>
@@ -677,14 +1001,6 @@ export default function WoodManagementTab() {
                   Print Schedule
                 </button>
                 <button
-                  onClick={() => setDeleteConfirmReq(selectedRequest)}
-                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                  title="Delete Wood Request"
-                >
-                  <Trash2 size={15} />
-                  <span className="hidden sm:inline">Delete</span>
-                </button>
-                <button
                   onClick={() => setIsModalOpen(false)}
                   className="px-4 py-2 bg-white border border-stone-300 text-stone-700 rounded-xl text-xs font-bold hover:bg-stone-100 transition cursor-pointer"
                 >
@@ -710,16 +1026,30 @@ export default function WoodManagementTab() {
 
           <div className="grid grid-cols-2 gap-4 text-xs mb-4 border p-3 rounded">
             <div>
-              <p><strong>Req ID:</strong> {printModalRequest.id}</p>
-              <p><strong>Work Order No:</strong> {printModalRequest.workOrderNo}</p>
-              <p><strong>Article No:</strong> {printModalRequest.articleNo}</p>
-              <p><strong>Product Name:</strong> {printModalRequest.productName}</p>
+              <p>
+                <strong>Article No:</strong> {printModalRequest.articleNo}
+              </p>
+              <p>
+                <strong>Order No:</strong> {printModalRequest.workOrderNo}
+              </p>
+              <p>
+                <strong>Product Name:</strong> {printModalRequest.productName}
+              </p>
             </div>
             <div>
-              <p><strong>Carpenter Name:</strong> {printModalRequest.carpenterName} ({printModalRequest.contactNumber})</p>
-              <p><strong>Customer Name:</strong> {printModalRequest.customerName}</p>
-              <p><strong>Submission Date:</strong> {printModalRequest.submissionDate}</p>
-              <p><strong>Wood Type:</strong> {printModalRequest.woodType}</p>
+              <p>
+                <strong>Carpenter Name:</strong> {printModalRequest.carpenterName} (
+                {printModalRequest.contactNumber})
+              </p>
+              <p>
+                <strong>Customer Name:</strong> {printModalRequest.customerName}
+              </p>
+              <p>
+                <strong>Submission Date:</strong> {printModalRequest.submissionDate}
+              </p>
+              <p>
+                <strong>Wood Type:</strong> {printModalRequest.woodType}
+              </p>
             </div>
           </div>
 
@@ -744,14 +1074,20 @@ export default function WoodManagementTab() {
                   <td className="border border-stone-400 p-2 text-center">{item.widthInches}"</td>
                   <td className="border border-stone-400 p-2 text-center">{item.thicknessInches}"</td>
                   <td className="border border-stone-400 p-2 text-center">{item.qty}</td>
-                  <td className="border border-stone-400 p-2 text-right font-bold">{item.calculatedCFT.toFixed(2)} CFT</td>
+                  <td className="border border-stone-400 p-2 text-right font-bold">
+                    {item.calculatedCFT.toFixed(2)} CFT
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="font-bold bg-stone-100">
-                <td colSpan={6} className="border border-stone-400 p-2 text-right">Total CFT Volume:</td>
-                <td className="border border-stone-400 p-2 text-right">{printModalRequest.totalVolumeCFT.toFixed(2)} CFT</td>
+                <td colSpan={6} className="border border-stone-400 p-2 text-right">
+                  Total CFT Volume:
+                </td>
+                <td className="border border-stone-400 p-2 text-right">
+                  {printModalRequest.totalVolumeCFT.toFixed(2)} CFT
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -761,7 +1097,9 @@ export default function WoodManagementTab() {
               <p className="border-t border-stone-800 pt-1 w-48 text-center">Carpenter Signature</p>
             </div>
             <div>
-              <p className="border-t border-stone-800 pt-1 w-48 text-center">Supervisor / Manager Signature</p>
+              <p className="border-t border-stone-800 pt-1 w-48 text-center">
+                Supervisor / Manager Signature
+              </p>
             </div>
           </div>
         </div>
@@ -777,16 +1115,26 @@ export default function WoodManagementTab() {
               </div>
               <div>
                 <h3 className="font-bold text-stone-900 text-base">Delete Wood Request?</h3>
-                <p className="text-xs text-stone-500">This action will remove the request card.</p>
+                <p className="text-xs text-stone-500">This action will remove the record from Wood Management.</p>
               </div>
             </div>
 
             <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs space-y-1 font-sans">
-              <p><strong>Req ID:</strong> {deleteConfirmReq.id}</p>
-              <p><strong>Work Order:</strong> {deleteConfirmReq.workOrderNo}</p>
-              <p><strong>Product:</strong> {deleteConfirmReq.productName}</p>
-              <p><strong>Carpenter:</strong> {deleteConfirmReq.carpenterName}</p>
-              <p><strong>Volume:</strong> {deleteConfirmReq.totalVolumeCFT.toFixed(2)} CFT</p>
+              <p>
+                <strong>Article No:</strong> {deleteConfirmReq.articleNo}
+              </p>
+              <p>
+                <strong>Order No:</strong> {deleteConfirmReq.workOrderNo}
+              </p>
+              <p>
+                <strong>Product:</strong> {deleteConfirmReq.productName}
+              </p>
+              <p>
+                <strong>Carpenter:</strong> {deleteConfirmReq.carpenterName}
+              </p>
+              <p>
+                <strong>Volume:</strong> {deleteConfirmReq.totalVolumeCFT.toFixed(2)} CFT
+              </p>
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-2">

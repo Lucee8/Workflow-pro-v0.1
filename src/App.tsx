@@ -765,7 +765,11 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
             >
-              <WoodManagementTab />
+              <WoodManagementTab
+                orders={db.orders}
+                customers={db.customers}
+                onOrderUpdate={handleUpdateOrder}
+              />
             </motion.div>
           )}
 
