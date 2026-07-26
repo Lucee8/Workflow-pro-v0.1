@@ -526,13 +526,13 @@ export default function DetailOrderFormTab({
     setOrderDate(formatToDDMMYYYY(quoteDate));
     setDeliveryDate(formatToDDMMYYYY(first.validUntil ? first.validUntil.split('T')[0] : ''));
 
-    const mappedItems: AgreementItem[] = selectedItems.map((selected) => {
+    const mappedItems: AgreementItem[] = selectedItems.map((selected, itemIdx) => {
       const { quoteId, item, notes, quoteObj } = selected;
       const quote = quoteObj || crmQuotations?.find((q) => q.id === quoteId);
       
       let matchedCat = 'Beds';
       for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
-        if (subs.some((s) => item.furnitureItem.toLowerCase().includes(s.toLowerCase()))) {
+        if (subs.some((s) => (item.furnitureItem || '').toLowerCase().includes(s.toLowerCase()))) {
           matchedCat = cat;
           break;
         }
@@ -546,12 +546,10 @@ export default function DetailOrderFormTab({
       if (item.discount && Number(item.discount) > 0) {
         itemTotalDiscount = Number(item.discount);
       } else if (quote && quote.discount && Number(quote.discount) > 0) {
-        const totalQuoteSubtotal = quote.subtotal || (quote.items || []).reduce((sum: number, it: any) => sum + ((Number(it.unitPrice) || 0) * (Number(it.quantity) || 1)), 0) || 1;
-        const itemGrossValue = (Number(item.unitPrice) || 0) * (Number(item.quantity) || 1);
-        if (totalQuoteSubtotal > 0 && itemGrossValue > 0) {
-          itemTotalDiscount = Math.round((itemGrossValue / totalQuoteSubtotal) * Number(quote.discount));
+        if (selectedItems.length === 1 || itemIdx === 0) {
+          itemTotalDiscount = Number(quote.discount);
         } else {
-          itemTotalDiscount = Math.round(Number(quote.discount) / Math.max(1, (quote.items || []).length));
+          itemTotalDiscount = 0;
         }
       }
 
