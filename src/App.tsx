@@ -219,14 +219,16 @@ export default function App() {
     const newLogs: StatusLog[] = [];
 
     ordersToAdd.forEach((newOrder) => {
-      if (newOrder.total_amount !== undefined && newOrder.advance_paid !== undefined) {
+      if (newOrder.total_amount !== undefined && newOrder.total_amount !== null) {
+        const totalAmt = Number(newOrder.total_amount) || 0;
+        const advPaid = Number(newOrder.advance_paid) || 0;
         const pid = 'pay_' + Math.random().toString(36).substring(2, 9);
         const paymentRecord: Payment = {
           id: pid,
           order_id: newOrder.id,
-          total_amount: newOrder.total_amount,
-          advance_paid: newOrder.advance_paid,
-          balance_due: Math.max(0, newOrder.total_amount - newOrder.advance_paid),
+          total_amount: totalAmt,
+          advance_paid: advPaid,
+          balance_due: Math.max(0, totalAmt - advPaid),
           payment_date: newOrder.order_date || new Date().toISOString().split('T')[0],
           payment_mode: 'cash',
           notes: 'Auto-created payment record from Detail Order Form details.',

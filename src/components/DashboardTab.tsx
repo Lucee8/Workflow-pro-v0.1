@@ -7,7 +7,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Order, User, Customer, OrderStage, Payment } from '../types';
 import { Eye, Clock, CheckCircle2, AlertTriangle, Briefcase, CalendarCheck, ArrowUpRight, PiggyBank, CreditCard, ShieldCheck, Boxes, Sparkles, UserPlus, Plus } from 'lucide-react';
-import { formatToDDMMYYYY } from '../utils';
+import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 
 interface DashboardTabProps {
   orders: Order[];
@@ -34,12 +34,39 @@ export default function DashboardTab({
   const completedCount = orders.filter((o) => ['Ready to Dispatch', 'Dispatched'].includes(o.current_status)).length;
   const delayedCount = orders.filter((o) => o.is_delayed).length;
 
-  // Payments calculations
-  const totalOutstandingBalance = payments.reduce((sum, p) => sum + p.balance_due, 0);
-  const fullyPaidCount = orders.filter(o => {
-    const p = payments.find(pay => pay.order_id === o.id);
-    return p !== undefined && p.balance_due <= 0;
+  // Payments calculations across all active orders
+  const getOrderBalanceDue = (o: Order) => {
+    const p = payments.find((pay) => pay.order_id === o.id);
+    if (p) {
+      if (typeof p.balance_due === 'number' && !isNaN(p.balance_due)) {
+        return Math.max(0, p.balance_due);
+      }
+      const total = typeof p.total_amount === 'number' ? p.total_amount : (o.total_amount || 0);
+      const adv = typeof p.advance_paid === 'number' ? p.advance_paid : (o.advance_paid || 0);
+      return Math.max(0, total - adv);
+    }
+    if (o.total_amount !== undefined && o.total_amount !== null) {
+      const total = Number(o.total_amount) || 0;
+      const adv = Number(o.advance_paid) || 0;
+      return Math.max(0, total - adv);
+    }
+    return 0;
+  };
+
+  const totalOutstandingBalance = orders.reduce((sum, o) => sum + getOrderBalanceDue(o), 0);
+
+  const fullyPaidCount = orders.filter((o) => {
+    if (orders.length === 0) return false;
+    const p = payments.find((pay) => pay.order_id === o.id);
+    if (p) {
+      return (p.balance_due ?? (p.total_amount - p.advance_paid)) <= 0;
+    }
+    if (o.total_amount !== undefined && o.total_amount !== null && o.total_amount > 0) {
+      return (o.total_amount - (o.advance_paid || 0)) <= 0;
+    }
+    return false;
   }).length;
+
   const partialOrUnpaidCount = orders.length - fullyPaidCount;
 
   // Pie chart calculation
@@ -364,7 +391,7 @@ export default function DashboardTab({
                 </thead>
                 <tbody className="divide-y divide-stone-100">
                   {[...orders]
-                    .sort((a, b) => new Date(b.created_at || b.order_date).getTime() - new Date(a.created_at || a.order_date).getTime())
+                    .sort(compareOrdersByArticleSerialDesc)
                     .slice(0, 5)
                     .map((order, i) => {
                     const cust = customers.find((c) => c.id === order.customer_id);
