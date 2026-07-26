@@ -134,3 +134,98 @@ export function compareOrdersByArticleSerialDesc<T extends { article_no?: string
   return dateB - dateA;
 }
 
+/**
+ * Generates a clean sequential order number in the format ORDYYMMSSS (e.g. ORD2607001, ORD2607002, ORD2607003).
+ * Correctly parses existing order IDs without treating sub-item suffixes (e.g. -1, -4) as part of the serial.
+ *
+ * @param targetDate Optional date string (YYYY-MM-DD, DD/MM/YYYY, or ISO). Defaults to current date.
+ * @param orderList Optional list of existing orders to inspect for highest serial.
+ * @param quoteList Optional list of existing CRM quotations to inspect for highest serial.
+ * @returns Standardized order number string (e.g. ORD2607001).
+ */
+export function generateNewOrderNo(
+  targetDate?: string,
+  orderList: any[] = [],
+  quoteList: any[] = []
+): string {
+  let dateToUse = targetDate || new Date().toISOString().split('T')[0];
+  if (dateToUse.includes('T')) {
+    dateToUse = dateToUse.split('T')[0];
+  }
+
+  let yy = '';
+  let mm = '';
+
+  if (dateToUse && dateToUse.includes('-')) {
+    const parts = dateToUse.split('-');
+    if (parts[0] && parts[0].length === 4) {
+      // YYYY-MM-DD
+      yy = parts[0].slice(-2);
+      mm = (parts[1] || '').padStart(2, '0');
+    } else if (parts[2] && parts[2].length === 4) {
+      // DD-MM-YYYY
+      yy = parts[2].slice(-2);
+      mm = (parts[1] || '').padStart(2, '0');
+    }
+  } else if (dateToUse && dateToUse.includes('/')) {
+    const parts = dateToUse.split('/');
+    if (parts[2] && parts[2].length === 4) {
+      // DD/MM/YYYY
+      yy = parts[2].slice(-2);
+      mm = (parts[1] || '').padStart(2, '0');
+    } else if (parts[0] && parts[0].length === 4) {
+      // YYYY/MM/DD
+      yy = parts[0].slice(-2);
+      mm = (parts[1] || '').padStart(2, '0');
+    }
+  }
+
+  if (!yy || !mm) {
+    const d = new Date();
+    yy = d.getFullYear().toString().slice(-2);
+    mm = String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  const prefix = `ORD${yy}${mm}`;
+
+  // Strict regex: matches ORD + (optional separator) + YY + MM + (optional separator) + DIGITS
+  // Captures only the continuous numeric serial immediately following the date prefix.
+  // Stops at any subsequent hyphen, underscore, slash or letter (e.g. "-1", "_item1").
+  const serialRegex = new RegExp(`^ORD[-_\\s/]?${yy}${mm}[-_\\s/]?(\\d+)`, 'i');
+
+  let maxSerial = 0;
+
+  const processIdString = (idStr?: string) => {
+    if (!idStr || typeof idStr !== 'string') return;
+    const match = idStr.trim().match(serialRegex);
+    if (match && match[1]) {
+      const serialNum = parseInt(match[1], 10);
+      if (!isNaN(serialNum) && serialNum > maxSerial) {
+        maxSerial = serialNum;
+      }
+    }
+  };
+
+  if (orderList && Array.isArray(orderList)) {
+    orderList.forEach((o: any) => {
+      if (!o) return;
+      processIdString(o.id);
+      processIdString(o.orderNo);
+      processIdString(o.parent_order_id);
+    });
+  }
+
+  if (quoteList && Array.isArray(quoteList)) {
+    quoteList.forEach((q: any) => {
+      if (!q) return;
+      processIdString(q.id);
+      processIdString(q.orderNo);
+      processIdString(q.quotationNo);
+    });
+  }
+
+  const nextSerial = maxSerial + 1;
+  const sss = String(nextSerial).padStart(3, '0');
+  return `${prefix}${sss}`;
+}
+

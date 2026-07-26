@@ -6,7 +6,7 @@
 import React from 'react';
 import { Customer, User, Order, OrderPriority, OrderStage } from '../types';
 import { generateUUID, generateArticleNumber } from '../db/store';
-import { generateNextParentOrderId, parseParentOrderSequence } from '../db/orderIdService';
+import { generateNewOrderNo } from '../utils';
 import { 
   Users, 
   HelpCircle, 
@@ -682,7 +682,7 @@ export default function OrderForm({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleFormSubmission = async (e: React.FormEvent) => {
+  const handleFormSubmission = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateStep(step)) return;
 
@@ -713,17 +713,9 @@ export default function OrderForm({
     const draftTotalInvoiced = initialDraft ? ((draftFinalRate * draftQty) + draftPacking + draftTransportation) : undefined;
     const draftAdvancePaid = initialDraft ? draftAdvance : undefined;
 
-    let baseOrderId = '';
-    let orderSequence = 1;
-
-    if (initialDraft && initialDraft.orderNo && initialDraft.orderNo !== 'Generated when order is saved') {
-      baseOrderId = initialDraft.orderNo;
-      orderSequence = parseParentOrderSequence(baseOrderId);
-    } else {
-      const generated = await generateNextParentOrderId();
-      baseOrderId = generated.parentOrderId;
-      orderSequence = generated.orderSequence;
-    }
+    const baseOrderId = (initialDraft && initialDraft.orderNo)
+      ? initialDraft.orderNo
+      : generateNewOrderNo(orderDate, orders);
 
     const listToSave = productsList.length > 0 ? productsList : [
       {
@@ -764,7 +756,6 @@ export default function OrderForm({
       const newOrder: Order = {
         id: orderId,
         parent_order_id: baseOrderId,
-        order_sequence: orderSequence,
         article_no: artNo,
         customer_id: targetCustomerId,
         category: prod.category || category,
