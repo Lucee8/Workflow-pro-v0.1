@@ -78,7 +78,7 @@ export default function DetailOrderFormTab({
   const [items, setItems] = React.useState<AgreementItem[]>([]);
   const [activeItemIndex, setActiveItemIndex] = React.useState<number>(0);
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
-  const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string }>>([]);
+  const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string; quoteObj?: any }>>([]);
   const isUpdatingRef = React.useRef(false);
 
   // Form Fields - Page 1
@@ -420,6 +420,7 @@ export default function DetailOrderFormTab({
       customerPinCode: string;
       items: Array<{
         quoteId: string;
+        quoteObj?: any;
         quoteItem: any;
         quoteNotes: string;
         quoteCreatedAt: string;
@@ -448,6 +449,7 @@ export default function DetailOrderFormTab({
       (quote.items || []).forEach((item: any) => {
         groups[custId].items.push({
           quoteId: quote.id,
+          quoteObj: quote,
           quoteItem: item,
           quoteNotes: quote.notes || '',
           quoteCreatedAt: quote.created_at,
@@ -465,7 +467,8 @@ export default function DetailOrderFormTab({
     customer: any,
     notes: string,
     created_at: string,
-    validUntil: string
+    validUntil: string,
+    quoteObj?: any
   ) => {
     setSelectedQuoteItems((prev) => {
       const exists = prev.some((p) => p.quoteId === quoteId && p.item.id === item.id);
@@ -475,9 +478,9 @@ export default function DetailOrderFormTab({
       } else {
         const hasDifferentCustomer = prev.length > 0 && prev[0].customer.id !== customer.id;
         if (hasDifferentCustomer) {
-          next = [{ quoteId, item, customer, notes, created_at, validUntil }];
+          next = [{ quoteId, item, customer, notes, created_at, validUntil, quoteObj }];
         } else {
-          next = [...prev, { quoteId, item, customer, notes, created_at, validUntil }];
+          next = [...prev, { quoteId, item, customer, notes, created_at, validUntil, quoteObj }];
         }
       }
 
@@ -486,7 +489,7 @@ export default function DetailOrderFormTab({
     });
   };
 
-  const loadSelectedQuoteItems = (selectedItems: Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string }>) => {
+  const loadSelectedQuoteItems = (selectedItems: Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string; quoteObj?: any }>) => {
     if (selectedItems.length === 0) {
       clearForm();
       return;
@@ -524,7 +527,8 @@ export default function DetailOrderFormTab({
     setDeliveryDate(formatToDDMMYYYY(first.validUntil ? first.validUntil.split('T')[0] : ''));
 
     const mappedItems: AgreementItem[] = selectedItems.map((selected) => {
-      const { quoteId, item, notes } = selected;
+      const { quoteId, item, notes, quoteObj } = selected;
+      const quote = quoteObj || crmQuotations?.find((q) => q.id === quoteId);
       
       let matchedCat = 'Beds';
       for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
@@ -537,6 +541,23 @@ export default function DetailOrderFormTab({
       const nameStr = item.furnitureItem ? item.furnitureItem : `${matchedCat} › Custom Size`;
       const descStr = `Structure: ${item.material || 'Sagwan'}. Finish: Hand Polish. Color: Walnut. ${notes || ''}`;
 
+      // Fetch given discount in detailed order form from Quotation Financial Summary - Discount Amount (INR)
+      let itemTotalDiscount = 0;
+      if (item.discount && Number(item.discount) > 0) {
+        itemTotalDiscount = Number(item.discount);
+      } else if (quote && quote.discount && Number(quote.discount) > 0) {
+        const totalQuoteSubtotal = quote.subtotal || (quote.items || []).reduce((sum: number, it: any) => sum + ((Number(it.unitPrice) || 0) * (Number(it.quantity) || 1)), 0) || 1;
+        const itemGrossValue = (Number(item.unitPrice) || 0) * (Number(item.quantity) || 1);
+        if (totalQuoteSubtotal > 0 && itemGrossValue > 0) {
+          itemTotalDiscount = Math.round((itemGrossValue / totalQuoteSubtotal) * Number(quote.discount));
+        } else {
+          itemTotalDiscount = Math.round(Number(quote.discount) / Math.max(1, (quote.items || []).length));
+        }
+      }
+
+      const qty = item.quantity || 1;
+      const discountPerUnit = qty > 0 ? Math.round(itemTotalDiscount / qty) : itemTotalDiscount;
+
       return {
         id: `quote_item_${quoteId}_${item.id}`,
         category: matchedCat,
@@ -548,10 +569,10 @@ export default function DetailOrderFormTab({
         finish: 'Hand Polish',
         colorShade: 'Walnut',
         specialNotes: notes || '',
-        qty: item.quantity || 1,
+        qty,
         quotedRate: item.unitPrice || 0,
         cushion: 0,
-        discount: item.quantity ? (item.discount || 0) / item.quantity : (item.discount || 0),
+        discount: discountPerUnit,
         hardware: 0,
         productName: nameStr,
         itemDescription: descStr,
@@ -607,6 +628,7 @@ export default function DetailOrderFormTab({
 
       const quotationItems = (quote.items || []).map((item: any) => ({
         quoteId: quote.id,
+        quoteObj: quote,
         item,
         customer: {
           id: customerObj.id,
@@ -946,7 +968,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                       </span>
                     </div>
                     <div className="space-y-1 pl-1 max-h-24 overflow-y-auto pr-0.5">
-                      {custGroup.items.map(({ quoteId, quoteItem, quoteNotes, quoteCreatedAt, quoteValidUntil }) => {
+                      {custGroup.items.map(({ quoteId, quoteObj, quoteItem, quoteNotes, quoteCreatedAt, quoteValidUntil }) => {
                         const isChecked = selectedQuoteItems.some(
                           (p) => p.quoteId === quoteId && p.item.id === quoteItem.id
                         );
@@ -973,7 +995,8 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                                   },
                                   quoteNotes,
                                   quoteCreatedAt,
-                                  quoteValidUntil
+                                  quoteValidUntil,
+                                  quoteObj
                                 )
                               }
                               className="mt-0.5 rounded border-stone-300 text-[#593622] focus:ring-[#593622] h-3.5 w-3.5"
