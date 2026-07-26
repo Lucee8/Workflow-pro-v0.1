@@ -447,10 +447,12 @@ export default function WorkerDashboard({
                 <span className="text-[10px] text-stone-400 font-bold block uppercase">Customer Match</span>
                 <strong className="text-stone-850 text-xs block mt-0.5">{activeCust?.name || 'Walkin Customer'}</strong>
               </div>
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold block uppercase">Goal Delivery deadline</span>
-                <strong className="text-stone-850 text-xs block font-mono mt-0.5">{activeOrder.delivery_date}</strong>
-              </div>
+              {currentUser.role === 'admin' && (
+                <div>
+                  <span className="text-[10px] text-stone-400 font-bold block uppercase">Goal Delivery deadline</span>
+                  <strong className="text-stone-850 text-xs block font-mono mt-0.5">{activeOrder.delivery_date}</strong>
+                </div>
+              )}
               {activeOrder.carpenter_delivery_date && (
                 <div>
                   <span className="text-[10px] text-amber-800 font-bold block uppercase">Carpenter Delivery Date</span>
@@ -1149,12 +1151,15 @@ export default function WorkerDashboard({
                         <span className="font-semibold text-stone-700">{ord.current_status}</span>
                       </td>
                       <td className="py-3.5 px-4 font-mono text-stone-500 font-semibold">
-                        <div>{ord.delivery_date}</div>
-                        {isCarpenter && ord.carpenter_delivery_date && (
-                          <div className="text-[10px] text-amber-700 font-bold mt-0.5">Carpenter target: {ord.carpenter_delivery_date}</div>
+                        {isCarpenter && ord.carpenter_delivery_date ? (
+                          <div className="text-amber-900 font-bold">{ord.carpenter_delivery_date}</div>
+                        ) : !isCarpenter && ord.polish_delivery_date ? (
+                          <div className="text-teal-900 font-bold">{ord.polish_delivery_date}</div>
+                        ) : (
+                          <div>{ord.delivery_date}</div>
                         )}
-                        {!isCarpenter && ord.polish_delivery_date && (
-                          <div className="text-[10px] text-teal-700 font-bold mt-0.5">Polish target: {ord.polish_delivery_date}</div>
+                        {currentUser.role === 'admin' && (ord.carpenter_delivery_date || ord.polish_delivery_date) && (
+                          <div className="text-[10px] text-stone-400 font-normal">Goal: {ord.delivery_date}</div>
                         )}
                       </td>
                       <td className="py-3.5 px-4">
