@@ -7,7 +7,6 @@ import React from 'react';
 import { Order, User, Customer, OrderStage, OrderPriority, Payment } from '../types';
 import { Search, Eye, PlusCircle, AlertCircle, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, CreditCard, Trash2 } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
-import { parseParentOrderSequence } from '../db/orderIdService';
 
 interface OrdersTabProps {
   orders: Order[];
@@ -48,10 +47,10 @@ export default function OrdersTab({
   const filteredOrders = orders.filter((order) => {
     const cust = customers.find((c) => c.id === order.customer_id);
     const carpenter = users.find((u) => u.id === order.carpenter_id);
+    const polish = order.polish_person_id ? users.find((u) => u.id === order.polish_person_id) : null;
 
     const matchesSearch =
       order.article_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (order.parent_order_id && order.parent_order_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (cust && cust.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (cust && cust.phone.includes(searchTerm)) ||
       (carpenter && carpenter.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -68,62 +67,12 @@ export default function OrdersTab({
     const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();
 
     return matchesSearch && matchesStage && matchesStatus && matchesPriority;
-  });
+  }).sort(compareOrdersByArticleSerialDesc);
 
-  // Group products by parent order
-  interface ParentGroup {
-    parentOrderId: string;
-    orderSequence: number;
-    latestCreatedAt: string;
-    orderDate: string;
-    customer?: Customer;
-    items: Order[];
-  }
-
-  const groupsMap = new Map<string, ParentGroup>();
-  filteredOrders.forEach((order) => {
-    const parentKey = order.parent_order_id || order.id;
-    const seq = parseParentOrderSequence(parentKey, order.order_sequence);
-    const cust = customers.find((c) => c.id === order.customer_id);
-
-    if (!groupsMap.has(parentKey)) {
-      groupsMap.set(parentKey, {
-        parentOrderId: parentKey,
-        orderSequence: seq,
-        latestCreatedAt: order.created_at || order.order_date || '',
-        orderDate: order.order_date,
-        customer: cust,
-        items: [],
-      });
-    }
-
-    const g = groupsMap.get(parentKey)!;
-    g.items.push(order);
-    if (!g.customer && cust) g.customer = cust;
-    const tOrder = new Date(order.created_at || order.order_date || 0).getTime();
-    const tGroup = new Date(g.latestCreatedAt || 0).getTime();
-    if (tOrder > tGroup) g.latestCreatedAt = order.created_at || order.order_date || '';
-  });
-
-  // Sort items inside each group by product Article Numbers descending
-  groupsMap.forEach((g) => {
-    g.items.sort(compareOrdersByArticleSerialDesc);
-  });
-
-  // Sort parent order groups descending (latest parent order first)
-  const sortedParentGroups = Array.from(groupsMap.values()).sort((a, b) => {
-    const timeA = new Date(a.latestCreatedAt || 0).getTime();
-    const timeB = new Date(b.latestCreatedAt || 0).getTime();
-    if (timeB !== timeA) return timeB - timeA;
-    if (b.orderSequence !== a.orderSequence) return b.orderSequence - a.orderSequence;
-    return b.parentOrderId.localeCompare(a.parentOrderId);
-  });
-
-  // Pagination for parent order groups
-  const totalParentGroups = sortedParentGroups.length;
-  const totalPages = Math.ceil(totalParentGroups / itemsPerPage) || 1;
+  // Pagination index helper
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentGroups = sortedParentGroups.slice(startIndex, startIndex + itemsPerPage);
+  const currentItems = filteredOrders.slice(startIndex, startIndex + itemsPerPage);
 
   const getStatusClass = (stage: OrderStage) => {
     switch (stage) {
@@ -238,142 +187,118 @@ export default function OrdersTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {currentGroups.length > 0 ? (
-                currentGroups.map((group) => (
-                  <React.Fragment key={group.parentOrderId}>
-                    {/* Parent Order Group Header Row */}
-                    <tr className="bg-stone-100/90 border-t-2 border-stone-200">
-                      <td colSpan={9} className="py-2.5 px-4">
-                        <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-black text-[#593622] bg-[#593622]/10 px-2.5 py-0.5 rounded border border-[#593622]/20 text-[11px]">
-                              Parent Order: {group.parentOrderId}
+              {currentItems.length > 0 ? (
+                currentItems.map((order) => {
+                  const cust = customers.find((c) => c.id === order.customer_id);
+                  const carpenter = users.find((u) => u.id === order.carpenter_id);
+                  return (
+                    <tr key={order.id} className="hover:bg-stone-50/50 transition">
+                      <td className="py-3.5 px-4 font-mono font-black text-stone-900 group">
+                        <div className="flex flex-col">
+                          <span className="flex items-center gap-1.5">
+                            {order.priority === 'urgent' && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" title="Urgent priority!" />
+                            )}
+                            {order.article_no}
+                          </span>
+                          {order.parent_order_id && (
+                            <span className="text-[9.5px] font-mono font-normal text-amber-800/80 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60 w-fit mt-0.5">
+                              Parent: {order.parent_order_id}
                             </span>
-                            <span className="font-semibold text-stone-800">
-                              Customer: {group.customer?.name || 'Walk-In Customer'}
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-semibold text-stone-850">
+                          {cust?.name || 'Walk-In'}
+                        </div>
+                        <p className="text-[10px] text-stone-400 font-mono mt-0.5">{cust?.phone || ''}</p>
+                      </td>
+                      <td className="py-3.5 px-4 font-medium text-stone-500">
+                        {order.category} &rsaquo; <span className="text-stone-700">{order.sub_category}</span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStatusClass(order.current_status)}`}>
+                          {order.current_status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold text-stone-700 text-[11px]">
+                        {carpenter ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-5 w-5 rounded bg-amber-100 text-amber-800 text-[9px] font-black flex items-center justify-center">
+                              {carpenter.initials}
                             </span>
-                            <span className="text-stone-400 font-mono text-[10px]">
-                              {group.customer?.phone ? `(${group.customer.phone})` : ''}
-                            </span>
+                            <span>{carpenter.name}</span>
                           </div>
-                          <div className="flex items-center gap-3 text-[11px] text-stone-500 font-medium font-mono">
-                            <span>{group.items.length} Product Item{group.items.length > 1 ? 's' : ''}</span>
-                            <span>•</span>
-                            <span>Order Date: {formatToDDMMYYYY(group.orderDate)}</span>
-                          </div>
+                        ) : (
+                          <span className="text-stone-400">—</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-medium text-stone-600">
+                        {formatToDDMMYYYY(order.delivery_date)}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {order.is_delayed ? (
+                          <span className="inline-flex items-center gap-1.5 text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                            <AlertCircle size={10} /> Delayed
+                          </span>
+                        ) : order.current_status === 'Ready to Dispatch' ? (
+                          <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                            Ready
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                            In Progress
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {(() => {
+                          const p = payments.find((pay) => pay.order_id === order.id);
+                          if (!p) {
+                            return (
+                              <span className="inline-flex items-center bg-rose-50 border border-rose-200 text-rose-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
+                                Unpaid
+                              </span>
+                            );
+                          }
+                          if (p.balance_due <= 0) {
+                            return (
+                              <span className="inline-flex items-center bg-green-50 border border-green-200 text-green-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
+                                Paid
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center bg-amber-50 border border-amber-200 text-amber-600 text-[9px] font-black uppercase px-2 py-0.5 rounded-md" title={`Due: ₹${p.balance_due}`}>
+                              Partial
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => onViewOrder(order.id)}
+                            className="bg-stone-100 hover:bg-[#593622] hover:text-white p-2 rounded-xl text-stone-600 transition"
+                            title="Open details screen"
+                          >
+                            <Eye size={13} strokeWidth={2.5} />
+                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => onDeleteOrder?.(order.id)}
+                              className="bg-stone-100 hover:bg-rose-600 hover:text-white p-2 rounded-xl text-rose-600 transition"
+                              title="Cancel & Delete Order"
+                            >
+                              <Trash2 size={13} strokeWidth={2.5} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
-
-                    {/* Product Line Items */}
-                    {group.items.map((order) => {
-                      const cust = customers.find((c) => c.id === order.customer_id);
-                      const carpenter = users.find((u) => u.id === order.carpenter_id);
-                      return (
-                        <tr key={order.id} className="hover:bg-amber-50/30 transition border-b border-stone-100">
-                          <td className="py-3 px-4 font-mono font-black text-stone-900">
-                            <div className="flex flex-col">
-                              <span className="flex items-center gap-1.5 text-xs">
-                                {order.priority === 'urgent' && (
-                                  <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" title="Urgent priority!" />
-                                )}
-                                {order.article_no}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-semibold text-stone-850">
-                              {cust?.name || 'Walk-In'}
-                            </div>
-                            <p className="text-[10px] text-stone-400 font-mono mt-0.5">{cust?.phone || ''}</p>
-                          </td>
-                          <td className="py-3 px-4 font-medium text-stone-500">
-                            {order.category} &rsaquo; <span className="text-stone-700">{order.sub_category}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStatusClass(order.current_status)}`}>
-                              {order.current_status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-semibold text-stone-700 text-[11px]">
-                            {carpenter ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="h-5 w-5 rounded bg-amber-100 text-amber-800 text-[9px] font-black flex items-center justify-center">
-                                  {carpenter.initials}
-                                </span>
-                                <span>{carpenter.name}</span>
-                              </div>
-                            ) : (
-                              <span className="text-stone-400">—</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 font-medium text-stone-600">
-                            {formatToDDMMYYYY(order.delivery_date)}
-                          </td>
-                          <td className="py-3 px-4">
-                            {order.is_delayed ? (
-                              <span className="inline-flex items-center gap-1.5 text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                                <AlertCircle size={10} /> Delayed
-                              </span>
-                            ) : order.current_status === 'Ready to Dispatch' ? (
-                              <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                                Ready
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                                In Progress
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            {(() => {
-                              const p = payments.find((pay) => pay.order_id === order.id);
-                              if (!p) {
-                                return (
-                                  <span className="inline-flex items-center bg-rose-50 border border-rose-200 text-rose-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
-                                    Unpaid
-                                  </span>
-                                );
-                              }
-                              if (p.balance_due <= 0) {
-                                return (
-                                  <span className="inline-flex items-center bg-green-50 border border-green-200 text-green-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
-                                    Paid
-                                  </span>
-                                );
-                              }
-                              return (
-                                <span className="inline-flex items-center bg-amber-50 border border-amber-200 text-amber-600 text-[9px] font-black uppercase px-2 py-0.5 rounded-md" title={`Due: ₹${p.balance_due}`}>
-                                  Partial
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => onViewOrder(order.id)}
-                                className="bg-stone-100 hover:bg-[#593622] hover:text-white p-2 rounded-xl text-stone-600 transition"
-                                title="Open details screen"
-                              >
-                                <Eye size={13} strokeWidth={2.5} />
-                              </button>
-                              {isAdmin && (
-                                <button
-                                  onClick={() => onDeleteOrder?.(order.id)}
-                                  className="bg-stone-100 hover:bg-rose-600 hover:text-white p-2 rounded-xl text-rose-600 transition"
-                                  title="Cancel & Delete Order"
-                                >
-                                  <Trash2 size={13} strokeWidth={2.5} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </React.Fragment>
-                ))
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={9} className="py-12 text-center">
@@ -392,9 +317,9 @@ export default function OrdersTab({
         {/* Dense Pagination Navigation Bar */}
         <div className="p-4 bg-stone-50 border-t border-stone-100 flex items-center justify-between font-mono text-[11px] text-stone-500">
           <span>
-            Showing parent orders <strong className="text-stone-700">{totalParentGroups > 0 ? Math.min(startIndex + 1, totalParentGroups) : 0}</strong> to{' '}
-            <strong className="text-stone-700">{Math.min(startIndex + itemsPerPage, totalParentGroups)}</strong> of{' '}
-            <strong className="text-stone-700">{totalParentGroups}</strong> ({filteredOrders.length} line items)
+            Showing <strong className="text-stone-700">{Math.min(startIndex + 1, filteredOrders.length)}</strong> to{' '}
+            <strong className="text-stone-700">{Math.min(startIndex + itemsPerPage, filteredOrders.length)}</strong> of{' '}
+            <strong className="text-stone-700">{filteredOrders.length}</strong> orders
           </span>
 
           <div className="flex items-center gap-2">

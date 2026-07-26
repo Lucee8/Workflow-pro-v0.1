@@ -2,7 +2,6 @@ import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
 import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
-import { generateNextParentOrderId, getKolkataYearMonth } from '../db/orderIdService';
 import logoImg from '../assets/images/logo.png';
 
 interface AgreementItem {
@@ -82,10 +81,75 @@ export default function DetailOrderFormTab({
   const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string }>>([]);
   const isUpdatingRef = React.useRef(false);
 
+  function generateNewOrderNo(targetDate?: string, orderList: Order[] = orders, quoteList: any[] = crmQuotations) {
+    const dateToUse = targetDate || new Date().toISOString().split('T')[0];
+    let yy = '';
+    let mm = '';
+    if (dateToUse && dateToUse.includes('-')) {
+      const parts = dateToUse.split('-');
+      if (parts[0] && parts[0].length === 4) {
+        yy = parts[0].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
+      } else if (parts[2] && parts[2].length === 4) {
+        yy = parts[2].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
+      }
+    } else if (dateToUse && dateToUse.includes('/')) {
+      const parts = dateToUse.split('/');
+      if (parts[2] && parts[2].length === 4) {
+        yy = parts[2].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
+      } else if (parts[0] && parts[0].length === 4) {
+        yy = parts[0].slice(-2);
+        mm = (parts[1] || '').padStart(2, '0');
+      }
+    }
+
+    if (!yy || !mm) {
+      const d = new Date();
+      yy = d.getFullYear().toString().slice(-2);
+      mm = String(d.getMonth() + 1).padStart(2, '0');
+    }
+    const prefix = `ORD${yy}${mm}`;
+    
+    let maxSerial = 0;
+    const processIdString = (idStr?: string) => {
+      if (!idStr || typeof idStr !== 'string') return;
+      const cleanStr = idStr.replace(/[-_\s/]/g, '').toUpperCase();
+      if (cleanStr.startsWith(prefix)) {
+        const serialPart = cleanStr.substring(prefix.length);
+        const serialNum = parseInt(serialPart, 10);
+        if (!isNaN(serialNum) && serialNum > maxSerial) {
+          maxSerial = serialNum;
+        }
+      }
+    };
+
+    if (orderList && orderList.length > 0) {
+      orderList.forEach((o: any) => {
+        processIdString(o.id);
+        processIdString(o.orderNo);
+        processIdString(o.article_no);
+      });
+    }
+
+    if (quoteList && quoteList.length > 0) {
+      quoteList.forEach((q: any) => {
+        processIdString(q.id);
+        processIdString(q.orderNo);
+        processIdString(q.quotationNo);
+      });
+    }
+
+    const nextSerial = maxSerial + 1;
+    const sss = String(nextSerial).padStart(3, '0');
+    return `${prefix}${sss}`;
+  }
+
   // Form Fields - Page 1
   const [orderDate, setOrderDate] = React.useState(() => formatToDDMMYYYY(new Date().toISOString().split('T')[0]));
   const [deliveryDate, setDeliveryDate] = React.useState('');
-  const [orderNo, setOrderNo] = React.useState('Generated when order is saved');
+  const [orderNo, setOrderNo] = React.useState(() => generateNewOrderNo());
   const [articleNo, setArticleNo] = React.useState('');
   const [toArticleNo, setToArticleNo] = React.useState('');
   const [customerName, setCustomerName] = React.useState('');
@@ -307,6 +371,12 @@ export default function DetailOrderFormTab({
     setItemDescription(descStr);
   }, [material, finish, colorShade, specialNotes]);
 
+  React.useEffect(() => {
+    if (!selectedOrderId && (!orderNo || orderNo.trim() === '')) {
+      setOrderNo(generateNewOrderNo(orderDate, orders, crmQuotations));
+    }
+  }, [orderDate, selectedOrderId, orders, crmQuotations]);
+
   // Final Rate is calculated as: Quoted Rate + Cushion + Hardware - Discount
   const finalRate = React.useMemo(() => {
     return Math.max(0, Number(quotedRate) + Number(cushion) + Number(hardware) - Number(discount));
@@ -507,9 +577,9 @@ export default function DetailOrderFormTab({
 
     const uniqueQuoteIds = Array.from(new Set(selectedItems.map((s) => s.quoteId)));
     
-    // Order number generated when order is saved
+    // Generate order number in ORDYYMM000 format
     const quoteDate = first.created_at ? first.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
-    setOrderNo('Generated when order is saved');
+    setOrderNo(generateNewOrderNo(quoteDate, orders, crmQuotations));
     
     // Leave article number blank for manual entry
     setArticleNo('');
@@ -750,7 +820,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     const today = formatToDDMMYYYY(new Date().toISOString().split('T')[0]);
     setOrderDate(today);
     setDeliveryDate('');
-    setOrderNo('Generated when order is saved');
+    setOrderNo(generateNewOrderNo(today, orders, crmQuotations));
     setArticleNo('');
     setToArticleNo('');
     setCustomerName('');
@@ -1036,7 +1106,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 type="text"
                 value={orderNo}
                 onChange={(e) => setOrderNo(e.target.value)}
-                placeholder="Generated when order is saved"
+                placeholder="e.g. ord_a901"
                 className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
               />
             </div>
@@ -1698,7 +1768,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-[10px] md:text-xs font-mono text-stone-600 uppercase tracking-wider font-bold">
-                              {language === 'mr' ? 'संदर्भ क्र.:' : 'Invoice Ref:'} #{orderNo && orderNo !== 'Generated when order is saved' ? orderNo : 'Draft'}
+                              {language === 'mr' ? 'संदर्भ क्र.:' : 'Invoice Ref:'} #{orderNo || 'ORD2607001'}
                             </p>
                           </div>
                         </div>
@@ -2153,7 +2223,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-[10px] md:text-xs font-mono text-stone-600 uppercase tracking-wider font-bold">
-                        {language === 'mr' ? 'संदर्भ क्र.:' : 'Invoice Ref:'} #{orderNo && orderNo !== 'Generated when order is saved' ? orderNo : 'Draft'}
+                        {language === 'mr' ? 'संदर्भ क्र.:' : 'Invoice Ref:'} #{orderNo || 'ORD2607001'}
                       </p>
                     </div>
                   </div>
