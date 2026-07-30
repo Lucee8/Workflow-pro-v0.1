@@ -64,7 +64,6 @@ export interface WoodSchedule {
 export interface Order {
   id: string; // UUID
   parent_order_id?: string; // FK to parent customer order ID
-  order_sequence?: number; // Monthly sequence number (e.g. 1, 2, 3...)
   article_no: string; // DD/MM/XX/NNNN
   customer_id: string; // FK to customer
   category: string; // e.g. Bedroom, Living Room, Kitchen
@@ -203,7 +202,7 @@ export type CRMCustomerStatus =
   | 'Order Confirmed'
   | 'In Production'
   | 'Delivered'
-  | 'Cancelled';
+  | 'Disqualified';
 
 export type CRMCustomerSource = 'Website' | 'Walkin' | 'Social Media' | 'Youtube' | 'Reference';
 

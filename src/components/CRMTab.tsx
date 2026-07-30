@@ -461,7 +461,7 @@ export default function CRMTab({
 
   // Customer journey status and sync helpers
   const getCustomerStatus = (cust: CRMCustomer): string => {
-    if (cust.status === 'Cancelled') return 'Cancelled';
+    if (cust.status === 'Disqualified' || (cust.status as string) === 'Cancelled') return 'Disqualified';
     if (cust.status === 'Delivered') return 'Delivered';
 
     const custOrders = db.orders?.filter(o => o.customer_id === cust.id) || [];
@@ -486,7 +486,8 @@ export default function CRMTab({
       case 'Order Confirmed': return '🟩 Order Confirmed';
       case 'In Production': return '🏭 In Production';
       case 'Delivered': return '🟫 Delivered';
-      case 'Cancelled': return '⚫ Cancelled';
+      case 'Disqualified':
+      case 'Cancelled': return '⚫ Disqualified';
       default: return '🟥 New Inquiry';
     }
   };
@@ -500,6 +501,7 @@ export default function CRMTab({
       case 'Order Confirmed': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'In Production': return 'bg-cyan-50 text-cyan-800 border-cyan-200';
       case 'Delivered': return 'bg-amber-50 text-amber-900 border-amber-200';
+      case 'Disqualified':
       case 'Cancelled': return 'bg-stone-100 text-stone-600 border-stone-200';
       default: return 'bg-rose-50 text-rose-700 border-rose-200';
     }
@@ -1709,7 +1711,7 @@ export default function CRMTab({
                               <option value="Order Confirmed">🟩 Order Confirmed</option>
                               <option value="In Production" disabled={getCustomerStatus(selectedCustomer) !== 'In Production'}>🏭 In Production {getCustomerStatus(selectedCustomer) === 'In Production' ? '(Synced)' : '(Auto)'}</option>
                               <option value="Delivered">🟫 Delivered</option>
-                              <option value="Cancelled">⚫ Cancelled</option>
+                              <option value="Disqualified">⚫ Disqualified</option>
                             </select>
                           </div>
 
@@ -2433,7 +2435,7 @@ export default function CRMTab({
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="In Production">In Production</option>
                   <option value="Delivered">Delivered</option>
-                  <option value="Cancelled">Cancelled</option>
+                  <option value="Disqualified">Disqualified</option>
                 </select>
               </div>
 
