@@ -231,7 +231,8 @@ export default function CRMTab({
               unitPrice: item.unitPrice || 0,
               discount: item.discount || 0,
               gst: item.gst || 0,
-              totalAmount: item.totalAmount || ((item.quantity || 1) * (item.unitPrice || 0))
+              totalAmount: item.totalAmount || ((item.quantity || 1) * (item.unitPrice || 0)),
+              images: item.images || []
             }))
           : [{
               id: generateId('item'),
@@ -242,7 +243,8 @@ export default function CRMTab({
               unitPrice: 0,
               discount: 0,
               gst: 0,
-              totalAmount: 0
+              totalAmount: 0,
+              images: []
             }];
         setQuoteItems(loadedItems);
         setQuoteDiscount(editingQuotation.discount !== undefined ? editingQuotation.discount : (editingQuotation.items?.[0]?.discount || 0));
@@ -264,7 +266,8 @@ export default function CRMTab({
           unitPrice: 0,
           discount: 0,
           gst: 0,
-          totalAmount: 0
+          totalAmount: 0,
+          images: []
         }]);
         setQuoteDiscount(0);
         setQuoteGst(0);
@@ -297,7 +300,8 @@ export default function CRMTab({
         unitPrice: 0,
         discount: 0,
         gst: 0,
-        totalAmount: 0
+        totalAmount: 0,
+        images: []
       }
     ]);
   };
@@ -305,6 +309,81 @@ export default function CRMTab({
   const handleRemoveProductItem = (idx: number) => {
     if (quoteItems.length <= 1) return;
     setQuoteItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const compressAndReadFile = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1000;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+          } else {
+            resolve((e.target?.result as string) || '');
+          }
+        };
+        img.onerror = () => resolve((e.target?.result as string) || '');
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleItemImagesUpload = async (idx: number, filesList: FileList | null) => {
+    if (!filesList || filesList.length === 0) return;
+    const filesArray = Array.from(filesList);
+    const newImageDataUrls: string[] = [];
+    for (const file of filesArray) {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressAndReadFile(file);
+        if (compressed) {
+          newImageDataUrls.push(compressed);
+        }
+      }
+    }
+    if (newImageDataUrls.length > 0) {
+      setQuoteItems(prev => prev.map((item, i) => {
+        if (i === idx) {
+          return {
+            ...item,
+            images: [...(item.images || []), ...newImageDataUrls]
+          };
+        }
+        return item;
+      }));
+    }
+  };
+
+  const handleRemoveItemImage = (itemIdx: number, imgIdx: number) => {
+    setQuoteItems(prev => prev.map((item, i) => {
+      if (i === itemIdx) {
+        const updatedImages = (item.images || []).filter((_, imI) => imI !== imgIdx);
+        return {
+          ...item,
+          images: updatedImages
+        };
+      }
+      return item;
+    }));
   };
 
   const handleUpdateProductItem = (idx: number, field: keyof CRMQuotationItem, val: any) => {
@@ -903,7 +982,8 @@ export default function CRMTab({
         unitPrice: p,
         discount: 0,
         gst: quoteGstPercent,
-        totalAmount: q * p
+        totalAmount: q * p,
+        images: item.images || []
       };
     });
 
@@ -2800,6 +2880,83 @@ export default function CRMTab({
                               </div>
                             </div>
                           </div>
+
+                          {/* UPLOAD PRODUCT IMAGES SECTION */}
+                          <div className="space-y-2 pt-2 border-t border-stone-200/80">
+                            <label className="font-bold text-stone-700 text-xs flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
+                                <Image size={14} className="text-[#593622]" /> Upload Product Images
+                              </span>
+                              <span className="text-[10px] text-stone-400 font-normal">
+                                {item.images && item.images.length > 0
+                                  ? `${item.images.length} image(s) attached`
+                                  : 'JPG, PNG, WEBP (Max 5MB)'}
+                              </span>
+                            </label>
+
+                            {/* Dropzone Area */}
+                            <div
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (e.dataTransfer.files) {
+                                  handleItemImagesUpload(idx, e.dataTransfer.files);
+                                }
+                              }}
+                              className="border-2 border-dashed border-stone-300 hover:border-amber-500 bg-stone-50/50 hover:bg-amber-50/20 rounded-2xl p-4 transition text-center cursor-pointer relative group"
+                              onClick={() => {
+                                const el = document.getElementById(`item-img-input-${idx}`);
+                                if (el) el.click();
+                              }}
+                            >
+                              <input
+                                id={`item-img-input-${idx}`}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => handleItemImagesUpload(idx, e.target.files)}
+                              />
+                              <div className="flex flex-col items-center justify-center space-y-1.5">
+                                <div className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-2xs flex items-center justify-center text-stone-500 group-hover:text-[#593622] group-hover:border-amber-300 transition">
+                                  <Upload size={18} />
+                                </div>
+                                <div className="text-xs text-stone-700 font-medium">
+                                  Drag and drop images here or <span className="font-bold text-[#593622] underline">click to browse</span>
+                                </div>
+                                <div className="text-[10px] text-stone-400 font-mono uppercase tracking-wider">
+                                  SUPPORTS: JPG, PNG, WEBP (MAX 5MB PER FILE)
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Render Thumbnail Grid if Images Exist */}
+                            {item.images && item.images.length > 0 && (
+                              <div className="flex flex-wrap gap-2.5 pt-1">
+                                {item.images.map((imgSrc, imgIdx) => (
+                                  <div key={imgIdx} className="relative group/thumb w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-stone-200 overflow-hidden bg-stone-100 shadow-2xs shrink-0">
+                                    <img src={imgSrc} alt={`PRODUCT #${idx + 1} Image ${imgIdx + 1}`} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-stone-900/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRemoveItemImage(idx, imgIdx);
+                                        }}
+                                        className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition cursor-pointer"
+                                        title="Delete Image"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                    <span className="absolute bottom-1 left-1 bg-black/60 text-white font-mono text-[8px] font-bold px-1.5 py-0.5 rounded">
+                                      #{imgIdx + 1}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -3394,7 +3551,8 @@ export default function CRMTab({
               '.print\\:hidden { display: none !important; }' +
               '.print\\:inline { display: inline !important; }' +
               '.print\\:block { display: block !important; }' +
-              '@media print { body { padding: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } }' +
+              '@media print { body { padding: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } .page-break-before-always, .break-before-page { page-break-before: always !important; break-before: page !important; } }' +
+              '.page-break-before-always, .break-before-page { page-break-before: always; break-before: page; }' +
               '</style>' +
               '</head><body onload="window.print(); setTimeout(function(){ window.close(); }, 500);">' +
               '<div class="max-w-4xl mx-auto border-2 border-stone-800 p-8">' +
@@ -3736,6 +3894,19 @@ export default function CRMTab({
                                         {item.material && <span>Wood: <span className="text-slate-700">{item.material}</span></span>}
                                       </div>
                                     )}
+                                    {/* Thumbnail images in estimate table row */}
+                                    {item.images && item.images.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                        {item.images.map((imgUrl, imgI) => (
+                                          <img
+                                            key={imgI}
+                                            src={imgUrl}
+                                            alt={`${item.furnitureItem} thumbnail ${imgI + 1}`}
+                                            className="w-10 h-10 object-cover rounded border border-slate-300 shadow-2xs bg-white"
+                                          />
+                                        ))}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="p-2 text-center text-slate-400 font-mono">-</td>
                                   <td className="p-2 text-center font-bold text-slate-900">{item.quantity}</td>
@@ -3937,6 +4108,93 @@ export default function CRMTab({
                           )}
                           <span className="text-[10px] text-slate-500 font-bold mt-2 font-sans">Authorized Signatory</span>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* NEW PAGE: PRODUCT VISUAL GALLERY / ATTACHMENTS */}
+                    <div className="break-before-page print:break-before-page page-break-before-always pt-8 print:pt-4 mt-8 print:mt-4 border-t-2 border-dashed border-slate-300 print:border-none space-y-6">
+                      {/* Header for Image Sheet */}
+                      <div className="border-2 border-slate-800 bg-white p-4 space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-300 pb-3">
+                          <div>
+                            <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">Bhisez Furniture</h2>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">PRODUCT VISUAL SPECIFICATIONS & GALLERY</p>
+                          </div>
+                          <div className="text-right text-xs">
+                            <span className="font-mono font-bold text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded">
+                              Estimate Ref: {quoteDisplayId}
+                            </span>
+                            <p className="text-[10px] text-slate-500 mt-1 font-mono">{formatToDDMMYYYY(viewingEstimateQuote.created_at)}</p>
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-700 flex justify-between items-center font-medium">
+                          <div>
+                            Customer Name: <strong className="text-slate-900 font-bold">{customer?.name || viewingEstimateQuote.customer_name}</strong>
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            Total Products: <strong className="text-slate-900">{itemsList.length}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Products Gallery Stack */}
+                      <div className="space-y-6">
+                        {itemsList.map((item, idx) => {
+                          const itemImages = item.images || [];
+                          return (
+                            <div
+                              key={item.id || idx}
+                              className="border-2 border-slate-800 bg-white p-4 space-y-4 page-break-inside-avoid print:page-break-inside-avoid"
+                            >
+                              {/* Header Bar with PRODUCT #number and product name */}
+                              <div className="bg-stone-100 border border-stone-300 p-3 rounded-none flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-3">
+                                  <span className="bg-[#593622] text-white text-[11px] font-black px-3 py-1 rounded uppercase tracking-wider font-mono">
+                                    PRODUCT #{idx + 1}
+                                  </span>
+                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
+                                    {item.furnitureItem || `Product #${idx + 1}`}
+                                  </h3>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700 font-medium">
+                                  {item.material && <span>Wood: <strong className="text-slate-900">{item.material}</strong></span>}
+                                  {item.dimensions && <span>Size: <strong className="text-slate-900 font-mono">{item.dimensions}</strong></span>}
+                                  <span>Qty: <strong className="text-slate-900 font-mono">{item.quantity}</strong></span>
+                                  <span>Subtotal: <strong className="text-slate-900 font-mono">₹{((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString('en-IN')}</strong></span>
+                                </div>
+                              </div>
+
+                              {/* Product Images Container */}
+                              {itemImages.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-1">
+                                  {itemImages.map((imgSrc, imgI) => (
+                                    <div
+                                      key={imgI}
+                                      className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50 p-2 flex flex-col items-center justify-center space-y-2 shadow-2xs"
+                                    >
+                                      <div className="w-full h-48 sm:h-56 bg-white rounded-lg border border-slate-200 overflow-hidden flex items-center justify-center p-1">
+                                        <img
+                                          src={imgSrc}
+                                          alt={`PRODUCT #${idx + 1} - ${item.furnitureItem} - Photo ${imgI + 1}`}
+                                          className="max-w-full max-h-full object-contain"
+                                        />
+                                      </div>
+                                      <div className="w-full flex justify-between items-center text-[10px] text-slate-600 font-mono font-bold pt-1.5 border-t border-slate-200 px-1">
+                                        <span>PRODUCT #{idx + 1} • Photo {imgI + 1}</span>
+                                        <span className="text-[#593622] font-black truncate max-w-[130px]">{item.furnitureItem}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="border border-dashed border-slate-300 rounded-xl p-6 bg-slate-50/50 text-center text-slate-400 text-xs italic">
+                                  No product photos attached for PRODUCT #{idx + 1} ({item.furnitureItem || 'Item'}).
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 

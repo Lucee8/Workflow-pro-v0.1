@@ -239,6 +239,7 @@ export interface CRMQuotationItem {
   discount?: number; // amount or percentage
   gst?: number; // percentage
   totalAmount?: number;
+  images?: string[]; // Array of base64/URL image sources
 }
 
 export interface CRMQuotation {
