@@ -16,7 +16,9 @@ import {
   saveCustomerToFirebase,
   deleteCustomerFromFirebase,
   saveStatusLogToFirebase,
+  deleteStatusLogFromFirebase,
   savePaymentToFirebase,
+  deletePaymentFromFirebase,
   saveUserToFirebase,
   deleteUserFromFirebase,
   saveCRMCustomerToFirebase,
@@ -292,13 +294,32 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    if (!window.confirm("Are you sure you want to cancel and permanently delete this order? This action cannot be undone.")) return;
-    const updated = db.orders.filter((o) => o.id !== orderId);
+    const targetOrder = db.orders.find((o) => o.id === orderId);
+    const label = targetOrder?.article_no ? `order ${targetOrder.article_no}` : "this order";
+    if (
+      !window.confirm(
+        `Are you sure you want to cancel and permanently delete ${label}? This will remove it from all sections including all carpenter and polish person workbenches, wood management, and reports. This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const updatedOrders = db.orders.filter((o) => o.id !== orderId);
+    const logsToDelete = db.statusLogs.filter((l) => l.order_id === orderId);
+    const updatedLogs = db.statusLogs.filter((l) => l.order_id !== orderId);
+    const paymentsToDelete = db.payments.filter((p) => p.order_id === orderId);
+    const updatedPayments = db.payments.filter((p) => p.order_id !== orderId);
+
     updateDbState({
       ...db,
-      orders: updated
+      orders: updatedOrders,
+      statusLogs: updatedLogs,
+      payments: updatedPayments,
     });
+
     deleteOrderFromFirebase(orderId);
+    logsToDelete.forEach((l) => deleteStatusLogFromFirebase(l.id));
+    paymentsToDelete.forEach((p) => deletePaymentFromFirebase(p.id));
   };
 
   const handleDeleteCustomer = (customerId: string) => {
