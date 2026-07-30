@@ -72,7 +72,14 @@ import {
   FileSignature,
   Package,
   Sparkles,
-  Layers
+  Layers,
+  Globe,
+  Briefcase,
+  Play,
+  Store,
+  ShoppingBag,
+  Compass,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 
 function getAmountInWords(num: number): string {
@@ -778,15 +785,41 @@ export default function CRMTab({
     { name: 'Jun', revenue: totalRevenue > 0 ? totalRevenue : 650000 },
   ];
 
-  // (c) Customer Growth
-  const customerGrowthData = [
-    { name: 'Jan', customers: 5 },
-    { name: 'Feb', customers: 11 },
-    { name: 'Mar', customers: 18 },
-    { name: 'Apr', customers: 24 },
-    { name: 'May', customers: totalCustomers > 0 ? Math.round(totalCustomers * 0.8) : 28 },
-    { name: 'Jun', customers: totalCustomers > 0 ? totalCustomers : 35 },
-  ];
+  // (c) Source Performance (calculated from Customers Directory: db.crmCustomers)
+  const sourceBarColors: Record<string, string> = {
+    'IndiaMART': '#8c5a6b',
+    'Walkin': '#82a37d',
+    'Manual': '#7da87b',
+    'Website': '#3b82f6',
+    'TradeIndia': '#b88653',
+    'Social Media': '#8b5cf6',
+    'Email': '#547387',
+    'Youtube': '#dc2626',
+    'Reference': '#0d9488',
+  };
+
+  const defaultSourcesList = ['IndiaMART', 'Walkin', 'Manual', 'Website', 'TradeIndia', 'Social Media', 'Email', 'Youtube', 'Reference'];
+  const crmCustomerList = db.crmCustomers || [];
+  const sourceCounts: Record<string, number> = {};
+
+  crmCustomerList.forEach(cust => {
+    const src = cust.source ? cust.source.trim() : 'Walkin';
+    sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+  });
+
+  const totalLeadsCount = crmCustomerList.length;
+  const allSourceNames = Array.from(new Set([...Object.keys(sourceCounts), ...defaultSourcesList]));
+
+  const sourcePerformanceData = allSourceNames
+    .map(name => ({
+      name,
+      count: sourceCounts[name] || 0,
+      color: sourceBarColors[name] || '#6b7280'
+    }))
+    .filter(item => totalLeadsCount > 0 ? item.count > 0 : ['IndiaMART', 'Manual', 'TradeIndia', 'Email', 'Walkin', 'Website', 'Social Media', 'Youtube', 'Reference'].includes(item.name))
+    .sort((a, b) => b.count - a.count);
+
+  const maxSourceCount = Math.max(...sourcePerformanceData.map(d => d.count), 1);
 
   // (d) Order Status Distribution
   const orderStages = ['Pending', 'Design', 'Carpentry', 'QC Check 1', 'Polish', 'QC Check 2', 'Ready to Dispatch', 'Dispatched'];
@@ -1289,21 +1322,62 @@ export default function CRMTab({
               </div>
             </div>
 
-            {/* Customer growth trend */}
+            {/* Source Performance */}
             <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
               <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Customer Growth curve</span>
-                <Users className="text-stone-400" size={16} />
+                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Source Performance</span>
+                <PieChartIcon className="text-stone-400" size={16} />
               </div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={customerGrowthData}>
-                    <XAxis dataKey="name" fontSize={10} tickLine={false} />
-                    <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="customers" stroke="#059669" fill="#10b981" fillOpacity={0.1} strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+
+              <div className="space-y-3 min-h-[200px] max-h-[280px] overflow-y-auto pr-1">
+                {sourcePerformanceData.length > 0 ? (
+                  sourcePerformanceData.map((item) => {
+                    const percentage = maxSourceCount > 0 ? (item.count / maxSourceCount) * 100 : 0;
+                    
+                    let IconComponent = Globe;
+                    if (item.name === 'IndiaMART') IconComponent = Store;
+                    else if (item.name === 'Walkin') IconComponent = Building;
+                    else if (item.name === 'Manual') IconComponent = FileText;
+                    else if (item.name === 'TradeIndia') IconComponent = Briefcase;
+                    else if (item.name === 'Social Media') IconComponent = Share2;
+                    else if (item.name === 'Email') IconComponent = Mail;
+                    else if (item.name === 'Youtube') IconComponent = Play;
+                    else if (item.name === 'Reference') IconComponent = UserCheck;
+
+                    return (
+                      <div key={item.name} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg border border-stone-200 bg-stone-50/80 flex items-center justify-center shrink-0 shadow-2xs">
+                          <IconComponent size={15} style={{ color: item.color }} />
+                        </div>
+
+                        <span className="w-24 text-xs font-semibold text-stone-700 truncate shrink-0">
+                          {item.name}
+                        </span>
+
+                        <div className="flex-1 bg-[#f1ece4] h-8 rounded-xl p-0.5 relative flex items-center overflow-hidden">
+                          <div
+                            className="h-full rounded-lg flex items-center justify-center px-2.5 text-xs font-bold text-white transition-all duration-500 shadow-2xs min-w-[28px]"
+                            style={{
+                              width: item.count > 0 ? `${Math.max(12, percentage)}%` : '28px',
+                              backgroundColor: item.color,
+                              opacity: item.count > 0 ? 1 : 0.4
+                            }}
+                          >
+                            {item.count}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-stone-400 text-xs italic">
+                    No lead source data available
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-stone-200/80 pt-3 mt-4 flex justify-between items-center text-xs font-bold text-stone-500 font-mono">
+                <span>Total leads: {totalLeadsCount}</span>
               </div>
             </div>
 
@@ -2551,9 +2625,13 @@ export default function CRMTab({
                   defaultValue={editingCustomer?.source || 'Walkin'}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
-                  <option value="Website">Website</option>
+                  <option value="IndiaMART">IndiaMART</option>
                   <option value="Walkin">Walkin</option>
+                  <option value="Manual">Manual</option>
+                  <option value="Website">Website</option>
+                  <option value="TradeIndia">TradeIndia</option>
                   <option value="Social Media">Social Media</option>
+                  <option value="Email">Email</option>
                   <option value="Youtube">Youtube</option>
                   <option value="Reference">Reference</option>
                 </select>

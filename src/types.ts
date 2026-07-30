@@ -204,7 +204,7 @@ export type CRMCustomerStatus =
   | 'Delivered'
   | 'Disqualified';
 
-export type CRMCustomerSource = 'Website' | 'Walkin' | 'Social Media' | 'Youtube' | 'Reference';
+export type CRMCustomerSource = 'IndiaMART' | 'Walkin' | 'Manual' | 'Website' | 'TradeIndia' | 'Social Media' | 'Email' | 'Youtube' | 'Reference' | string;
 
 export interface CRMCustomer {
   id: string; // Auto Generated/UUID
