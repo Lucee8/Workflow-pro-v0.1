@@ -79,6 +79,7 @@ import {
   Store,
   ShoppingBag,
   Compass,
+  Loader2,
   PieChart as PieChartIcon
 } from 'lucide-react';
 
@@ -214,6 +215,8 @@ export default function CRMTab({
   const [editingQuotation, setEditingQuotation] = React.useState<CRMQuotation | null>(null);
   const [showAddFollowupModal, setShowAddFollowupModal] = React.useState(false);
   const [viewingEstimateQuote, setViewingEstimateQuote] = React.useState<CRMQuotation | null>(null);
+  const [isUploadingItemIdx, setIsUploadingItemIdx] = React.useState<number | null>(null);
+  const [previewImageModalUrl, setPreviewImageModalUrl] = React.useState<string | null>(null);
 
   const [quoteCustomerId, setQuoteCustomerId] = React.useState<string>('');
   const [quoteItems, setQuoteItems] = React.useState<CRMQuotationItem[]>([]);
@@ -322,33 +325,47 @@ export default function CRMTab({
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const maxDim = 1000;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
+        const rawDataUrl = (e.target?.result as string) || '';
+        if (!rawDataUrl) {
+          resolve('');
+          return;
+        }
+        try {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              let width = img.width || 800;
+              let height = img.height || 600;
+              const maxDim = 1200;
+              if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                  height = Math.round((height * maxDim) / width);
+                  width = maxDim;
+                } else {
+                  width = Math.round((width * maxDim) / height);
+                  height = maxDim;
+                }
+              }
+              canvas.width = Math.max(1, width);
+              canvas.height = Math.max(1, height);
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                resolve(compressedDataUrl || rawDataUrl);
+              } else {
+                resolve(rawDataUrl);
+              }
+            } catch {
+              resolve(rawDataUrl);
             }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.82));
-          } else {
-            resolve((e.target?.result as string) || '');
-          }
-        };
-        img.onerror = () => resolve((e.target?.result as string) || '');
-        img.src = e.target?.result as string;
+          };
+          img.onerror = () => resolve(rawDataUrl);
+          img.src = rawDataUrl;
+        } catch {
+          resolve(rawDataUrl);
+        }
       };
       reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
@@ -358,25 +375,34 @@ export default function CRMTab({
   const handleItemImagesUpload = async (idx: number, filesList: FileList | null) => {
     if (!filesList || filesList.length === 0) return;
     const filesArray = Array.from(filesList);
-    const newImageDataUrls: string[] = [];
-    for (const file of filesArray) {
-      if (file.type.startsWith('image/')) {
-        const compressed = await compressAndReadFile(file);
-        if (compressed) {
-          newImageDataUrls.push(compressed);
+    setIsUploadingItemIdx(idx);
+
+    try {
+      const newImageDataUrls: string[] = [];
+      for (const file of filesArray) {
+        const isImg = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|heic|bmp|svg)$/i.test(file.name);
+        if (isImg) {
+          const compressed = await compressAndReadFile(file);
+          if (compressed) {
+            newImageDataUrls.push(compressed);
+          }
         }
       }
-    }
-    if (newImageDataUrls.length > 0) {
-      setQuoteItems(prev => prev.map((item, i) => {
-        if (i === idx) {
-          return {
-            ...item,
-            images: [...(item.images || []), ...newImageDataUrls]
-          };
-        }
-        return item;
-      }));
+      if (newImageDataUrls.length > 0) {
+        setQuoteItems(prev => prev.map((item, i) => {
+          if (i === idx) {
+            return {
+              ...item,
+              images: [...(item.images || []), ...newImageDataUrls]
+            };
+          }
+          return item;
+        }));
+      }
+    } catch (err) {
+      console.error("Quotation image upload error:", err);
+    } finally {
+      setIsUploadingItemIdx(null);
     }
   };
 
@@ -2143,30 +2169,52 @@ export default function CRMTab({
 
                           <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                             {selectedCustQuotes.length > 0 ? (
-                              selectedCustQuotes.map(q => (
-                                <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
-                                  <div>
-                                    <strong className="text-xs text-stone-950 font-bold block">{q.id}</strong>
-                                    <span className="text-[10px] text-stone-500">₹{(q.totalAmount ?? 0).toLocaleString('en-IN')} | Valid: {formatToDDMMYYYY(q.validUntil)}</span>
+                              selectedCustQuotes.map(q => {
+                                const qImages = (q.items || []).flatMap(i => i.images || []).filter(Boolean);
+                                return (
+                                  <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
+                                    <div>
+                                      <strong className="text-xs text-stone-950 font-bold block">{q.id}</strong>
+                                      <span className="text-[10px] text-stone-500 block">₹{(q.totalAmount ?? 0).toLocaleString('en-IN')} | Valid: {formatToDDMMYYYY(q.validUntil)}</span>
+                                      {qImages.length > 0 && (
+                                        <div className="flex items-center gap-1.5 mt-1.5">
+                                          {qImages.slice(0, 3).map((imgUrl, imgI) => (
+                                            <img
+                                              key={imgI}
+                                              src={imgUrl}
+                                              alt={`Photo ${imgI + 1}`}
+                                              className="w-7 h-7 rounded-md border border-stone-300 object-cover hover:scale-110 transition cursor-pointer"
+                                              onClick={() => setPreviewImageModalUrl(imgUrl)}
+                                              title="Click to zoom image"
+                                            />
+                                          ))}
+                                          {qImages.length > 3 && (
+                                            <span className="text-[9px] font-bold text-amber-900 bg-amber-100 px-1 py-0.5 rounded font-mono">
+                                              +{qImages.length - 3}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                        q.status === 'Approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                      }`}>
+                                        {q.status}
+                                      </span>
+                                      {q.status === 'Sent' && hasWriteAccess && (
+                                        <button
+                                          onClick={() => handleConvertQuotationToOrder(q)}
+                                          className="bg-[#593622] hover:bg-[#4d2f1e] text-white p-1 rounded transition"
+                                          title="Convert to Order"
+                                        >
+                                          <FileCheck size={12} />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                      q.status === 'Approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                                    }`}>
-                                      {q.status}
-                                    </span>
-                                    {q.status === 'Sent' && hasWriteAccess && (
-                                      <button
-                                        onClick={() => handleConvertQuotationToOrder(q)}
-                                        className="bg-[#593622] hover:bg-[#4d2f1e] text-white p-1 rounded transition"
-                                        title="Convert to Order"
-                                      >
-                                        <FileCheck size={12} />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))
+                                );
+                              })
                             ) : (
                               <p className="text-xs text-stone-400 text-center py-6">No price quotes generated.</p>
                             )}
@@ -2388,6 +2436,7 @@ export default function CRMTab({
                       const itemsCount = quote.items?.length || 0;
                       const firstItem = quote.items?.[0];
                       const totalQty = quote.items?.reduce((sum, i) => sum + (i.quantity || 1), 0) || 1;
+                      const quoteImages = (quote.items || []).flatMap(i => i.images || []).filter(Boolean);
                       return (
                         <tr key={quote.id} className="hover:bg-stone-50/50 transition">
                           <td className="p-4 font-mono font-bold text-[#593622]">{quote.id}</td>
@@ -2408,6 +2457,27 @@ export default function CRMTab({
                             ) : (
                               <div className="font-bold text-stone-900">
                                 {firstItem?.furnitureItem || 'Custom Scope'}
+                              </div>
+                            )}
+
+                            {/* Attached Product Photos Thumbnails */}
+                            {quoteImages.length > 0 && (
+                              <div className="flex items-center gap-1.5 mt-2">
+                                {quoteImages.slice(0, 3).map((imgUrl, imgI) => (
+                                  <img
+                                    key={imgI}
+                                    src={imgUrl}
+                                    alt={`Quote ${quote.id} Photo ${imgI + 1}`}
+                                    className="w-8 h-8 rounded-lg border border-stone-300 object-cover shadow-2xs hover:scale-110 transition cursor-pointer bg-white"
+                                    onClick={() => setPreviewImageModalUrl(imgUrl)}
+                                    title="Click to view photo"
+                                  />
+                                ))}
+                                {quoteImages.length > 3 && (
+                                  <span className="text-[9px] font-black text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded-md font-mono">
+                                    +{quoteImages.length - 3} photos
+                                  </span>
+                                )}
                               </div>
                             )}
                           </td>
@@ -3037,19 +3107,20 @@ export default function CRMTab({
 
                           {/* UPLOAD PRODUCT IMAGES SECTION */}
                           <div className="space-y-2 pt-2 border-t border-stone-200/80">
-                            <label className="font-bold text-stone-700 text-xs flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
-                                <Image size={14} className="text-[#593622]" /> Upload Product Images
-                              </span>
-                              <span className="text-[10px] text-stone-400 font-normal">
+                            <div className="flex items-center justify-between">
+                              <label className="font-bold text-stone-700 text-xs flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
+                                <Image size={14} className="text-[#593622]" /> Upload Product Photos
+                              </label>
+                              <span className="text-[10px] text-stone-500 font-bold">
                                 {item.images && item.images.length > 0
-                                  ? `${item.images.length} image(s) attached`
-                                  : 'JPG, PNG, WEBP (Max 5MB)'}
+                                  ? `✅ ${item.images.length} photo(s) attached`
+                                  : 'JPG, PNG, WEBP, HEIC'}
                               </span>
-                            </label>
+                            </div>
 
-                            {/* Dropzone Area */}
-                            <div
+                            {/* Dropzone Area wrapped with label */}
+                            <label
+                              htmlFor={`item-img-input-${idx}`}
                               onDragOver={(e) => e.preventDefault()}
                               onDrop={(e) => {
                                 e.preventDefault();
@@ -3057,11 +3128,7 @@ export default function CRMTab({
                                   handleItemImagesUpload(idx, e.dataTransfer.files);
                                 }
                               }}
-                              className="border-2 border-dashed border-stone-300 hover:border-amber-500 bg-stone-50/50 hover:bg-amber-50/20 rounded-2xl p-4 transition text-center cursor-pointer relative group"
-                              onClick={() => {
-                                const el = document.getElementById(`item-img-input-${idx}`);
-                                if (el) el.click();
-                              }}
+                              className="border-2 border-dashed border-amber-300/80 hover:border-[#593622] bg-amber-50/40 hover:bg-amber-50/80 rounded-2xl p-4 transition text-center cursor-pointer block relative group"
                             >
                               <input
                                 id={`item-img-input-${idx}`}
@@ -3069,45 +3136,83 @@ export default function CRMTab({
                                 accept="image/*"
                                 multiple
                                 className="hidden"
-                                onChange={(e) => handleItemImagesUpload(idx, e.target.files)}
+                                onChange={(e) => {
+                                  if (e.target.files) {
+                                    handleItemImagesUpload(idx, e.target.files);
+                                    e.target.value = '';
+                                  }
+                                }}
                               />
-                              <div className="flex flex-col items-center justify-center space-y-1.5">
-                                <div className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-2xs flex items-center justify-center text-stone-500 group-hover:text-[#593622] group-hover:border-amber-300 transition">
-                                  <Upload size={18} />
-                                </div>
-                                <div className="text-xs text-stone-700 font-medium">
-                                  Drag and drop images here or <span className="font-bold text-[#593622] underline">click to browse</span>
-                                </div>
-                                <div className="text-[10px] text-stone-400 font-mono uppercase tracking-wider">
-                                  SUPPORTS: JPG, PNG, WEBP (MAX 5MB PER FILE)
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Render Thumbnail Grid if Images Exist */}
-                            {item.images && item.images.length > 0 && (
-                              <div className="flex flex-wrap gap-2.5 pt-1">
-                                {item.images.map((imgSrc, imgIdx) => (
-                                  <div key={imgIdx} className="relative group/thumb w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-stone-200 overflow-hidden bg-stone-100 shadow-2xs shrink-0">
-                                    <img src={imgSrc} alt={`PRODUCT #${idx + 1} Image ${imgIdx + 1}`} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-stone-900/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleRemoveItemImage(idx, imgIdx);
-                                        }}
-                                        className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition cursor-pointer"
-                                        title="Delete Image"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                    <span className="absolute bottom-1 left-1 bg-black/60 text-white font-mono text-[8px] font-bold px-1.5 py-0.5 rounded">
-                                      #{imgIdx + 1}
-                                    </span>
+                              <div className="flex flex-col items-center justify-center space-y-1.5 pointer-events-none">
+                                {isUploadingItemIdx === idx ? (
+                                  <div className="flex items-center gap-2 text-xs font-bold text-[#593622] py-2">
+                                    <Loader2 size={20} className="animate-spin text-[#593622]" />
+                                    <span>Compressing and attaching images...</span>
                                   </div>
-                                ))}
+                                ) : (
+                                  <>
+                                    <div className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-2xs flex items-center justify-center text-stone-600 group-hover:text-[#593622] group-hover:border-amber-400 transition">
+                                      <Upload size={18} />
+                                    </div>
+                                    <div className="text-xs text-stone-800 font-bold">
+                                      Drag & drop product photos here or <span className="text-[#593622] underline font-extrabold">click to upload</span>
+                                    </div>
+                                    <div className="text-[10px] text-stone-500 font-mono uppercase tracking-wider font-semibold">
+                                      Upload photos of designs, reference sketches, or CAD renderings
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </label>
+
+                            {/* Thumbnail Gallery Preview if Images Exist */}
+                            {item.images && item.images.length > 0 && (
+                              <div className="space-y-1.5 pt-1">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                                  Attached Photos Preview ({item.images.length}):
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                  {item.images.map((imgSrc, imgIdx) => (
+                                    <div
+                                      key={imgIdx}
+                                      className="relative group/thumb w-24 h-24 sm:w-28 sm:h-28 rounded-xl border-2 border-stone-200 hover:border-[#593622] overflow-hidden bg-white shadow-xs shrink-0 transition"
+                                    >
+                                      <img
+                                        src={imgSrc}
+                                        alt={`PRODUCT #${idx + 1} Image ${imgIdx + 1}`}
+                                        className="w-full h-full object-cover cursor-pointer hover:scale-105 transition"
+                                        onClick={() => setPreviewImageModalUrl(imgSrc)}
+                                      />
+                                      <div className="absolute inset-0 bg-stone-900/60 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center gap-2 p-1">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPreviewImageModalUrl(imgSrc);
+                                          }}
+                                          className="p-1.5 bg-stone-800 hover:bg-stone-900 text-white rounded-lg transition cursor-pointer"
+                                          title="Zoom Preview"
+                                        >
+                                          <Eye size={14} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRemoveItemImage(idx, imgIdx);
+                                          }}
+                                          className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition cursor-pointer"
+                                          title="Delete Image"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                      <span className="absolute bottom-1 left-1 bg-stone-900/80 text-white font-mono text-[9px] font-extrabold px-1.5 py-0.5 rounded shadow-2xs">
+                                        Photo #{imgIdx + 1}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -4050,13 +4155,15 @@ export default function CRMTab({
                                     )}
                                     {/* Thumbnail images in estimate table row */}
                                     {item.images && item.images.length > 0 && (
-                                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                      <div className="flex flex-wrap gap-2 mt-2">
                                         {item.images.map((imgUrl, imgI) => (
                                           <img
                                             key={imgI}
                                             src={imgUrl}
                                             alt={`${item.furnitureItem} thumbnail ${imgI + 1}`}
-                                            className="w-10 h-10 object-cover rounded border border-slate-300 shadow-2xs bg-white"
+                                            className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg border-2 border-slate-300 hover:border-[#593622] shadow-2xs bg-white cursor-pointer hover:scale-105 transition"
+                                            onClick={() => setPreviewImageModalUrl(imgUrl)}
+                                            title="Click to view high-resolution photo"
                                           />
                                         ))}
                                       </div>
@@ -4362,6 +4469,50 @@ export default function CRMTab({
           </div>
         );
       })()}
+
+      {/* GLOBAL FULL-SCREEN IMAGE LIGHTBOX MODAL */}
+      {previewImageModalUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewImageModalUrl(null)}
+        >
+          <div
+            className="relative max-w-5xl max-h-[90vh] bg-stone-900 border border-stone-700 rounded-2xl p-2 shadow-2xl flex flex-col items-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between p-2.5 border-b border-stone-800">
+              <span className="text-xs font-bold font-mono text-stone-300 flex items-center gap-2">
+                <Image size={14} className="text-amber-400" />
+                Quotation Product Photo Inspection
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImageModalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5"
+                >
+                  Open High-Res
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImageModalUrl(null)}
+                  className="p-1.5 bg-stone-800 hover:bg-rose-600 text-white rounded-lg transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="p-3 flex items-center justify-center overflow-auto max-h-[80vh]">
+              <img
+                src={previewImageModalUrl}
+                alt="Quotation Full View"
+                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-lg"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
