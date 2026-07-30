@@ -548,34 +548,69 @@ export default function CRMTab({
 
   // Customer journey status and sync helpers
   const getCustomerStatus = (cust: CRMCustomer): string => {
-    if (cust.status === 'Disqualified' || (cust.status as string) === 'Cancelled') return 'Disqualified';
-    if (cust.status === 'Delivered') return 'Delivered';
-
-    const custOrders = db.orders?.filter(o => o.customer_id === cust.id) || [];
-    const hasInProduction = custOrders.some(o => o.current_status !== 'Pending' && o.current_status !== 'Dispatched');
-    const hasDelivered = custOrders.length > 0 && custOrders.every(o => o.current_status === 'Dispatched');
-
-    if (hasInProduction) {
-      return 'In Production';
-    } else if (hasDelivered && cust.status === 'Order Confirmed') {
-      return 'Delivered';
+    const rawStatus = cust.status ? String(cust.status).trim() : '';
+    if (['Disqualified', 'Cancelled', 'Deal Lost'].includes(rawStatus)) {
+      return 'Disqualified';
     }
 
-    return cust.status || 'New Inquiry';
+    const custOrders = db.orders?.filter(o => o.customer_id === cust.id) || [];
+    if (custOrders.length > 0) {
+      const allDispatched = custOrders.every(o => o.current_status === 'Dispatched');
+      if (allDispatched) {
+        return 'Delivered';
+      }
+      const hasInProduction = custOrders.some(o => 
+        ['Design', 'Carpentry', 'QC Check 1', 'Polish', 'QC Check 2', 'Ready to Dispatch'].includes(o.current_status)
+      );
+      if (hasInProduction) {
+        return 'In Production';
+      }
+      return 'Order Confirmed';
+    }
+
+    const custQuotes = db.crmQuotations?.filter(q => q.customer_id === cust.id) || [];
+    if (custQuotes.length > 0) {
+      if (custQuotes.some(q => q.status === 'Approved')) {
+        return 'Order Confirmed';
+      }
+      if (custQuotes.some(q => q.status === 'Sent')) {
+        return 'Quotation Sent';
+      }
+      if (custQuotes.some(q => q.status === 'Draft')) {
+        return 'Quotation Pending';
+      }
+    }
+
+    const custFollowUps = db.crmFollowUps?.filter(f => f.customer_id === cust.id) || [];
+    if (custFollowUps.length > 0) {
+      return 'Follow-up';
+    }
+
+    if (rawStatus && rawStatus !== 'New Inquiry' && rawStatus !== 'New Lead') {
+      return rawStatus;
+    }
+
+    return 'New Inquiry';
   };
 
   const getStatusLabelWithEmoji = (status: string): string => {
     switch (status) {
-      case 'New Inquiry': return '🟥 New Inquiry';
-      case 'Quotation Pending': return '🟨 Quotation Pending';
-      case 'Quotation Sent': return '🟦 Quotation Sent';
-      case 'Follow-up': return '🟪 Follow-up';
-      case 'Order Confirmed': return '🟩 Order Confirmed';
+      case 'New Inquiry':
+      case 'New Lead': return '🟥 New Lead';
+      case 'Quotation Pending':
+      case 'Contacted': return '🟨 Contacted';
+      case 'Quotation Sent':
+      case 'Quote Sent': return '🟦 Quote Sent';
+      case 'Follow-up':
+      case 'Qualified': return '🟪 Qualified';
+      case 'Order Confirmed':
+      case 'Closed Won': return '🟩 Closed Won';
       case 'In Production': return '🏭 In Production';
       case 'Delivered': return '🟫 Delivered';
       case 'Disqualified':
+      case 'Deal Lost':
       case 'Cancelled': return '⚫ Disqualified';
-      default: return '🟥 New Inquiry';
+      default: return '🟥 New Lead';
     }
   };
 
@@ -787,15 +822,15 @@ export default function CRMTab({
 
   // (c) Source Performance (calculated from Customers Directory: db.crmCustomers)
   const sourceBarColors: Record<string, string> = {
-    'IndiaMART': '#8c5a6b',
-    'Walkin': '#82a37d',
-    'Manual': '#7da87b',
-    'Website': '#3b82f6',
-    'TradeIndia': '#b88653',
-    'Social Media': '#8b5cf6',
-    'Email': '#547387',
-    'Youtube': '#dc2626',
-    'Reference': '#0d9488',
+    'IndiaMART': '#8c5a6b',   // Dusty plum / wine mauve
+    'Walkin': '#82a37d',      // Sage green
+    'Manual': '#7da87b',      // Muted forest green
+    'TradeIndia': '#b88653',  // Warm wood tan / amber
+    'Email': '#547387',       // Slate blue
+    'Website': '#3b82f6',     // Primary blue
+    'Social Media': '#8b5cf6', // Violet
+    'Youtube': '#dc2626',     // Bright red
+    'Reference': '#0d9488',   // Teal
   };
 
   const defaultSourcesList = ['IndiaMART', 'Walkin', 'Manual', 'Website', 'TradeIndia', 'Social Media', 'Email', 'Youtube', 'Reference'];
@@ -814,20 +849,53 @@ export default function CRMTab({
     .map(name => ({
       name,
       count: sourceCounts[name] || 0,
-      color: sourceBarColors[name] || '#6b7280'
+      color: sourceBarColors[name] || '#593622'
     }))
     .filter(item => totalLeadsCount > 0 ? item.count > 0 : ['IndiaMART', 'Manual', 'TradeIndia', 'Email', 'Walkin', 'Website', 'Social Media', 'Youtube', 'Reference'].includes(item.name))
     .sort((a, b) => b.count - a.count);
 
   const maxSourceCount = Math.max(...sourcePerformanceData.map(d => d.count), 1);
 
-  // (d) Order Status Distribution
-  const orderStages = ['Pending', 'Design', 'Carpentry', 'QC Check 1', 'Polish', 'QC Check 2', 'Ready to Dispatch', 'Dispatched'];
-  const statusColors = ['#d97706', '#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#6366f1', '#6b7280'];
-  const orderStatusData = orderStages.map(stage => ({
-    name: stage,
-    value: db.orders?.filter(o => o.current_status === stage).length || 0
-  })).filter(item => item.value > 0);
+  // (d) Current Lead Stage Distribution (using app-aligned status color palette)
+  const leadStageDefs = [
+    { key: 'New Lead', label: 'New Lead', color: '#1f3d22', aliases: ['New Inquiry', 'New Lead'] },
+    { key: 'Contacted', label: 'Contacted', color: '#a3d9a5', aliases: ['Quotation Pending', 'Contacted'] },
+    { key: 'Qualified', label: 'Qualified', color: '#7db381', aliases: ['Follow-up', 'Qualified'] },
+    { key: 'Quote Sent', label: 'Quote Sent', color: '#2d5328', aliases: ['Quotation Sent', 'Quote Sent'] },
+    { key: 'Closed Won', label: 'Closed Won', color: '#386635', aliases: ['Order Confirmed', 'Closed Won'] },
+    { key: 'In Production', label: 'In Production', color: '#593622', aliases: ['In Production'] },
+    { key: 'Delivered', label: 'Delivered', color: '#b45309', aliases: ['Delivered'] },
+    { key: 'Disqualified', label: 'Disqualified', color: '#f89898', aliases: ['Disqualified', 'Cancelled', 'Deal Lost'] },
+  ];
+
+  const stageCountsMap: Record<string, number> = {
+    'New Lead': 0,
+    'Contacted': 0,
+    'Qualified': 0,
+    'Quote Sent': 0,
+    'Closed Won': 0,
+    'In Production': 0,
+    'Delivered': 0,
+    'Disqualified': 0,
+  };
+
+  (db.crmCustomers || []).forEach(cust => {
+    const status = getCustomerStatus(cust);
+    let matchedKey = 'New Lead';
+    for (const def of leadStageDefs) {
+      if (def.aliases.includes(status)) {
+        matchedKey = def.key;
+        break;
+      }
+    }
+    stageCountsMap[matchedKey] = (stageCountsMap[matchedKey] || 0) + 1;
+  });
+
+  const currentLeadStageData = leadStageDefs.map(def => ({
+    name: def.label,
+    value: stageCountsMap[def.key] || 0,
+    color: def.color,
+  }));
 
   // 3. ACTION HANDLERS
   const handleAddEditCustomer = (e: React.FormEvent<HTMLFormElement>) => {
@@ -1381,50 +1449,58 @@ export default function CRMTab({
               </div>
             </div>
 
-            {/* Order status distribution */}
-            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Production Stage Distribution</span>
+            {/* Current Lead Stage Distribution */}
+            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs flex flex-col justify-between">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Current Lead Stage Distribution</span>
                 <Activity className="text-stone-400" size={16} />
               </div>
-              <div className="h-56 flex items-center justify-between">
-                {orderStatusData.length > 0 ? (
+
+              <div className="min-h-[220px] flex items-center justify-between gap-2">
+                {totalLeadsCount > 0 ? (
                   <>
-                    <div className="w-1/2 h-full">
+                    <div className="w-5/12 h-48">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
-                            data={orderStatusData}
+                            data={currentLeadStageData.filter(d => d.value > 0)}
                             cx="50%"
                             cy="50%"
-                            innerRadius={50}
-                            outerRadius={70}
-                            paddingAngle={4}
+                            innerRadius={46}
+                            outerRadius={68}
+                            paddingAngle={3}
                             dataKey="value"
                           >
-                            {orderStatusData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={statusColors[index % statusColors.length]} />
+                            {currentLeadStageData.filter(d => d.value > 0).map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip />
+                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
-                    <div className="w-1/2 space-y-1.5 pr-2 max-h-48 overflow-y-auto">
-                      {orderStatusData.map((item, idx) => (
-                        <div key={item.name} className="flex items-center gap-2 text-[10px] font-bold">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: statusColors[idx % statusColors.length] }} />
-                          <span className="text-stone-600 truncate flex-1">{item.name}</span>
-                          <span className="text-stone-900 font-mono text-[11px] font-bold">{item.value}</span>
+
+                    <div className="w-7/12 space-y-1.5 pr-1 max-h-52 overflow-y-auto">
+                      {currentLeadStageData.map((item) => (
+                        <div key={item.name} className="flex items-center justify-between text-xs py-0.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-3 h-3 rounded-md shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="text-stone-700 font-semibold truncate">{item.name}</span>
+                          </div>
+                          <span className="text-stone-900 font-mono font-black text-xs ml-2">{item.value}</span>
                         </div>
                       ))}
                     </div>
                   </>
                 ) : (
                   <div className="w-full text-center py-10 text-stone-400 text-xs font-medium">
-                    No active production orders recorded.
+                    No customer leads recorded yet.
                   </div>
                 )}
+              </div>
+
+              <div className="border-t border-stone-200/80 pt-3 mt-2 flex justify-between items-center text-xs font-bold text-stone-500 font-mono">
+                <span>Total leads: {totalLeadsCount}</span>
               </div>
             </div>
           </div>
