@@ -41,13 +41,15 @@ export default function CustomersTab({
     }
   }, [initialSelectedCustomerId]);
 
-  // Filters customers list based on searched term
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.phone.includes(searchTerm) ||
-      (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Filters customers list based on searched term (sorted descending by ID)
+  const filteredCustomers = customers
+    .filter(
+      (c) =>
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.phone.includes(searchTerm) ||
+        (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
+    .sort((a, b) => b.id.localeCompare(a.id));
 
   const activeCustomer = customers.find((c) => c.id === selectedCustomerId);
 

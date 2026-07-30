@@ -421,8 +421,9 @@ export default function CRMTab({
     stopCamera();
   };
 
-  // Filter States for Customer Directory
+  // Filter States for Customer Directory & Quotations
   const [custSearch, setCustSearch] = React.useState('');
+  const [quoteSearch, setQuoteSearch] = React.useState('');
   const [custViewMode, setCustViewMode] = React.useState<'grid' | 'table'>('table');
   const [custFilter, setCustFilter] = React.useState<'all' | 'active' | 'repeat' | 'pending_payment' | 'completed' | 'vip'>('all');
 
@@ -972,33 +973,68 @@ export default function CRMTab({
   };
 
   // 4. SEARCHES & FILTERING LOGIC
-  const filteredCustomersList = (db.crmCustomers || []).filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
-      c.phone.includes(custSearch) ||
-      (c.productRequirement && c.productRequirement.toLowerCase().includes(custSearch.toLowerCase())) ||
-      (c.city && c.city.toLowerCase().includes(custSearch.toLowerCase())) ||
-      c.id.toLowerCase().includes(custSearch.toLowerCase());
+  const filteredCustomersList = (db.crmCustomers || [])
+    .filter(c => {
+      const matchesSearch = c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
+        c.phone.includes(custSearch) ||
+        (c.productRequirement && c.productRequirement.toLowerCase().includes(custSearch.toLowerCase())) ||
+        (c.city && c.city.toLowerCase().includes(custSearch.toLowerCase())) ||
+        c.id.toLowerCase().includes(custSearch.toLowerCase());
 
-    const isRepeat = (customerOrderCounts[c.id] || 0) > 1;
-    const ordersForCust = db.orders?.filter(o => o.customer_id === c.id) || [];
-    const hasCompletedOrder = ordersForCust.some(o => o.current_status === 'Dispatched');
-    const hasActiveOrder = ordersForCust.some(o => o.current_status !== 'Dispatched' && o.current_status !== 'Pending');
-    const hasPendingPayment = db.payments?.some(p => ordersForCust.some(o => o.id === p.order_id) && p.balance_due > 0);
-    const isVip = ordersForCust.length >= 2 || (db.payments?.filter(p => ordersForCust.some(o => o.id === p.order_id)).reduce((sum, p) => sum + p.total_amount, 0) || 0) > 200000;
+      const isRepeat = (customerOrderCounts[c.id] || 0) > 1;
+      const ordersForCust = db.orders?.filter(o => o.customer_id === c.id) || [];
+      const hasCompletedOrder = ordersForCust.some(o => o.current_status === 'Dispatched');
+      const hasActiveOrder = ordersForCust.some(o => o.current_status !== 'Dispatched' && o.current_status !== 'Pending');
+      const hasPendingPayment = db.payments?.some(p => ordersForCust.some(o => o.id === p.order_id) && p.balance_due > 0);
+      const isVip = ordersForCust.length >= 2 || (db.payments?.filter(p => ordersForCust.some(o => o.id === p.order_id)).reduce((sum, p) => sum + p.total_amount, 0) || 0) > 200000;
 
-    switch (custFilter) {
-      case 'active': return matchesSearch && hasActiveOrder;
-      case 'repeat': return matchesSearch && isRepeat;
-      case 'pending_payment': return matchesSearch && hasPendingPayment;
-      case 'completed': return matchesSearch && hasCompletedOrder;
-      case 'vip': return matchesSearch && isVip;
-      default: return matchesSearch;
-    }
-  });
+      switch (custFilter) {
+        case 'active': return matchesSearch && hasActiveOrder;
+        case 'repeat': return matchesSearch && isRepeat;
+        case 'pending_payment': return matchesSearch && hasPendingPayment;
+        case 'completed': return matchesSearch && hasCompletedOrder;
+        case 'vip': return matchesSearch && isVip;
+        default: return matchesSearch;
+      }
+    })
+    .sort((a, b) => {
+      if (a.created_at && b.created_at) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return (b.id || '').localeCompare(a.id || '');
+    });
+
+  const filteredQuotationsList = (db.crmQuotations || [])
+    .filter(quote => {
+      if (!quoteSearch.trim()) return true;
+      const term = quoteSearch.toLowerCase().trim();
+      const matchId = quote.id?.toLowerCase().includes(term);
+      const matchCustName = quote.customer_name?.toLowerCase().includes(term);
+      const matchStatus = quote.status?.toLowerCase().includes(term);
+      const matchItems = quote.items?.some(i => 
+        i.furnitureItem?.toLowerCase().includes(term) ||
+        i.material?.toLowerCase().includes(term) ||
+        i.dimensions?.toLowerCase().includes(term)
+      );
+      return matchId || matchCustName || matchStatus || matchItems;
+    })
+    .sort((a, b) => {
+      if (a.created_at && b.created_at) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return (b.id || '').localeCompare(a.id || '');
+    });
 
   const selectedCustomer = db.crmCustomers?.find(c => c.id === selectedCustomerId);
   const selectedCustOrders = selectedCustomer ? (db.orders?.filter(o => o.customer_id === selectedCustomer.id) || []).sort(compareOrdersByArticleSerialDesc) : [];
-  const selectedCustQuotes = selectedCustomer ? db.crmQuotations?.filter(q => q.customer_id === selectedCustomer.id) || [] : [];
+  const selectedCustQuotes = selectedCustomer 
+    ? (db.crmQuotations?.filter(q => q.customer_id === selectedCustomer.id) || []).sort((a, b) => {
+        if (a.created_at && b.created_at) {
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        }
+        return (b.id || '').localeCompare(a.id || '');
+      })
+    : [];
   const selectedCustFollowups = selectedCustomer ? db.crmFollowUps?.filter(f => f.customer_id === selectedCustomer.id) || [] : [];
   const selectedCustPayments = selectedCustomer ? db.crmPayments?.filter(p => p.customer_id === selectedCustomer.id) || [] : [];
   const selectedCustNotes = selectedCustomer ? db.crmNotes?.filter(n => n.customer_id === selectedCustomer.id).sort((a,b)=> new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) || [] : [];
@@ -1008,7 +1044,7 @@ export default function CRMTab({
   return (
     <div className="space-y-6">
       {/* CRM Main Header Row */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-stone-200 pb-5">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-stone-200 pb-5">
         <div>
           <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight flex items-center gap-2">
             <Contact className="text-[#593622]" size={26} /> CRM Module
@@ -1018,40 +1054,68 @@ export default function CRMTab({
           </p>
         </div>
 
-        {/* Navigation tabs */}
-        <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/80 w-full sm:w-auto">
-          <button
-            onClick={() => { setSubTab('dashboard'); setSelectedCustomerId(null); }}
-            className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
-              subTab === 'dashboard' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
-            }`}
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setSubTab('customers')}
-            className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
-              subTab === 'customers' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
-            }`}
-          >
-            Customers Directory
-          </button>
-          <button
-            onClick={() => { setSubTab('quotations'); setSelectedCustomerId(null); }}
-            className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
-              subTab === 'quotations' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
-            }`}
-          >
-            Quotations
-          </button>
-          <button
-            onClick={() => { setSubTab('followups'); setSelectedCustomerId(null); }}
-            className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
-              subTab === 'followups' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
-            }`}
-          >
-            Follow-ups
-          </button>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* Quick Action Buttons */}
+          {hasWriteAccess && (
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => {
+                  setEditingCustomer(null);
+                  setShowAddCustModal(true);
+                  if (subTab !== 'customers') setSubTab('customers');
+                  setSelectedCustomerId(null);
+                }}
+                className="bg-[#4a2c1b] hover:bg-[#382114] text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
+              >
+                <UserPlus size={15} /> Add Customer
+              </button>
+              <button
+                onClick={() => {
+                  setEditingQuotation(null);
+                  setShowAddQuoteModal(true);
+                }}
+                className="bg-[#e05e00] hover:bg-[#c75300] text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              >
+                <Plus size={16} /> New Quotation
+              </button>
+            </div>
+          )}
+
+          {/* Navigation tabs */}
+          <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/80 w-full sm:w-auto">
+            <button
+              onClick={() => { setSubTab('dashboard'); setSelectedCustomerId(null); }}
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+                subTab === 'dashboard' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => setSubTab('customers')}
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+                subTab === 'customers' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
+              }`}
+            >
+              Customers Directory
+            </button>
+            <button
+              onClick={() => { setSubTab('quotations'); setSelectedCustomerId(null); }}
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+                subTab === 'quotations' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
+              }`}
+            >
+              Quotations
+            </button>
+            <button
+              onClick={() => { setSubTab('followups'); setSelectedCustomerId(null); }}
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+                subTab === 'followups' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
+              }`}
+            >
+              Follow-ups
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2041,20 +2105,36 @@ export default function CRMTab({
       {/* SUBTAB: QUOTATIONS */}
       {subTab === 'quotations' && (
         <div className="space-y-4">
-          <div className="bg-white border border-stone-200 p-4 rounded-2xl flex justify-between items-center shadow-xs">
-            <div>
-              <span className="text-[10px] font-black uppercase text-stone-400 tracking-wider block font-display">Active Lead Pool</span>
-              <h2 className="text-base font-black text-stone-900 leading-tight">Price Quotations Ledgers</h2>
+          <div className="bg-white border border-stone-200 p-4 rounded-2xl flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center shadow-xs">
+            <div className="flex flex-1 gap-2 flex-wrap items-center">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-3 text-stone-400" size={14} />
+                <input
+                  type="text"
+                  value={quoteSearch}
+                  onChange={(e) => setQuoteSearch(e.target.value)}
+                  placeholder="Search by ID, customer name, status, or item..."
+                  className="w-full pl-9 pr-4 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-[#593622] transition"
+                />
+              </div>
             </div>
 
-            {hasWriteAccess && (
-              <button
-                onClick={() => setShowAddQuoteModal(true)}
-                className="bg-[#593622] hover:bg-[#4d2f1e] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-              >
-                <Plus size={14} /> New Quotation
-              </button>
-            )}
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-xs text-stone-500 font-bold">
+                Showing {filteredQuotationsList.length} quotation{filteredQuotationsList.length === 1 ? '' : 's'}
+              </span>
+              {hasWriteAccess && (
+                <button
+                  onClick={() => {
+                    setEditingQuotation(null);
+                    setShowAddQuoteModal(true);
+                  }}
+                  className="bg-[#e05e00] hover:bg-[#c75300] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus size={15} /> New Quotation
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-xs">
@@ -2073,8 +2153,8 @@ export default function CRMTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 font-medium text-stone-700">
-                  {db.crmQuotations && db.crmQuotations.length > 0 ? (
-                    db.crmQuotations.map(quote => {
+                  {filteredQuotationsList.length > 0 ? (
+                    filteredQuotationsList.map(quote => {
                       const itemsCount = quote.items?.length || 0;
                       const firstItem = quote.items?.[0];
                       const totalQty = quote.items?.reduce((sum, i) => sum + (i.quantity || 1), 0) || 1;
@@ -2180,7 +2260,7 @@ export default function CRMTab({
                   ) : (
                     <tr>
                       <td colSpan={8} className="p-12 text-center text-stone-400 font-medium">
-                        No quotations drafted. Click "New Quotation" to generate lead proposals.
+                        No quotations found matching your search. Click "New Quotation" to generate lead proposals.
                       </td>
                     </tr>
                   )}

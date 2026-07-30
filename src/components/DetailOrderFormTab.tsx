@@ -405,7 +405,14 @@ export default function DetailOrderFormTab({
   };
 
   const approvedQuotations = React.useMemo(() => {
-    return (crmQuotations || []).filter((q) => q.status === 'Approved');
+    return (crmQuotations || [])
+      .filter((q) => q.status === 'Approved')
+      .sort((a, b) => {
+        if (a.created_at && b.created_at) {
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        }
+        return (b.id || '').localeCompare(a.id || '');
+      });
   }, [crmQuotations]);
 
   // Group approved quotations by customer
