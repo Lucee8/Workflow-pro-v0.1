@@ -822,15 +822,15 @@ export default function CRMTab({
 
   // (c) Source Performance (calculated from Customers Directory: db.crmCustomers)
   const sourceBarColors: Record<string, string> = {
-    'IndiaMART': '#8c5a6b',   // Dusty plum / wine mauve
-    'Walkin': '#82a37d',      // Sage green
-    'Manual': '#7da87b',      // Muted forest green
-    'TradeIndia': '#b88653',  // Warm wood tan / amber
-    'Email': '#547387',       // Slate blue
-    'Website': '#3b82f6',     // Primary blue
-    'Social Media': '#8b5cf6', // Violet
-    'Youtube': '#dc2626',     // Bright red
-    'Reference': '#0d9488',   // Teal
+    'IndiaMART': '#6D4025',     // Coffee Brown
+    'Walkin': '#D97706',        // Amber Orange
+    'Manual': '#1A110A',        // Dark Brown
+    'TradeIndia': '#EA7300',    // Bright Orange
+    'Email': '#F2B233',         // Gold
+    'Website': '#6366F1',       // Blue
+    'Social Media': '#A855F7',   // Purple
+    'Youtube': '#6D4025',       // Coffee Brown
+    'Reference': '#6B7280',     // Gray
   };
 
   const defaultSourcesList = ['IndiaMART', 'Walkin', 'Manual', 'Website', 'TradeIndia', 'Social Media', 'Email', 'Youtube', 'Reference'];
@@ -849,23 +849,23 @@ export default function CRMTab({
     .map(name => ({
       name,
       count: sourceCounts[name] || 0,
-      color: sourceBarColors[name] || '#593622'
+      color: sourceBarColors[name] || '#6D4025'
     }))
     .filter(item => totalLeadsCount > 0 ? item.count > 0 : ['IndiaMART', 'Manual', 'TradeIndia', 'Email', 'Walkin', 'Website', 'Social Media', 'Youtube', 'Reference'].includes(item.name))
     .sort((a, b) => b.count - a.count);
 
   const maxSourceCount = Math.max(...sourcePerformanceData.map(d => d.count), 1);
 
-  // (d) Current Lead Stage Distribution (using app-aligned status color palette)
+  // (d) Current Lead Stage Distribution (using requested palette with Amber Orange & Coffee Brown replacing Green)
   const leadStageDefs = [
-    { key: 'New Lead', label: 'New Lead', color: '#1f3d22', aliases: ['New Inquiry', 'New Lead'] },
-    { key: 'Contacted', label: 'Contacted', color: '#a3d9a5', aliases: ['Quotation Pending', 'Contacted'] },
-    { key: 'Qualified', label: 'Qualified', color: '#7db381', aliases: ['Follow-up', 'Qualified'] },
-    { key: 'Quote Sent', label: 'Quote Sent', color: '#2d5328', aliases: ['Quotation Sent', 'Quote Sent'] },
-    { key: 'Closed Won', label: 'Closed Won', color: '#386635', aliases: ['Order Confirmed', 'Closed Won'] },
-    { key: 'In Production', label: 'In Production', color: '#593622', aliases: ['In Production'] },
-    { key: 'Delivered', label: 'Delivered', color: '#b45309', aliases: ['Delivered'] },
-    { key: 'Disqualified', label: 'Disqualified', color: '#f89898', aliases: ['Disqualified', 'Cancelled', 'Deal Lost'] },
+    { key: 'New Lead', label: 'New Lead', color: '#1A110A', aliases: ['New Inquiry', 'New Lead'] },
+    { key: 'Contacted', label: 'Contacted', color: '#6366F1', aliases: ['Quotation Pending', 'Contacted'] },
+    { key: 'Qualified', label: 'Qualified', color: '#A855F7', aliases: ['Follow-up', 'Qualified'] },
+    { key: 'Quote Sent', label: 'Quote Sent', color: '#EA7300', aliases: ['Quotation Sent', 'Quote Sent'] },
+    { key: 'Closed Won', label: 'Closed Won', color: '#D97706', aliases: ['Order Confirmed', 'Closed Won'] },
+    { key: 'In Production', label: 'In Production', color: '#6D4025', aliases: ['In Production'] },
+    { key: 'Delivered', label: 'Delivered', color: '#F2B233', aliases: ['Delivered'] },
+    { key: 'Disqualified', label: 'Disqualified', color: '#6B7280', aliases: ['Disqualified', 'Cancelled', 'Deal Lost'] },
   ];
 
   const stageCountsMap: Record<string, number> = {
