@@ -331,7 +331,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = new Image();
+          const img = new window.Image();
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -1409,7 +1409,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip formatter={(value) => value == null ? '' : `₹${Number(value).toLocaleString()}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1501,7 +1501,7 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
+                          <Tooltip formatter={(value: unknown) => [`${value ?? 0} lead(s)`, 'Count']} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
