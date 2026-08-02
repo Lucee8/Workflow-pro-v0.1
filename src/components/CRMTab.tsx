@@ -4201,21 +4201,7 @@ export default function CRMTab({
                                         {item.material && <span>Wood: <span className="text-slate-700">{item.material}</span></span>}
                                       </div>
                                     )}
-                                    {/* Thumbnail images in estimate table row */}
-                                    {item.images && item.images.length > 0 && (
-                                      <div className="flex flex-wrap gap-2 mt-2">
-                                        {item.images.map((imgUrl, imgI) => (
-                                          <img
-                                            key={imgI}
-                                            src={imgUrl}
-                                            alt={`${item.furnitureItem} thumbnail ${imgI + 1}`}
-                                            className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg border-2 border-slate-300 hover:border-[#593622] shadow-2xs bg-white cursor-pointer hover:scale-105 transition"
-                                            onClick={() => setPreviewImageModalUrl(imgUrl)}
-                                            title="Click to view high-resolution photo"
-                                          />
-                                        ))}
-                                      </div>
-                                    )}
+
                                   </td>
                                   <td className="p-2 text-center text-slate-400 font-mono">-</td>
                                   <td className="p-2 text-center font-bold text-slate-900">{item.quantity}</td>
