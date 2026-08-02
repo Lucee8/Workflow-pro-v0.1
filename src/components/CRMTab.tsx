@@ -3855,7 +3855,8 @@ export default function CRMTab({
               '<style>' +
               '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
               '@page { size: A4 portrait; margin: 8mm; }' +
-              'body { font-family: "Inter", sans-serif; background-color: white; color: black; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
+              'body, * { font-family: Calibri, "Segoe UI", Arial, sans-serif !important; }' +
+              'body { background-color: white; color: black; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
               '.print\\:hidden { display: none !important; }' +
               '.print\\:inline { display: inline !important; }' +
               '.print\\:block { display: block !important; }' +
@@ -3863,7 +3864,7 @@ export default function CRMTab({
               '.page-break-before-always, .break-before-page { page-break-before: always; break-before: page; }' +
               '</style>' +
               '</head><body onload="window.print(); setTimeout(function(){ window.close(); }, 500);">' +
-              '<div class="w-full max-w-4xl mx-auto p-2">' +
+              '<div class="w-full max-w-4xl mx-auto p-2" style="font-family: Calibri, \'Segoe UI\', Arial, sans-serif;">' +
               printContent.innerHTML +
               '</div></body></html>';
             printWindow.document.write(htmlString);
@@ -4062,7 +4063,7 @@ export default function CRMTab({
 
               {/* Scrollable sheet container for mobile preview */}
               <div className="overflow-x-auto bg-white p-2 rounded-3xl border border-stone-200 shadow-sm">
-                <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-4 sm:p-6 print:p-0 font-sans">
+                <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-4 sm:p-6 print:p-0" style={{ fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif' }}>
                   
                   {/* Title centered above the main box */}
                   <div className="text-center mb-3 print:mb-2">
