@@ -4194,7 +4194,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         <img 
                           src={customLogo || "/assets/logo-gZfm8MSC.png"} 
                           alt="Company Brand Logo" 
-                          className="max-h-16 print:max-h-14 max-w-full object-contain" 
+                          className="max-h-20 print:max-h-16 max-w-full object-contain" 
                           onError={(e) => {
                             const target = e.currentTarget;
                             if (!target.src.includes('logo.png')) {
@@ -4434,7 +4434,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                             title="UPI QR Code Image"
                           >
                             <img 
-                              src={customQR || "/assets/UPI QR code.jpeg"} 
+                              src={customQR || "/assets/UPI QR code.png"} 
                               alt="UPI QR Code Image" 
                               className="w-14 h-14 print:w-12 print:h-12 object-contain" 
                             />
@@ -4455,7 +4455,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         >
                           <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
                             <img 
-                              src={customSignature || "/assets/Authorized Signatory.png"} 
+                              src={customSignature || "/assets/Authorized Signatory.svg"} 
                               alt="Authorized Signatory Signature" 
                               className="max-w-full max-h-full object-contain" 
                             />
