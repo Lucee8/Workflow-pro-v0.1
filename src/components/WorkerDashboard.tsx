@@ -624,55 +624,7 @@ export default function WorkerDashboard({
                         </div>
                       </div>
                     )}
-
-                    {/* <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Catalogue Name</label>
-                        <input
-                          type="text"
-                          required
-                          value={catalogueName}
-                          onChange={(e) => setCatalogueName(e.target.value)}
-                          placeholder="e.g. Beds Catalogue"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Model Name</label>
-                        <input
-                          type="text"
-                          required
-                          value={modelName}
-                          onChange={(e) => setModelName(e.target.value)}
-                          placeholder="e.g. BED-01"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Size of Product</label>
-                        <input
-                          type="text"
-                          required
-                          value={sizeOfProduct}
-                          onChange={(e) => setSizeOfProduct(e.target.value)}
-                          placeholder="e.g. 5ft × 6.5ft"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">SQFT Area (Surface)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          value={sqft || ''}
-                          onChange={(e) => setSqft(Number(e.target.value))}
-                          placeholder="e.g. 32.5"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div> */}
+                  </div>
 
                   {/* Section 2: Wooden components table spreadsheet */}
                   <div className="space-y-2">
