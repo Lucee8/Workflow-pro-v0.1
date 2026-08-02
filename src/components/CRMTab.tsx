@@ -4173,150 +4173,6 @@ if (typeof endMs === 'number' && time > endMs) return false;
                 </div>
               </div>
 
-              {/* Printable Image Customizer Panel (Visible on screen, hidden in print) */}
-              <div className="bg-white p-4 rounded-2xl border border-stone-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                {/* Logo Customizer */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 font-bold text-stone-700">
-                    <Image size={14} className="text-amber-500" />
-                    <span>Company Brand Logo</span>
-                  </div>
-                  <p className="text-[10px] text-stone-500">Replaces the top-left text logo of the estimate.</p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={() => document.getElementById('logo-upload-input')?.click()}
-                      className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Upload size={12} />
-                      {customLogo ? 'Replace Image' : 'Choose Logo'}
-                    </button>
-                    {customLogo && (
-                      <button
-                        onClick={() => {
-                          setCustomLogo(null);
-                          localStorage.removeItem('estimate_custom_logo');
-                        }}
-                        className="text-rose-500 hover:text-rose-700 px-2 py-1.5 rounded-lg font-bold transition text-[11px]"
-                      >
-                        Reset to Default
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    id="logo-upload-input"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64 = reader.result as string;
-                          setCustomLogo(base64);
-                          localStorage.setItem('estimate_custom_logo', base64);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </div>
-
-                {/* UPI QR Customizer */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 font-bold text-stone-700">
-                    <QrCode size={14} className="text-emerald-600" />
-                    <span>UPI QR Code Image</span>
-                  </div>
-                  <p className="text-[10px] text-stone-500">Replaces the default placeholder QR code.</p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={() => document.getElementById('qr-upload-input')?.click()}
-                      className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Upload size={12} />
-                      {customQR ? 'Replace QR Image' : 'Choose QR Image'}
-                    </button>
-                    {customQR && (
-                      <button
-                        onClick={() => {
-                          setCustomQR(null);
-                          localStorage.removeItem('estimate_custom_qr');
-                        }}
-                        className="text-rose-500 hover:text-rose-700 px-2 py-1.5 rounded-lg font-bold transition text-[11px]"
-                      >
-                        Reset to Default
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    id="qr-upload-input"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64 = reader.result as string;
-                          setCustomQR(base64);
-                          localStorage.setItem('estimate_custom_qr', base64);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </div>
-
-                {/* Signature Customizer */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 font-bold text-stone-700">
-                    <FileSignature size={14} className="text-slate-600" />
-                    <span>Authorized Signatory Signature</span>
-                  </div>
-                  <p className="text-[10px] text-stone-500">Replaces the empty sign box on the bottom-right.</p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={() => document.getElementById('signature-upload-input')?.click()}
-                      className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Upload size={12} />
-                      {customSignature ? 'Replace Signature' : 'Choose Signature'}
-                    </button>
-                    {customSignature && (
-                      <button
-                        onClick={() => {
-                          setCustomSignature(null);
-                          localStorage.removeItem('estimate_custom_signature');
-                        }}
-                        className="text-rose-500 hover:text-rose-700 px-2 py-1.5 rounded-lg font-bold transition text-[11px]"
-                      >
-                        Reset to Default
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    id="signature-upload-input"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64 = reader.result as string;
-                          setCustomSignature(base64);
-                          localStorage.setItem('estimate_custom_signature', base64);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
               {/* Scrollable sheet container for mobile preview */}
               <div className="overflow-x-auto bg-white p-2 rounded-3xl border border-stone-200 shadow-sm">
                 <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-4 sm:p-6 print:p-0" style={{ fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif' }}>
@@ -4332,29 +4188,20 @@ if (typeof endMs === 'number' && time > endMs) return false;
                     {/* Section 1: Company Profile Info Block */}
                     <div className="grid grid-cols-12 p-3 print:p-2 items-center">
                       <div 
-                        className="col-span-5 flex flex-col items-start select-none cursor-pointer group relative"
-                        onClick={() => document.getElementById('logo-upload-input')?.click()}
-                        title="Click to upload custom logo"
+                        className="col-span-5 flex flex-col items-start select-none group relative"
+                        title="Company Brand Logo"
                       >
-                        {customLogo ? (
-                          <div className="relative">
-                            <img src={customLogo} alt="Company Logo" className="max-h-16 print:max-h-14 max-w-full object-contain" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
-                              Change Logo
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <span className="text-3xl print:text-2xl font-extrabold text-[#e2a228] font-serif tracking-tight leading-none">Bhisez</span>
-                            <div className="flex items-center w-full max-w-[130px] gap-1 mt-0.5">
-                              <div className="h-[1.5px] bg-slate-800 flex-1"></div>
-                              <span className="text-[8px] font-bold uppercase tracking-[0.25em] text-slate-800 font-sans">FURNITURE</span>
-                              </div>
-                            <div className="absolute -bottom-4 left-0 text-[8px] text-stone-400 opacity-0 group-hover:opacity-100 transition print:hidden">
-                              (Click to choose logo image)
-                            </div>
-                          </>
-                        )}
+                        <img 
+                          src={customLogo || "/assets/logo-gZfm8MSC.png"} 
+                          alt="Company Brand Logo" 
+                          className="max-h-16 print:max-h-14 max-w-full object-contain" 
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (!target.src.includes('logo.png')) {
+                              target.src = "/assets/logo.png";
+                            }
+                          }}
+                        />
                       </div>
 
                       <div className="col-span-7 text-left space-y-0.5 pl-4">
@@ -4583,53 +4430,14 @@ if (typeof endMs === 'number' && time > endMs) return false;
                             <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
                           </div>
                           <div 
-                            className="col-span-4 flex flex-col items-center justify-center border-l border-slate-200 pl-2 cursor-pointer group relative"
-                            onClick={() => document.getElementById('qr-upload-input')?.click()}
-                            title="Click to upload custom UPI QR code image"
+                            className="col-span-4 flex flex-col items-center justify-center border-l border-slate-200 pl-2 group relative"
+                            title="UPI QR Code Image"
                           >
-                            {customQR ? (
-                              <div className="relative">
-                                <img src={customQR} alt="UPI QR" className="w-14 h-14 print:w-12 print:h-12 object-contain" />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-bold rounded print:hidden">
-                                  Change
-                                </div>
-                              </div>
-                            ) : (
-                              <svg className="w-14 h-14 print:w-12 print:h-12 text-slate-800" viewBox="0 0 100 100">
-                                <rect width="100" height="100" fill="white" />
-                                <rect x="5" y="5" width="25" height="25" fill="currentColor" />
-                                <rect x="10" y="10" width="15" height="15" fill="white" />
-                                <rect x="13" y="13" width="9" height="9" fill="currentColor" />
-
-                                <rect x="70" y="5" width="25" height="25" fill="currentColor" />
-                                <rect x="75" y="10" width="15" height="15" fill="white" />
-                                <rect x="78" y="13" width="9" height="9" fill="currentColor" />
-
-                                <rect x="5" y="70" width="25" height="25" fill="currentColor" />
-                                <rect x="10" y="75" width="15" height="15" fill="white" />
-                                <rect x="13" y="78" width="9" height="9" fill="currentColor" />
-
-                                <rect x="35" y="5" width="5" height="15" fill="currentColor" />
-                                <rect x="45" y="10" width="10" height="5" fill="currentColor" />
-                                <rect x="60" y="15" width="5" height="10" fill="currentColor" />
-                                <rect x="40" y="25" width="20" height="5" fill="currentColor" />
-                                <rect x="5" y="35" width="15" height="5" fill="currentColor" />
-                                <rect x="25" y="35" width="5" height="15" fill="currentColor" />
-                                <rect x="35" y="40" width="25" height="5" fill="currentColor" />
-                                <rect x="65" y="35" width="15" height="15" fill="currentColor" />
-                                <rect x="85" y="35" width="10" height="5" fill="currentColor" />
-                                <rect x="5" y="55" width="5" height="10" fill="currentColor" />
-                                <rect x="15" y="50" width="15" height="5" fill="currentColor" />
-                                <rect x="35" y="55" width="25" height="10" fill="currentColor" />
-                                <rect x="65" y="55" width="5" height="10" fill="currentColor" />
-                                <rect x="75" y="50" width="15" height="5" fill="currentColor" />
-                                <rect x="35" y="70" width="10" height="25" fill="currentColor" />
-                                <rect x="50" y="75" width="15" height="10" fill="currentColor" />
-                                <rect x="70" y="80" width="5" height="15" fill="currentColor" />
-                                <rect x="80" y="75" width="15" height="15" fill="currentColor" />
-                                <rect x="50" y="90" width="15" height="5" fill="currentColor" />
-                              </svg>
-                            )}
+                            <img 
+                              src={customQR || "/assets/UPI QR code.jpeg"} 
+                              alt="UPI QR Code Image" 
+                              className="w-14 h-14 print:w-12 print:h-12 object-contain" 
+                            />
                             <div className="mt-1 bg-[#1b9a59] text-white px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
                               UPI Click to Pay
                             </div>
@@ -4642,22 +4450,17 @@ if (typeof endMs === 'number' && time > endMs) return false;
                           For Bhisez furniture:
                         </div>
                         <div 
-                          className="p-2.5 print:p-2 flex flex-col items-center justify-end flex-1 min-h-[95px] print:min-h-[85px] cursor-pointer group relative"
-                          onClick={() => document.getElementById('signature-upload-input')?.click()}
-                          title="Click to upload custom authorized signature image"
+                          className="p-2.5 print:p-2 flex flex-col items-center justify-end flex-1 min-h-[95px] print:min-h-[85px] group relative"
+                          title="Authorized Signatory Signature"
                         >
-                          {customSignature ? (
-                            <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
-                              <img src={customSignature} alt="Authorized Signature" className="max-w-full max-h-full object-contain" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
-                                Change Signature
+                          <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
+                            <img 
+                              src={customSignature || "/assets/Authorized Signatory.png"} 
+                              alt="Authorized Signatory Signature" 
+                              className="max-w-full max-h-full object-contain" 
+                            />
                               </div>
-                            </div>
-                          ) : (
-                            <div className="w-40 h-14 border border-slate-200 bg-slate-50/50 rounded flex items-center justify-center text-stone-400 group-hover:text-stone-600 transition text-[9px] font-semibold print:border-none print:bg-transparent">
-                              <span className="print:hidden">(Click to add Sign)</span>
-                            </div>
-                          )}
+
                           <span className="text-[10px] text-slate-500 font-bold mt-1 font-sans">Authorized Signatory</span>
                         </div>
                       </div>
