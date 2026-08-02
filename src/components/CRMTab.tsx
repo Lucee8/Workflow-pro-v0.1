@@ -1307,7 +1307,7 @@ export default function CRMTab({
   return (
     <div className="space-y-6">
       {/* CRM Main Header Row */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-stone-200 pb-5">
+      <div className="border-b border-stone-200 pb-5 space-y-4">
         <div>
           <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight flex items-center gap-2">
             <Contact className="text-[#593622]" size={26} /> CRM Module
@@ -1317,9 +1317,10 @@ export default function CRMTab({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Quick Action Buttons */}
-          {hasWriteAccess && (
+        {/* Action Buttons & Tabs Row */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
+          {/* Left: Quick Action Buttons */}
+          {hasWriteAccess ? (
             <div className="flex items-center gap-2.5 shrink-0">
               <button
                 onClick={() => {
@@ -1342,13 +1343,14 @@ export default function CRMTab({
                 <Plus size={16} /> New Quotation
               </button>
             </div>
-          )}
+          ) : <div /> }
 
-          {/* Navigation tabs */}
-          <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/80 w-full sm:w-auto">
+
+          {/* Right: Navigation tabs */}
+          <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/80 max-w-full overflow-x-auto shrink-0">
             <button
               onClick={() => { setSubTab('dashboard'); setSelectedCustomerId(null); }}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 subTab === 'dashboard' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
               }`}
             >
@@ -1356,7 +1358,7 @@ export default function CRMTab({
             </button>
             <button
               onClick={() => setSubTab('customers')}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 subTab === 'customers' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
               }`}
             >
@@ -1364,7 +1366,7 @@ export default function CRMTab({
             </button>
             <button
               onClick={() => { setSubTab('quotations'); setSelectedCustomerId(null); }}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 subTab === 'quotations' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
               }`}
             >
@@ -1372,7 +1374,7 @@ export default function CRMTab({
             </button>
             <button
               onClick={() => { setSubTab('followups'); setSelectedCustomerId(null); }}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 subTab === 'followups' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
               }`}
             >
