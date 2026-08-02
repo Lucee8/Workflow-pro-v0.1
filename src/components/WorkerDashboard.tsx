@@ -625,7 +625,7 @@ export default function WorkerDashboard({
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
+                    {/* <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
                       <div>
                         <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Catalogue Name</label>
                         <input
@@ -672,7 +672,7 @@ export default function WorkerDashboard({
                         />
                       </div>
                     </div>
-                  </div>
+                  </div> */}
 
                   {/* Section 2: Wooden components table spreadsheet */}
                   <div className="space-y-2">
