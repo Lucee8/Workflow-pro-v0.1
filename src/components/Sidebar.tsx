@@ -4,6 +4,7 @@
  */
 
 import { User } from '../types';
+import logoImg from '../assets/images/logo.png';
 import { motion } from 'motion/react';
 import {
   LayoutDashboard,
@@ -90,30 +91,13 @@ export default function Sidebar({
       {/* Top Header Bar for Mobile viewports */}
       <header className="lg:hidden h-14 bg-stone-900 border-b border-stone-800 px-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          {/* Logo icon */}
+          {/* Logo image */}
           <img 
-            src="/logo.png" 
-            alt="Logo" 
-            className="w-8 h-8 rounded-lg object-contain bg-amber-500 p-1 shadow"
-            onError={(e) => {
-              // If logo.png is not present yet, show text fallback
-              e.currentTarget.style.display = 'none';
-              const fallback = document.getElementById('logo-fallback-mobile');
-              if (fallback) fallback.classList.remove('hidden');
-            }}
+            src={logoImg} 
+            alt="Bhisez Logo" 
+            className="h-9 w-auto max-w-[160px] object-contain"
             referrerPolicy="no-referrer"
           />
-          <div id="logo-fallback-mobile" className="hidden bg-amber-500 text-stone-950 px-2 py-1 rounded font-bold text-sm shadow">
-            Bh
-          </div>
-          <div>
-            <span className="font-display font-black text-amber-400 text-xs uppercase tracking-wider block">
-              Bhise'z
-            </span>
-            <span className="text-[8px] tracking-widest text-stone-400 uppercase -mt-1 block">
-              Order Tracker
-            </span>
-          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -153,31 +137,14 @@ export default function Sidebar({
         } ${mobileMenuOpen ? 'h-[calc(100vh-56px)]' : 'h-screen'}`}
       >
         {/* Sidebar Brand Header (Desktop only) */}
-        <div className="p-6 border-b border-stone-900/30 hidden lg:block">
-          <div className="flex items-center gap-3">
+        <div className="p-4 border-b border-stone-900/30 hidden lg:block">
+          <div className="flex items-center justify-center py-2">
             <img 
-              src="/logo.png" 
-              alt="Logo" 
-              className="w-11 h-11 rounded-xl object-contain bg-amber-500 p-1.5 shadow-lg border border-amber-400"
-              onError={(e) => {
-                // If logo.png is not present yet, show text fallback
-                e.currentTarget.style.display = 'none';
-                const fallback = document.getElementById('logo-fallback-desktop');
-                if (fallback) fallback.classList.remove('hidden');
-              }}
+              src={logoImg} 
+              alt="Bhisez Logo" 
+              className="max-h-20 w-auto max-w-full object-contain"
               referrerPolicy="no-referrer"
             />
-            <div id="logo-fallback-desktop" className="hidden bg-amber-500 text-stone-950 p-2.5 rounded-xl font-black text-lg shadow-lg border border-amber-400">
-              Bh
-            </div>
-            <div>
-              <span className="font-display font-black text-amber-500 text-sm xl:text-base uppercase tracking-wider block">
-                Bhise'z Workshop
-              </span>
-              <span className="text-[9px] font-mono tracking-widest text-[#a8a29e] uppercase block -mt-1">
-                ORDER TRACKER
-              </span>
-            </div>
           </div>
         </div>
 
