@@ -898,18 +898,13 @@ export default function CRMTab({
 
   // (c) Source Performance (calculated from Customers Directory: db.crmCustomers)
   const sourceBarColors: Record<string, string> = {
-    'IndiaMART': '#6D4025',     // Coffee Brown
     'Walkin': '#D97706',        // Amber Orange
-    'Manual': '#1A110A',        // Dark Brown
-    'TradeIndia': '#EA7300',    // Bright Orange
-    'Email': '#F2B233',         // Gold
-    'Website': '#6366F1',       // Blue
     'Social Media': '#A855F7',   // Purple
-    'Youtube': '#6D4025',       // Coffee Brown
     'Reference': '#6B7280',     // Gray
+    'Website': '#6366F1',       // Blue
   };
 
-  const defaultSourcesList = ['IndiaMART', 'Walkin', 'Manual', 'Website', 'TradeIndia', 'Social Media', 'Email', 'Youtube', 'Reference'];
+  const defaultSourcesList = ['Walkin', 'Social Media', 'Reference', 'Website'];
   const crmCustomerList = db.crmCustomers || [];
   const sourceCounts: Record<string, number> = {};
 
@@ -927,7 +922,7 @@ export default function CRMTab({
       count: sourceCounts[name] || 0,
       color: sourceBarColors[name] || '#6D4025'
     }))
-    .filter(item => totalLeadsCount > 0 ? item.count > 0 : ['IndiaMART', 'Manual', 'TradeIndia', 'Email', 'Walkin', 'Website', 'Social Media', 'Youtube', 'Reference'].includes(item.name))
+    .filter(item => totalLeadsCount > 0 ? item.count > 0 : ['Walkin', 'Social Media', 'Reference', 'Website'].includes(item.name))
     .sort((a, b) => b.count - a.count);
 
   const maxSourceCount = Math.max(...sourcePerformanceData.map(d => d.count), 1);
@@ -2829,15 +2824,10 @@ export default function CRMTab({
                   defaultValue={editingCustomer?.source || 'Walkin'}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
-                  <option value="IndiaMART">IndiaMART</option>
-                  <option value="Walkin">Walkin</option>
-                  <option value="Manual">Manual</option>
-                  <option value="Website">Website</option>
-                  <option value="TradeIndia">TradeIndia</option>
+                 <option value="Walkin">Walkin</option>
                   <option value="Social Media">Social Media</option>
-                  <option value="Email">Email</option>
-                  <option value="Youtube">Youtube</option>
                   <option value="Reference">Reference</option>
+                  <option value="Website">Website</option>
                 </select>
               </div>
 
