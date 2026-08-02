@@ -4318,7 +4318,7 @@ export default function CRMTab({
                         <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide">
                           Bank Details:
                         </div>
-                        <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[85px] print:min-h-[75px]">
+                        <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[95px] print:min-h-[85px]">
                           <div className="col-span-8 space-y-0.5 text-[11px] text-slate-700 font-semibold">
                             <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
                             <p>Account No.: <span className="text-slate-900 font-extrabold font-mono">50100705616156</span></p>
@@ -4385,19 +4385,19 @@ export default function CRMTab({
                           For Bhisez furniture:
                         </div>
                         <div 
-                          className="p-2.5 print:p-2 flex flex-col items-center justify-end flex-1 min-h-[85px] print:min-h-[75px] cursor-pointer group relative"
+                          className="p-2.5 print:p-2 flex flex-col items-center justify-end flex-1 min-h-[95px] print:min-h-[85px] cursor-pointer group relative"
                           onClick={() => document.getElementById('signature-upload-input')?.click()}
                           title="Click to upload custom authorized signature image"
                         >
                           {customSignature ? (
-                            <div className="relative w-32 h-10 flex items-center justify-center">
+                            <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
                               <img src={customSignature} alt="Authorized Signature" className="max-w-full max-h-full object-contain" />
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
                                 Change Signature
                               </div>
                             </div>
                           ) : (
-                            <div className="w-32 h-10 border border-slate-200 bg-slate-50/50 rounded flex items-center justify-center text-stone-400 group-hover:text-stone-600 transition text-[9px] font-semibold print:border-none print:bg-transparent">
+                            <div className="w-40 h-14 border border-slate-200 bg-slate-50/50 rounded flex items-center justify-center text-stone-400 group-hover:text-stone-600 transition text-[9px] font-semibold print:border-none print:bg-transparent">
                               <span className="print:hidden">(Click to add Sign)</span>
                             </div>
                           )}
