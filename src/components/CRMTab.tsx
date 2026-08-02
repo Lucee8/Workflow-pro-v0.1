@@ -4071,7 +4071,7 @@ export default function CRMTab({
                   </div>
 
                   {/* Unified Main Box with Slate Border */}
-                  <div className="border-2 border-slate-800 bg-white">
+                  <div className="border border-slate-800 bg-white">
                     
                     {/* Section 1: Company Profile Info Block */}
                     <div className="grid grid-cols-12 p-3 print:p-2 items-center">
