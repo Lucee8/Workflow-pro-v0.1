@@ -4141,7 +4141,7 @@ export default function CRMTab({
                         <div className="p-2.5 print:p-2 text-[11px] text-slate-700 space-y-1 min-h-[55px]">
                           <div className="flex items-center gap-1">
                             <span className="text-slate-600">No:</span>
-                            <span className="hidden print:inline font-bold text-slate-900 font-mono">
+                            <span className="hidden print:inline font-bold text-slate-900">
                               {viewingEstimateQuote.estimateNo !== undefined ? viewingEstimateQuote.estimateNo : (viewingEstimateQuote.id ? viewingEstimateQuote.id.toString().replace(/\D/g, '').slice(-3) || '1' : '1')}
                             </span>
                             <input
@@ -4149,20 +4149,20 @@ export default function CRMTab({
                               min="1"
                               value={viewingEstimateQuote.estimateNo !== undefined ? viewingEstimateQuote.estimateNo : (viewingEstimateQuote.id ? Number(viewingEstimateQuote.id.toString().replace(/\D/g, '')) || 1 : 1)}
                               onChange={(e) => handleUpdateField('estimateNo', Number(e.target.value))}
-                              className="print:hidden font-bold text-slate-900 font-mono bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-20 outline-none transition"
+                              className="print:hidden font-bold text-slate-900 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-20 outline-none transition"
                             />
                           </div>
 
                           <div className="flex items-center gap-1">
                             <span className="text-slate-600">Date:</span>
-                            <span className="hidden print:inline font-bold text-slate-900 font-mono">
+                            <span className="hidden print:inline font-bold text-slate-900">
                               {formatToDDMMYYYY(viewingEstimateQuote.created_at)}
                             </span>
                             <input
                               type="date"
                               value={new Date(viewingEstimateQuote.created_at).toISOString().split('T')[0]}
                               onChange={(e) => handleUpdateField('created_at', new Date(e.target.value + 'T12:00:00').toISOString())}
-                              className="print:hidden font-bold text-slate-900 font-mono bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-28 outline-none transition"
+                              className="print:hidden font-bold text-slate-900 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-28 outline-none transition"
                             />
                           </div>
 
@@ -4193,32 +4193,32 @@ export default function CRMTab({
                               const itemTotalVal = (item.unitPrice * item.quantity);
                               return (
                                 <tr key={item.id} className="divide-x divide-slate-400 text-[11px]">
-                                  <td className="p-2 text-center text-slate-500 font-mono">{idx + 1}</td>
+                                  <td className="p-2 text-center text-slate-500">{idx + 1}</td>
                                   <td className="p-2 font-medium">
                                     <div className="font-bold text-slate-900">{item.furnitureItem}</div>
                                     {(item.dimensions || item.material) && (
                                       <div className="text-[10px] text-slate-500 space-x-2 mt-0.5">
-                                        {item.dimensions && <span>Size: <span className="font-mono text-slate-700">{item.dimensions}</span></span>}
+                                        {item.dimensions && <span>Size: <span className="text-slate-700">{item.dimensions}</span></span>}
                                         {item.material && <span>Wood: <span className="text-slate-700">{item.material}</span></span>}
                                       </div>
                                     )}
 
                                   </td>
-                                  <td className="p-2 text-center text-slate-400 font-mono">-</td>
+                                  <td className="p-2 text-center text-slate-400">-</td>
                                   <td className="p-2 text-center font-bold text-slate-900">{item.quantity}</td>
-                                  <td className="p-2 text-right font-mono">₹{item.unitPrice.toLocaleString('en-IN')}.00</td>
-                                  <td className="p-2 text-right font-mono font-bold text-slate-900 pr-2">₹{itemTotalVal.toLocaleString('en-IN')}.00</td>
+                                  <td className="p-2 text-right">₹{item.unitPrice.toLocaleString('en-IN')}.00</td>
+                                  <td className="p-2 text-right font-bold text-slate-900 pr-2">₹{itemTotalVal.toLocaleString('en-IN')}.00</td>
                                 </tr>
                               );
                             })
                           ) : (
                             <tr className="divide-x divide-slate-400 text-[11px]">
-                              <td className="p-2 text-center text-slate-500 font-mono">1</td>
+                              <td className="p-2 text-center text-slate-500">1</td>
                               <td className="p-2 font-bold text-slate-900">Custom Furniture Crafting</td>
-                              <td className="p-2 text-center text-slate-400 font-mono">-</td>
+                              <td className="p-2 text-center text-slate-400">-</td>
                               <td className="p-2 text-center font-bold text-slate-900">1</td>
-                              <td className="p-2 text-right font-mono">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
-                              <td className="p-2 text-right font-mono font-bold text-slate-900 pr-2">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
+                              <td className="p-2 text-right">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
+                              <td className="p-2 text-right font-bold text-slate-900 pr-2">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
                             </tr>
                           )}
 
@@ -4227,11 +4227,11 @@ export default function CRMTab({
                             <td className="p-2 text-center"></td>
                             <td className="p-2 text-slate-900">Total</td>
                             <td className="p-2 text-center"></td>
-                            <td className="p-2 text-center font-mono text-slate-900">
+                            <td className="p-2 text-center text-slate-900">
                               {itemsList.reduce((acc, curr) => acc + curr.quantity, 0) || 1}
                             </td>
                             <td className="p-2"></td>
-                            <td className="p-2 text-right font-mono text-slate-900 pr-2">
+                            <td className="p-2 text-right text-slate-900 pr-2">
                               ₹{itemSubtotal.toLocaleString('en-IN')}.00
                             </td>
                           </tr>
@@ -4322,8 +4322,8 @@ export default function CRMTab({
                         <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[95px] print:min-h-[85px]">
                           <div className="col-span-8 space-y-0.5 text-[11px] text-slate-700 font-semibold">
                             <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
-                            <p>Account No.: <span className="text-slate-900 font-extrabold font-mono">50100705616156</span></p>
-                            <p>IFSC code: <span className="text-slate-900 font-extrabold font-mono">HDFC0009348</span></p>
+                            <p>Account No.: <span className="text-slate-900 font-extrabold">50100705616156</span></p>
+                            <p>IFSC code: <span className="text-slate-900 font-extrabold">HDFC0009348</span></p>
                             <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
                           </div>
                           <div 
@@ -4417,17 +4417,18 @@ export default function CRMTab({
                             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">PRODUCT VISUAL SPECIFICATIONS & GALLERY</p>
                           </div>
                           <div className="text-right text-xs">
-                            <span className="font-mono font-bold text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded">
+                          <div className="text-right text-xs">
+                            <span className="font-bold text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded">
                               Estimate Ref: {quoteDisplayId}
                             </span>
-                            <p className="text-[10px] text-slate-500 mt-1 font-mono">{formatToDDMMYYYY(viewingEstimateQuote.created_at)}</p>
+                            <p className="text-[10px] text-slate-500 mt-1">{formatToDDMMYYYY(viewingEstimateQuote.created_at)}</p>
                           </div>
                         </div>
                         <div className="text-xs text-slate-700 flex justify-between items-center font-medium">
                           <div>
                             Customer Name: <strong className="text-slate-900 font-bold">{customer?.name || viewingEstimateQuote.customer_name}</strong>
                           </div>
-                          <div className="text-[10px] text-slate-500 font-mono">
+                          <div className="text-[10px] text-slate-500">
                             Total Products: <strong className="text-slate-900">{itemsList.length}</strong>
                           </div>
                         </div>
@@ -4445,7 +4446,7 @@ export default function CRMTab({
                               {/* Header Bar with PRODUCT #number and product name */}
                               <div className="bg-stone-100 border border-stone-300 p-3 rounded-none flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-3">
-                                  <span className="bg-[#593622] text-white text-[11px] font-black px-3 py-1 rounded uppercase tracking-wider font-mono">
+                                  <span className="bg-[#593622] text-white text-[11px] font-black px-3 py-1 rounded uppercase tracking-wider">
                                     PRODUCT #{idx + 1}
                                   </span>
                                   <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
@@ -4455,9 +4456,9 @@ export default function CRMTab({
 
                                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700 font-medium">
                                   {item.material && <span>Wood: <strong className="text-slate-900">{item.material}</strong></span>}
-                                  {item.dimensions && <span>Size: <strong className="text-slate-900 font-mono">{item.dimensions}</strong></span>}
-                                  <span>Qty: <strong className="text-slate-900 font-mono">{item.quantity}</strong></span>
-                                  <span>Subtotal: <strong className="text-slate-900 font-mono">₹{((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString('en-IN')}</strong></span>
+                                  {item.dimensions && <span>Size: <strong className="text-slate-900">{item.dimensions}</strong></span>}
+                                  <span>Qty: <strong className="text-slate-900">{item.quantity}</strong></span>
+                                  <span>Subtotal: <strong className="text-slate-900">₹{((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString('en-IN')}</strong></span>
                                 </div>
                               </div>
 
@@ -4476,7 +4477,7 @@ export default function CRMTab({
                                           className="max-w-full max-h-full object-contain"
                                         />
                                       </div>
-                                      <div className="w-full flex justify-between items-center text-[10px] text-slate-600 font-mono font-bold pt-1.5 border-t border-slate-200 px-1">
+                                      <div className="w-full flex justify-between items-center text-[10px] text-slate-600 font-bold pt-1.5 border-t border-slate-200 px-1">
                                         <span>PRODUCT #{idx + 1} • Photo {imgI + 1}</span>
                                         <span className="text-[#593622] font-black truncate max-w-[130px]">{item.furnitureItem}</span>
                                       </div>
