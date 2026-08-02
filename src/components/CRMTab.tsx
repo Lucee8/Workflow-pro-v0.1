@@ -4197,7 +4197,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         <img 
                           src={customLogo || companyLogoImg} 
                           alt="Company Brand Logo" 
-                          className="max-h-16 print:max-h-14 max-w-full object-contain" 
+                          className="max-h-24 sm:max-h-28 print:max-h-20 max-w-full object-contain" 
                         />
                       </div>
 
@@ -4420,22 +4420,22 @@ if (typeof endMs === 'number' && time > endMs) return false;
                           Bank Details:
                         </div>
                         <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[95px] print:min-h-[85px]">
-                          <div className="col-span-8 space-y-0.5 text-[11px] text-slate-700 font-semibold">
+                          <div className="col-span-7 space-y-0.5 text-[11px] text-slate-700 font-semibold">
                             <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
                             <p>Account No.: <span className="text-slate-900 font-extrabold">50100705616156</span></p>
                             <p>IFSC code: <span className="text-slate-900 font-extrabold">HDFC0009348</span></p>
                             <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
                           </div>
                           <div 
-                            className="col-span-4 flex flex-col items-center justify-center border-l border-slate-200 pl-2 group relative"
+                            className="col-span-5 flex flex-col items-center justify-center border-l border-slate-200 pl-2 group relative"
                             title="UPI QR Code Image"
                           >
                             <img 
                               src={customQR || upiQrImg} 
                               alt="UPI QR Code Image" 
-                              className="w-14 h-14 print:w-12 print:h-12 object-contain" 
+                              className="w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20 object-contain" 
                             />
-                            <div className="mt-1 bg-[#1b9a59] text-white px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
+                            <div className="mt-1 bg-[#1b9a59] text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
                               UPI Click to Pay
                             </div>
                           </div>
