@@ -331,7 +331,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = new window.Image();
+          const img = document.createElement('img');
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -881,7 +881,6 @@ export default function CRMTab({
     return { name, orders: count };
   });
 
-
   // (b) Revenue Trend (computed from valid db.payments & db.crmPayments)
   const revenueTrendData = last6Months.map(({ key, name }) => {
     const paymentSum = validPayments.filter(p => {
@@ -1233,7 +1232,7 @@ export default function CRMTab({
   // 4. SEARCHES & FILTERING LOGIC
   const filteredCustomersList = (db.crmCustomers || [])
     .filter(c => {
-            if (!c || (!c.name?.trim() && !c.phone?.trim() && !c.id?.trim())) return false;
+      if (!c || (!c.name?.trim() && !c.phone?.trim() && !c.id?.trim())) return false;
       const nameStr = c.name || '';
       const phoneStr = c.phone || '';
       const idStr = c.id || '';
@@ -1431,6 +1430,60 @@ export default function CRMTab({
 
           {/* Analytics Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Current Lead Stage Distribution */}
+            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs flex flex-col justify-between">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Current Lead Stage Distribution</span>
+                <Activity className="text-stone-400" size={16} />
+              </div>
+
+              <div className="min-h-[220px] flex items-center justify-between gap-2">
+                {totalLeadsCount > 0 ? (
+                  <>
+                    <div className="w-5/12 h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={currentLeadStageData.filter(d => d.value > 0)}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={46}
+                            outerRadius={68}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {currentLeadStageData.filter(d => d.value > 0).map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(val?: any) => [`${val ?? 0} lead(s)`, 'Count']} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="w-7/12 space-y-1.5 pr-1 max-h-52 overflow-y-auto">
+                      {currentLeadStageData.map((item) => (
+                        <div key={item.name} className="flex items-center justify-between text-xs py-0.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-3 h-3 rounded-md shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="text-stone-700 font-semibold truncate">{item.name}</span>
+                          </div>
+                          <span className="text-stone-900 font-mono font-black text-xs ml-2">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full text-center py-10 text-stone-400 text-xs font-medium">
+                    No customer leads recorded yet.
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-stone-200/80 pt-3 mt-2 flex justify-between items-center text-xs font-bold text-stone-500 font-mono">
+                <span>Total leads: {totalLeadsCount}</span>
+              </div>
+            </div>
 
             {/* Source Performance */}
             <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
@@ -1491,63 +1544,6 @@ export default function CRMTab({
               </div>
             </div>
 
-            {/* Current Lead Stage Distribution */}
-            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs flex flex-col justify-between">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Current Lead Stage Distribution</span>
-                <Activity className="text-stone-400" size={16} />
-              </div>
-
-              <div className="min-h-[220px] flex items-center justify-between gap-2">
-                {totalLeadsCount > 0 ? (
-                  <>
-                    <div className="w-5/12 h-48">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={currentLeadStageData.filter(d => d.value > 0)}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={46}
-                            outerRadius={68}
-                            paddingAngle={3}
-                            dataKey="value"
-                          >
-                            {currentLeadStageData.filter(d => d.value > 0).map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value: unknown) => [`${value ?? 0} lead(s)`, 'Count']} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    <div className="w-7/12 space-y-1.5 pr-1 max-h-52 overflow-y-auto">
-                      {currentLeadStageData.map((item) => (
-                        <div key={item.name} className="flex items-center justify-between text-xs py-0.5">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-3 h-3 rounded-md shrink-0" style={{ backgroundColor: item.color }} />
-                            <span className="text-stone-700 font-semibold truncate">{item.name}</span>
-                          </div>
-                          <span className="text-stone-900 font-mono font-black text-xs ml-2">{item.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="w-full text-center py-10 text-stone-400 text-xs font-medium">
-                    No customer leads recorded yet.
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t border-stone-200/80 pt-3 mt-2 flex justify-between items-center text-xs font-bold text-stone-500 font-mono">
-                <span>Total leads: {totalLeadsCount}</span>
-              </div>
-            </div>
-          </div>
-
-
             {/* Monthly Orders area chart */}
             <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
               <div className="flex justify-between items-center mb-4">
@@ -1583,12 +1579,13 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip formatter={(value) => `₹${(value as number)?.toLocaleString() || '0'}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
+          </div>
 
           {/* Today's Follow-ups and Recent Activity timeline split row */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
