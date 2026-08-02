@@ -809,8 +809,23 @@ export default function CRMTab({
   const todayStr = new Date().toISOString().split('T')[0];
   const followupsToday = db.crmFollowUps?.filter(f => f.date === todayStr && f.status === 'Pending') || [];
   
-  // Total Revenue Calculation (summing payments from both orders payments and CRM direct payments)
-  const totalRevenue = ((db.payments || []).reduce((acc, p) => acc + (p.advance_paid || 0), 0)) + 0;
+  // Filter valid payments linked to existing orders and customers
+  const validOrderIds = new Set((db.orders || []).map(o => o.id));
+  const validCustomerIds = new Set([
+    ...(db.customers || []).map(c => c.id),
+    ...(db.crmCustomers || []).map(c => c.id)
+  ]);
+
+  const validPayments = (db.payments || []).filter(p => !p.order_id || validOrderIds.has(p.order_id));
+  const validCrmPayments = (db.crmPayments || []).filter(cp => {
+    if (cp.customer_id && !validCustomerIds.has(cp.customer_id)) return false;
+    if (cp.order_id && !validOrderIds.has(cp.order_id)) return false;
+    return true;
+  });
+
+  // Total Revenue Calculation (summing valid payments from active orders and CRM customers)
+  const totalRevenue = (validPayments.reduce((acc, p) => acc + (p.advance_paid || 0), 0)) +
+                       (validCrmPayments.reduce((acc, cp) => acc + (cp.advance_paid || 0), 0));
   
   // Repeat Customers (Customers with > 1 order)
   const customerOrderCounts = db.orders?.reduce((acc: Record<string, number>, o) => {
@@ -867,15 +882,15 @@ export default function CRMTab({
   });
 
 
-  // (b) Revenue Trend (computed from actual db.payments & db.crmPayments)
+  // (b) Revenue Trend (computed from valid db.payments & db.crmPayments)
   const revenueTrendData = last6Months.map(({ key, name }) => {
-    const paymentSum = (db.payments || []).filter(p => {
+    const paymentSum = validPayments.filter(p => {
       const k = getYearMonthKey(p.payment_date || p.created_at);
       return k === key;
     }).reduce((acc, p) => acc + (p.advance_paid || 0), 0);
 
-    const crmPaymentSum = (db.crmPayments || []).filter(cp => {
-      const k = getYearMonthKey(cp.payment_date || cp.payment_date);
+    const crmPaymentSum = validCrmPayments.filter(cp => {
+      const k = getYearMonthKey(cp.payment_date);
       return k === key;
     }).reduce((acc, cp) => acc + (cp.advance_paid || 0), 0);
 
