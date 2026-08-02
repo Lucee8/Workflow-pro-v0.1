@@ -3854,15 +3854,16 @@ export default function CRMTab({
               '<script src="https://cdn.tailwindcss.com"></script>' +
               '<style>' +
               '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
-              'body { font-family: "Inter", sans-serif; background-color: white; color: black; padding: 30px; }' +
+              '@page { size: A4 portrait; margin: 8mm; }' +
+              'body { font-family: "Inter", sans-serif; background-color: white; color: black; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
               '.print\\:hidden { display: none !important; }' +
               '.print\\:inline { display: inline !important; }' +
               '.print\\:block { display: block !important; }' +
-              '@media print { body { padding: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } .page-break-before-always, .break-before-page { page-break-before: always !important; break-before: page !important; } }' +
+              '@media print { body { padding: 0; margin: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } .page-break-before-always, .break-before-page { page-break-before: always !important; break-before: page !important; } }' +
               '.page-break-before-always, .break-before-page { page-break-before: always; break-before: page; }' +
               '</style>' +
               '</head><body onload="window.print(); setTimeout(function(){ window.close(); }, 500);">' +
-              '<div class="max-w-4xl mx-auto border-2 border-stone-800 p-8">' +
+              '<div class="w-full max-w-4xl mx-auto p-2">' +
               printContent.innerHTML +
               '</div></body></html>';
             printWindow.document.write(htmlString);
@@ -4061,18 +4062,18 @@ export default function CRMTab({
 
               {/* Scrollable sheet container for mobile preview */}
               <div className="overflow-x-auto bg-white p-2 rounded-3xl border border-stone-200 shadow-sm">
-                <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-6 font-sans">
+                <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-4 sm:p-6 print:p-0 font-sans">
                   
                   {/* Title centered above the main box */}
-                  <div className="text-center mb-5">
-                    <h1 className="text-2xl font-bold text-slate-800 tracking-wide">Estimate</h1>
+                  <div className="text-center mb-3 print:mb-2">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-wide">Estimate</h1>
                   </div>
 
                   {/* Unified Main Box with Slate Border */}
                   <div className="border border-slate-400 bg-white">
                     
                     {/* Section 1: Company Profile Info Block */}
-                    <div className="grid grid-cols-12 p-4 items-center">
+                    <div className="grid grid-cols-12 p-3 print:p-2 items-center">
                       <div 
                         className="col-span-5 flex flex-col items-start select-none cursor-pointer group relative"
                         onClick={() => document.getElementById('logo-upload-input')?.click()}
@@ -4080,19 +4081,18 @@ export default function CRMTab({
                       >
                         {customLogo ? (
                           <div className="relative">
-                            <img src={customLogo} alt="Company Logo" className="max-h-20 max-w-full object-contain" />
+                            <img src={customLogo} alt="Company Logo" className="max-h-16 print:max-h-14 max-w-full object-contain" />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
                               Change Logo
                             </div>
                           </div>
                         ) : (
                           <>
-                            <span className="text-4xl font-extrabold text-[#e2a228] font-serif tracking-tight leading-none">Bhisez</span>
-                            <div className="flex items-center w-full max-w-[150px] gap-1 mt-1">
+                            <span className="text-3xl print:text-2xl font-extrabold text-[#e2a228] font-serif tracking-tight leading-none">Bhisez</span>
+                            <div className="flex items-center w-full max-w-[130px] gap-1 mt-0.5">
                               <div className="h-[1.5px] bg-slate-800 flex-1"></div>
-                              <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-800 font-sans">FURNITURE</span>
-                              <div className="h-[1.5px] bg-slate-800 flex-1"></div>
-                            </div>
+                              <span className="text-[8px] font-bold uppercase tracking-[0.25em] text-slate-800 font-sans">FURNITURE</span>
+                              </div>
                             <div className="absolute -bottom-4 left-0 text-[8px] text-stone-400 opacity-0 group-hover:opacity-100 transition print:hidden">
                               (Click to choose logo image)
                             </div>
@@ -4100,14 +4100,14 @@ export default function CRMTab({
                         )}
                       </div>
 
-                      <div className="col-span-7 text-left space-y-1 pl-4">
-                        <h2 className="text-lg font-bold text-slate-900 leading-none">Bhisez furniture</h2>
-                        <p className="text-[11px] text-slate-600">Bhisez Furniture, Near Bus Stand, Sukalwad-416534</p>
-                        <div className="flex flex-wrap gap-x-4 text-[11px] text-slate-600">
+                      <div className="col-span-7 text-left space-y-0.5 pl-4">
+                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-none">Bhisez furniture</h2>
+                        <p className="text-[10px] sm:text-[11px] text-slate-600">Bhisez Furniture, Near Bus Stand, Sukalwad-416534</p>
+                        <div className="flex flex-wrap gap-x-4 text-[10px] sm:text-[11px] text-slate-600">
                           <p>Phone: <span className="font-bold text-slate-900">8275351122</span></p>
                           <p>Email: <span className="text-slate-900 font-medium">bhisezfurniture@gmail.com</span></p>
                         </div>
-                        <p className="text-[11px] text-slate-600">State: <span className="font-bold text-slate-900">27-Maharashtra</span></p>
+                        <p className="text-[10px] sm:text-[11px] text-slate-600">State: <span className="font-bold text-slate-900">27-Maharashtra</span></p>
                       </div>
                     </div>
 
@@ -4118,10 +4118,10 @@ export default function CRMTab({
                         <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400">
                           Estimate For:
                         </div>
-                        <div className="p-3 space-y-1 min-h-[75px] text-xs text-slate-700">
+                        <div className="p-2.5 print:p-2 space-y-0.5 min-h-[55px] text-xs text-slate-700">
                           <h3 className="font-bold text-slate-900 text-sm">{customer?.name || viewingEstimateQuote.customer_name}</h3>
                           {customer && (
-                            <div className="space-y-0.5 text-slate-600">
+                            <div className="space-y-0.5 text-slate-600 text-[11px]">
                               <p>Contact: <span className="font-semibold text-slate-800">{customer.phone}</span></p>
                               {customer.address && (
                                 <p className="leading-snug">Address: {customer.address}, {customer.city}</p>
@@ -4137,7 +4137,7 @@ export default function CRMTab({
                           <span>Estimate Details:</span>
                           <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click values to edit inline)</span>
                         </div>
-                        <div className="p-3 text-[11px] text-slate-700 space-y-1.5 min-h-[75px]">
+                        <div className="p-2.5 print:p-2 text-[11px] text-slate-700 space-y-1 min-h-[55px]">
                           <div className="flex items-center gap-1">
                             <span className="text-slate-600">No:</span>
                             <span className="hidden print:inline font-bold text-slate-900 font-mono">
@@ -4240,9 +4240,9 @@ export default function CRMTab({
 
                     {/* Section 3.5: Breakdown Calculations Layout */}
                     <div className="grid grid-cols-12 border-t border-slate-400">
-                      <div className="col-span-8 border-r border-slate-400 bg-white min-h-[140px]"></div>
+                      <div className="col-span-8 border-r border-slate-400 bg-white min-h-[30px] print:min-h-0"></div>
                       <div className="col-span-4 flex flex-col font-medium text-xs divide-y divide-slate-400">
-                        <div className="grid grid-cols-2 p-2 text-rose-800 bg-rose-50/20">
+                        <div className="grid grid-cols-2 p-1.5 print:p-1 text-rose-800 bg-rose-50/20">
                           <span className="font-semibold text-rose-950">Discount</span>
                           <span className="text-right font-bold pr-1">
                             : {totalDiscount > 0 ? `-₹${totalDiscount.toLocaleString('en-IN')}.00` : `₹0.00`}
@@ -4250,24 +4250,24 @@ export default function CRMTab({
                         </div>
                         
                         {totalGstAmount > 0 && (
-                          <div className="grid grid-cols-2 p-2">
+                          <div className="grid grid-cols-2 p-1.5 print:p-1">
                             <span className="text-slate-600">GST</span>
                             <span className="text-right font-bold text-slate-900 pr-1">: +₹{totalGstAmount.toLocaleString('en-IN')}.00</span>
                           </div>
                         )}
 
-                        <div className="grid grid-cols-2 p-2 font-bold text-slate-950 bg-slate-50/50">
+                        <div className="grid grid-cols-2 p-1.5 print:p-1 font-bold text-slate-950 bg-slate-50/50">
                           <span>Total</span>
                           <span className="text-right font-extrabold text-slate-950 pr-1">: ₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</span>
                         </div>
 
                         {/* Estimate Amount In Words Sub-Header */}
-                        <div className="bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700 border-t border-b border-slate-400 uppercase">
+                        <div className="bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 border-t border-b border-slate-400 uppercase">
                           Estimate Amount In Words :
                         </div>
                         
                         {/* Amount text */}
-                        <div className="p-2 text-[11px] leading-relaxed text-slate-800 font-semibold bg-white italic">
+                        <div className="p-1.5 print:p-1 text-[11px] leading-relaxed text-slate-800 font-semibold bg-white italic">
                           {getAmountInWords(viewingEstimateQuote.totalAmount)}
                         </div>
                       </div>
@@ -4280,7 +4280,7 @@ export default function CRMTab({
                           <span>Description:</span>
                           <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click below to edit description)</span>
                         </div>
-                        <div className="p-2.5 text-slate-700 font-semibold min-h-[55px] flex flex-col flex-1">
+                        <div className="p-2 print:p-1.5 text-slate-700 font-semibold min-h-[40px] print:min-h-[25px] flex flex-col flex-1">
                           <span className="hidden print:inline whitespace-pre-wrap leading-relaxed text-slate-700">
                             {viewingEstimateQuote.description !== undefined ? viewingEstimateQuote.description : (viewingEstimateQuote.notes || '')}
                           </span>
@@ -4288,7 +4288,7 @@ export default function CRMTab({
                             placeholder="Type custom description manually..."
                             value={viewingEstimateQuote.description !== undefined ? viewingEstimateQuote.description : (viewingEstimateQuote.notes || '')}
                             onChange={(e) => handleUpdateField('description', e.target.value)}
-                            className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-semibold outline-none resize-none min-h-[50px] transition text-slate-700"
+                            className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-semibold outline-none resize-none min-h-[40px] transition text-slate-700"
                           />
                         </div>
                       </div>
@@ -4298,7 +4298,7 @@ export default function CRMTab({
                           <span>Terms And Conditions:</span>
                           <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click below to edit terms)</span>
                         </div>
-                        <div className="p-2.5 text-slate-500 font-medium min-h-[55px] flex flex-col flex-1">
+                        <div className="p-2 print:p-1.5 text-slate-500 font-medium min-h-[40px] print:min-h-[25px] flex flex-col flex-1">
                           <span className="hidden print:inline whitespace-pre-wrap leading-relaxed text-slate-500">
                             {viewingEstimateQuote.termsAndConditions !== undefined ? viewingEstimateQuote.termsAndConditions : ''}
                           </span>
@@ -4306,7 +4306,7 @@ export default function CRMTab({
                             placeholder="Type terms & conditions manually..."
                             value={viewingEstimateQuote.termsAndConditions !== undefined ? viewingEstimateQuote.termsAndConditions : ''}
                             onChange={(e) => handleUpdateField('termsAndConditions', e.target.value)}
-                            className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-medium outline-none resize-none min-h-[50px] transition text-slate-500"
+                            className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-medium outline-none resize-none min-h-[40px] transition text-slate-500"
                           />
                         </div>
                       </div>
@@ -4318,27 +4318,27 @@ export default function CRMTab({
                         <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide">
                           Bank Details:
                         </div>
-                        <div className="p-3 grid grid-cols-12 gap-3 items-center min-h-[110px]">
-                          <div className="col-span-8 space-y-1 text-[11px] text-slate-700 font-semibold">
+                        <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[85px] print:min-h-[75px]">
+                          <div className="col-span-8 space-y-0.5 text-[11px] text-slate-700 font-semibold">
                             <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
                             <p>Account No.: <span className="text-slate-900 font-extrabold font-mono">50100705616156</span></p>
                             <p>IFSC code: <span className="text-slate-900 font-extrabold font-mono">HDFC0009348</span></p>
                             <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
                           </div>
                           <div 
-                            className="col-span-4 flex flex-col items-center justify-center border-l border-slate-200 pl-3 cursor-pointer group relative"
+                            className="col-span-4 flex flex-col items-center justify-center border-l border-slate-200 pl-2 cursor-pointer group relative"
                             onClick={() => document.getElementById('qr-upload-input')?.click()}
                             title="Click to upload custom UPI QR code image"
                           >
                             {customQR ? (
                               <div className="relative">
-                                <img src={customQR} alt="UPI QR" className="w-16 h-16 object-contain" />
+                                <img src={customQR} alt="UPI QR" className="w-14 h-14 print:w-12 print:h-12 object-contain" />
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-bold rounded print:hidden">
                                   Change
                                 </div>
                               </div>
                             ) : (
-                              <svg className="w-16 h-16 text-slate-800" viewBox="0 0 100 100">
+                              <svg className="w-14 h-14 print:w-12 print:h-12 text-slate-800" viewBox="0 0 100 100">
                                 <rect width="100" height="100" fill="white" />
                                 <rect x="5" y="5" width="25" height="25" fill="currentColor" />
                                 <rect x="10" y="10" width="15" height="15" fill="white" />
@@ -4385,29 +4385,29 @@ export default function CRMTab({
                           For Bhisez furniture:
                         </div>
                         <div 
-                          className="p-3 flex flex-col items-center justify-end flex-1 min-h-[110px] cursor-pointer group relative"
+                          className="p-2.5 print:p-2 flex flex-col items-center justify-end flex-1 min-h-[85px] print:min-h-[75px] cursor-pointer group relative"
                           onClick={() => document.getElementById('signature-upload-input')?.click()}
                           title="Click to upload custom authorized signature image"
                         >
                           {customSignature ? (
-                            <div className="relative w-36 h-12 flex items-center justify-center">
+                            <div className="relative w-32 h-10 flex items-center justify-center">
                               <img src={customSignature} alt="Authorized Signature" className="max-w-full max-h-full object-contain" />
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold rounded print:hidden">
                                 Change Signature
                               </div>
                             </div>
                           ) : (
-                            <div className="w-36 h-12 border border-slate-200 bg-slate-50/50 rounded flex items-center justify-center text-stone-400 group-hover:text-stone-600 transition text-[9px] font-semibold print:border-none print:bg-transparent">
+                            <div className="w-32 h-10 border border-slate-200 bg-slate-50/50 rounded flex items-center justify-center text-stone-400 group-hover:text-stone-600 transition text-[9px] font-semibold print:border-none print:bg-transparent">
                               <span className="print:hidden">(Click to add Sign)</span>
                             </div>
                           )}
-                          <span className="text-[10px] text-slate-500 font-bold mt-2 font-sans">Authorized Signatory</span>
+                          <span className="text-[10px] text-slate-500 font-bold mt-1 font-sans">Authorized Signatory</span>
                         </div>
                       </div>
                     </div>
 
                     {/* NEW PAGE: PRODUCT VISUAL GALLERY / ATTACHMENTS */}
-                    <div className="break-before-page print:break-before-page page-break-before-always pt-8 print:pt-4 mt-8 print:mt-4 border-t-2 border-dashed border-slate-300 print:border-none space-y-6">
+                    <div className="break-before-page print:break-before-page page-break-before-always pt-6 print:pt-0 mt-6 print:mt-0 border-t-2 border-dashed border-slate-300 print:border-none space-y-6">
                       {/* Header for Image Sheet */}
                       <div className="border-2 border-slate-800 bg-white p-4 space-y-3">
                         <div className="flex justify-between items-center border-b border-slate-300 pb-3">
