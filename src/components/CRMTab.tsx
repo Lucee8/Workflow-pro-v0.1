@@ -5,6 +5,9 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import companyLogoImg from '../assets/images/logo.png';
+import upiQrImg from '../assets/images/upi_qr.png';
+import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
@@ -4192,15 +4195,9 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         title="Company Brand Logo"
                       >
                         <img 
-                          src={customLogo || "/assets/logo-gZfm8MSC.png"} 
+                          src={customLogo || companyLogoImg} 
                           alt="Company Brand Logo" 
-                          className="max-h-20 print:max-h-16 max-w-full object-contain" 
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            if (!target.src.includes('logo.png')) {
-                              target.src = "/assets/logo.png";
-                            }
-                          }}
+                          className="max-h-16 print:max-h-14 max-w-full object-contain" 
                         />
                       </div>
 
@@ -4434,7 +4431,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                             title="UPI QR Code Image"
                           >
                             <img 
-                              src={customQR || "/assets/UPI QR code.png"} 
+                              src={customQR || upiQrImg} 
                               alt="UPI QR Code Image" 
                               className="w-14 h-14 print:w-12 print:h-12 object-contain" 
                             />
@@ -4455,7 +4452,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         >
                           <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
                             <img 
-                              src={customSignature || "/assets/Authorized Signatory.svg"} 
+                              src={customSignature || signatureImg} 
                               alt="Authorized Signatory Signature" 
                               className="max-w-full max-h-full object-contain" 
                             />
