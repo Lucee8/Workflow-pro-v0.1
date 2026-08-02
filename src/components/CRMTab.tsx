@@ -810,8 +810,8 @@ export default function CRMTab({
   const followupsToday = db.crmFollowUps?.filter(f => f.date === todayStr && f.status === 'Pending') || [];
   
   // Total Revenue Calculation (summing payments from both orders payments and CRM direct payments)
-  const totalRevenue = ((db.payments || []).reduce((acc, p) => acc + (p.advance_paid || 0), 0)) +
- 
+  const totalRevenue = ((db.payments || []).reduce((acc, p) => acc + (p.advance_paid || 0), 0)) + 0;
+  
   // Repeat Customers (Customers with > 1 order)
   const customerOrderCounts = db.orders?.reduce((acc: Record<string, number>, o) => {
     acc[o.customer_id] = (acc[o.customer_id] || 0) + 1;
