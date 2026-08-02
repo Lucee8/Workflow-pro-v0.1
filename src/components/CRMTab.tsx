@@ -440,9 +440,24 @@ export default function CRMTab({
   const quoteGrandTotal = quoteTaxableSubtotal + quoteGstAmt;
 
   // Customized printable estimate asset states (stored in localStorage for persistence)
-  const [customLogo, setCustomLogo] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_logo'));
-  const [customQR, setCustomQR] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_qr'));
-  const [customSignature, setCustomSignature] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_signature'));
+  const [customLogo, setCustomLogo] = React.useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('estimate_custom_logo');
+    }
+    return null;
+  });
+  const [customQR, setCustomQR] = React.useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('estimate_custom_qr');
+    }
+    return null;
+  });
+  const [customSignature, setCustomSignature] = React.useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('estimate_custom_signature');
+    }
+    return null;
+  });
 
   // Attachment Dialog States
   const [showAttachmentModal, setShowAttachmentModal] = React.useState(false);
@@ -4071,7 +4086,7 @@ export default function CRMTab({
                   </div>
 
                   {/* Unified Main Box with Slate Border */}
-                  <div className="border border-slate-800 bg-white">
+                  <div className="border border-slate-400 bg-white">
                     
                     {/* Section 1: Company Profile Info Block */}
                     <div className="grid grid-cols-12 p-3 print:p-2 items-center">
@@ -4434,76 +4449,116 @@ export default function CRMTab({
                         </div>
                       </div>
 
-                      {/* Products Gallery Stack */}
-                      <div className="space-y-6">
-                        {itemsList.map((item, idx) => {
-                          const itemImages = item.images || [];
-                          return (
-                            <div
-                              key={item.id || idx}
-                              className="border-2 border-slate-800 bg-white p-4 space-y-4 page-break-inside-avoid print:page-break-inside-avoid"
-                            >
-                              {/* Header Bar with PRODUCT #number and product name */}
-                              <div className="bg-stone-100 border border-stone-300 p-3 rounded-none flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-3">
-                                  <span className="bg-[#593622] text-white text-[11px] font-black px-3 py-1 rounded uppercase tracking-wider">
-                                    PRODUCT #{idx + 1}
-                                  </span>
-                                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
-                                    {item.furnitureItem || `Product #${idx + 1}`}
-                                  </h3>
-                                </div>
+                      {/* Products Gallery 2-Column Grid */}
+                      {(() => {
+                        // Build list of active image slots
+                        const activeSlots: Array<{
+                          item: typeof itemsList[0];
+                          imgSrc?: string;
+                          itemIdx: number;
+                          photoIdx?: number;
+                        }> = [];
 
-                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700 font-medium">
-                                  {item.material && <span>Wood: <strong className="text-slate-900">{item.material}</strong></span>}
-                                  {item.dimensions && <span>Size: <strong className="text-slate-900">{item.dimensions}</strong></span>}
-                                  <span>Qty: <strong className="text-slate-900">{item.quantity}</strong></span>
-                                  <span>Subtotal: <strong className="text-slate-900">₹{((item.quantity || 1) * (item.unitPrice || 0)).toLocaleString('en-IN')}</strong></span>
-                                </div>
-                              </div>
+                        itemsList.forEach((item, idx) => {
+                          const images = item.images || [];
+                          if (images.length > 0) {
+                            images.forEach((imgSrc, imgI) => {
+                              activeSlots.push({ item, imgSrc, itemIdx: idx, photoIdx: imgI });
+                            });
+                          } else {
+                            activeSlots.push({ item, itemIdx: idx });
+                          }
+                        });
 
-                              {/* Product Images Container */}
-                              {itemImages.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-1">
-                                  {itemImages.map((imgSrc, imgI) => (
-                                    <div
-                                      key={imgI}
-                                      className="border border-slate-300 rounded-xl overflow-hidden bg-slate-50 p-2 flex flex-col items-center justify-center space-y-2 shadow-2xs"
-                                    >
-                                      <div className="w-full h-48 sm:h-56 bg-white rounded-lg border border-slate-200 overflow-hidden flex items-center justify-center p-1">
-                                        <img
-                                          src={imgSrc}
-                                          alt={`PRODUCT #${idx + 1} - ${item.furnitureItem} - Photo ${imgI + 1}`}
-                                          className="max-w-full max-h-full object-contain"
-                                        />
+                        // Ensure total slots is a multiple of 2 (at least 4)
+                        const targetTotal = Math.max(4, Math.ceil(activeSlots.length / 2) * 2);
+                        const totalSlots: Array<typeof activeSlots[0] | null> = [...activeSlots];
+                        while (totalSlots.length < targetTotal) {
+                          totalSlots.push(null);
+                        }
+
+                        return (
+                          <div className="grid grid-cols-2 gap-4 print:gap-4 pt-1">
+                            {totalSlots.map((slot, slotI) => {
+                              if (slot) {
+                                return (
+                                  <div
+                                    key={slotI}
+                                    className="border border-slate-300 bg-white rounded-2xl p-3.5 flex flex-col justify-between min-h-[280px] sm:min-h-[310px] shadow-2xs page-break-inside-avoid print:page-break-inside-avoid"
+                                  >
+                                    {/* Top Header bar */}
+                                    <div>
+                                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                          <span className="bg-[#593622] text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider whitespace-nowrap">
+                                            PRODUCT #{slot.itemIdx + 1}
+                                          </span>
+                                          <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate">
+                                            {slot.item.furnitureItem || `Product #${slot.itemIdx + 1}`}
+                                          </h4>
+                                        </div>
+                                        {slot.item.quantity && (
+                                          <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">
+                                            Qty: {slot.item.quantity}
+                                          </span>
+                                        )}
                                       </div>
-                                      <div className="w-full flex justify-between items-center text-[10px] text-slate-600 font-bold pt-1.5 border-t border-slate-200 px-1">
-                                        <span>PRODUCT #{idx + 1} • Photo {imgI + 1}</span>
-                                        <span className="text-[#593622] font-black truncate max-w-[130px]">{item.furnitureItem}</span>
-                                      </div>
+
+                                      {/* Specs info */}
+                                      {(slot.item.material || slot.item.dimensions) && (
+                                        <div className="text-[10px] text-slate-600 font-medium pt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                                          {slot.item.material && <span>Wood: <strong className="text-slate-800">{slot.item.material}</strong></span>}
+                                          {slot.item.dimensions && <span>Size: <strong className="text-slate-800">{slot.item.dimensions}</strong></span>}
+                                        </div>
+                                      )}
                                     </div>
-                                  ))}
+
+
+                                    {/* Centered Image Container */}
+                                    <div className="w-full flex-1 my-2 bg-slate-50/70 rounded-xl border border-slate-200 flex items-center justify-center p-2 min-h-[160px] max-h-[220px] overflow-hidden">
+                                      {slot.imgSrc ? (
+                                        <img
+                                          src={slot.imgSrc}
+                                          alt={`${slot.item.furnitureItem} - Photo ${(slot.photoIdx ?? 0) + 1}`}
+                                          className="max-w-full max-h-[180px] object-contain rounded-md"
+                                        />
+                                      ) : (
+                                        <span className="text-slate-300 font-mono text-xs italic">[No Image Attached]</span>
+                                      )}
+                                    </div>
+
+                                    {/* Bottom Footer Label */}
+                                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-700 font-medium">
+                                      <span className="font-bold text-slate-900 truncate max-w-[170px]">
+                                        {slot.item.furnitureItem}
+                                      </span>
+                                      <span className="text-slate-500 text-[10px] font-semibold">
+                                        {slot.photoIdx !== undefined ? `Photo ${slot.photoIdx + 1}` : 'Product Reference'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={slotI}
+                                  className="border border-dashed border-slate-200 rounded-2xl p-4 bg-slate-50/30 flex flex-col items-center justify-center text-slate-300 font-mono text-xs italic min-h-[280px] sm:min-h-[310px] shadow-2xs select-none page-break-inside-avoid print:page-break-inside-avoid"
+                                >
+                                  <span>[Intentionally Left Blank]</span>
                                 </div>
-                              ) : (
-                                <div className="border border-dashed border-slate-300 rounded-xl p-6 bg-slate-50/50 text-center text-slate-400 text-xs italic">
-                                  No product photos attached for PRODUCT #{idx + 1} ({item.furnitureItem || 'Item'}).
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
-
                   </div>
-
-
-
                 </div>
               </div>
             </div>
-            </motion.div>
-          </div>
+          </motion.div>
+        </div>
         );
       })()}
 
