@@ -567,39 +567,6 @@ export default function WorkerDashboard({
                         <p className="text-[10px] text-stone-400 mt-1 font-medium select-none">Estimate and record total material volume (CFT) required for fabrication</p>
                       </div>
                     </div>
-                    
-                    {/* Preset Pickers */}
-                    <div className="flex flex-wrap gap-1">
-                      <span className="text-[9px] font-bold text-stone-400 self-center mr-1 uppercase">Load Preset:</span>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadPreset('bed')}
-                        className="px-2 py-1 text-[9px] font-black border border-amber-200 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-900 tracking-wide uppercase transition"
-                      >
-                        🛏️ Bed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadPreset('cabinet')}
-                        className="px-2 py-1 text-[9px] font-black border border-amber-200 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-900 tracking-wide uppercase transition"
-                      >
-                        🚪 Cabinet
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadPreset('table')}
-                        className="px-2 py-1 text-[9px] font-black border border-amber-200 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-900 tracking-wide uppercase transition"
-                      >
-                        🪑 Table
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadPreset('sofa')}
-                        className="px-2 py-1 text-[9px] font-black border border-amber-200 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-900 tracking-wide uppercase transition"
-                      >
-                        🛋️ Sofa
-                      </button>
-                    </div>
                   </div>
 
                   {/* Section 1: Product details fields */}
@@ -705,87 +672,6 @@ export default function WorkerDashboard({
                         />
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 items-center">
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Reference Design Image Link</label>
-                        <input
-                          type="text"
-                          value={imageLink}
-                          onChange={(e) => setImageLink(e.target.value)}
-                          placeholder="https://images.unsplash.com/photo-..."
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] text-[10px] font-mono text-stone-600"
-                        />
-                      </div>
-                      <div className="pt-5 md:pt-4">
-                        {imageLink && (
-                          <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setShowRefImg(!showRefImg)}
-                              className="inline-flex items-center gap-1.5 text-xs font-black text-amber-800 bg-amber-50 border border-amber-200 p-1.5 px-3 rounded-lg hover:bg-amber-100 transition select-none"
-                            >
-                              <ImageIcon size={12} />
-                              {showRefImg ? "Hide Reference Blueprint" : "Click here to View Image / Blueprint"}
-                            </button>
-                            {showRefImg && (
-                              <div className="w-12 h-12 rounded-lg overflow-hidden border border-stone-200 shrink-0">
-                                <img referrerPolicy="no-referrer" src={imageLink} alt="Model Thumbnail" className="object-cover w-full h-full" />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Fetched Reference Design Drawings list for this Order */}
-                    {activeOrder?.images && activeOrder.images.length > 0 && (
-                      <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5 space-y-2 mt-2">
-                        <span className="block text-[10px] text-[#593622] font-extrabold uppercase tracking-wider">
-                          🖼️ Reference Design Images & Blueprint Drawings (Fetched from Order)
-                        </span>
-                        <div className="flex flex-wrap gap-2.5">
-                          {activeOrder.images.map((img, idx) => (
-                            <div
-                              key={img.id || idx}
-                              onClick={() => {
-                                setImageLink(img.url);
-                                setShowRefImg(true);
-                              }}
-                              className={`group relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer transition ${
-                                imageLink === img.url
-                                  ? 'border-[#593622] ring-2 ring-[#593622]/20 shadow-xs'
-                                  : 'border-stone-200 hover:border-stone-400 bg-white'
-                              }`}
-                            >
-                              <img
-                                referrerPolicy="no-referrer"
-                                src={img.url}
-                                alt={`Design Ref ${idx + 1}`}
-                                className="object-cover w-full h-full transition duration-150 group-hover:scale-105"
-                              />
-                              <span className="absolute bottom-0 inset-x-0 bg-stone-900/70 text-white text-[8px] font-bold text-center py-0.5 truncate px-0.5">
-                                {img.type || 'Ref'}
-                              </span>
-                              {imageLink === img.url && (
-                                <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#593622] text-white flex items-center justify-center text-[8px] font-bold">
-                                  ✓
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        <p className="text-[9px] text-[#593622]/80 font-medium">
-                          💡 Click any reference design image above to set/view it as the primary blueprint for this Wood Schedule!
-                        </p>
-                      </div>
-                    )}
-
-                    {showRefImg && imageLink && (
-                      <div className="border border-stone-200 rounded-xl overflow-hidden shadow-inner bg-stone-100 max-h-[220px] max-w-lg mx-auto flex items-center justify-center p-1.5">
-                        <img referrerPolicy="no-referrer" src={imageLink} alt="Detailed Reference Blueprint" className="max-h-[200px] object-contain rounded" />
-                      </div>
-                    )}
                   </div>
 
                   {/* Section 2: Wooden components table spreadsheet */}
