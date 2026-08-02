@@ -3874,7 +3874,9 @@ export default function CRMTab({
 
         return (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-3 overflow-y-auto">
-            <div
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
               className="bg-stone-100 rounded-3xl shadow-2xl p-4 sm:p-6 w-full max-w-4xl my-8 space-y-4 max-h-[95vh] overflow-y-auto"
             >
               {/* Control Panel (Not Printed) */}
@@ -4058,7 +4060,6 @@ export default function CRMTab({
                   />
                 </div>
               </div>
-            </div>
 
               {/* Scrollable sheet container for mobile preview */}
               <div className="overflow-x-auto bg-white p-2 rounded-3xl border border-stone-200 shadow-sm">
@@ -4501,6 +4502,7 @@ export default function CRMTab({
                 </div>
               </div>
             </div>
+            </motion.div>
           </div>
         );
       })()}
