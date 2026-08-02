@@ -4197,7 +4197,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         <img 
                           src={customLogo || companyLogoImg} 
                           alt="Company Brand Logo" 
-                          className="max-h-24 sm:max-h-28 print:max-h-20 max-w-full object-contain" 
+                          className="max-h-28 sm:max-h-28 print:max-h-20 max-w-full object-contain" 
                         />
                       </div>
 
