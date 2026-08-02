@@ -89,13 +89,13 @@ export default function Sidebar({
   return (
     <>
       {/* Top Header Bar for Mobile viewports */}
-      <header className="lg:hidden h-14 bg-stone-900 border-b border-stone-800 px-4 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-2">
+      <header className="lg:hidden h-16 bg-stone-900 border-b border-stone-800 px-2 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center">
           {/* Logo image */}
           <img 
             src={logoImg} 
             alt="Bhisez Logo" 
-            className="h-20 w-auto max-w-[180px] object-contain"
+            className="h-12 w-auto max-w-[220px] object-contain"
             referrerPolicy="no-referrer"
           />
         </div>
@@ -137,12 +137,12 @@ export default function Sidebar({
         } ${mobileMenuOpen ? 'h-[calc(100vh-56px)]' : 'h-screen'}`}
       >
         {/* Sidebar Brand Header (Desktop only) */}
-        <div className="p-4 border-b border-stone-900/30 hidden lg:block">
-          <div className="flex items-center justify-center py-2">
+        <div className="p-1 border-b border-stone-900/30 hidden lg:block overflow-hidden">
+          <div className="flex items-center justify-center">
             <img 
               src={logoImg} 
               alt="Bhisez Logo" 
-              className="max-h-20 w-auto max-w-full object-contain"
+              className="h-28 w-auto max-w-full object-contain"
               referrerPolicy="no-referrer"
             />
           </div>
