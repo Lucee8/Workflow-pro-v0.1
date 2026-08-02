@@ -139,8 +139,29 @@ export function syncFirestore(
     const unsub = onSnapshot(
       colRef,
       (snapshot) => {
-        const docs = snapshot.docs.map(doc => doc.data());
-        callback(docs);
+        const docs = snapshot.docs
+          .map(docSnap => {
+            const data = docSnap.data();
+            const docId = docSnap.id;
+            // Automatically purge blank or corrupted records from Firestore
+            if (name === 'crmCustomers') {
+              if (!data || (!data.name?.trim() && !data.phone?.trim())) {
+                deleteDoc(doc(db, 'crmCustomers', docId)).catch(() => {});
+                return null;
+              }
+            }
+            if (name === 'crmQuotations') {
+              if (!data || (!data.customer_name?.trim() && (!data.items || data.items.length === 0))) {
+                deleteDoc(doc(db, 'crmQuotations', docId)).catch(() => {});
+                return null;
+              }
+            }
+            return {
+              ...data,
+              id: data.id && String(data.id).trim() ? data.id : docId
+            };
+          })
+          .filter(Boolean);        callback(docs);
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, name);
@@ -299,6 +320,7 @@ export async function saveCRMCustomerToFirebase(cust: CRMCustomer): Promise<void
 }
 
 export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
+  if (!id || !id.trim()) return;
   const path = `crmCustomers/${id}`;
   try {
     await deleteDoc(doc(db, 'crmCustomers', id));
@@ -317,6 +339,7 @@ export async function saveCRMQuotationToFirebase(quote: CRMQuotation): Promise<v
 }
 
 export async function deleteCRMQuotationFromFirebase(id: string): Promise<void> {
+  if (!id || !id.trim()) return;
   const path = `crmQuotations/${id}`;
   try {
     await deleteDoc(doc(db, 'crmQuotations', id));

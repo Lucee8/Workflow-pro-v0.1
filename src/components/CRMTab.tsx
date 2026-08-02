@@ -1233,11 +1233,16 @@ export default function CRMTab({
   // 4. SEARCHES & FILTERING LOGIC
   const filteredCustomersList = (db.crmCustomers || [])
     .filter(c => {
-      const matchesSearch = c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
-        c.phone.includes(custSearch) ||
+            if (!c || (!c.name?.trim() && !c.phone?.trim() && !c.id?.trim())) return false;
+      const nameStr = c.name || '';
+      const phoneStr = c.phone || '';
+      const idStr = c.id || '';
+
+      const matchesSearch = nameStr.toLowerCase().includes(custSearch.toLowerCase()) ||
+        phoneStr.includes(custSearch) ||
         (c.productRequirement && c.productRequirement.toLowerCase().includes(custSearch.toLowerCase())) ||
         (c.city && c.city.toLowerCase().includes(custSearch.toLowerCase())) ||
-        c.id.toLowerCase().includes(custSearch.toLowerCase());
+        idStr.toLowerCase().includes(custSearch.toLowerCase());
 
       const isRepeat = (customerOrderCounts[c.id] || 0) > 1;
       const ordersForCust = db.orders?.filter(o => o.customer_id === c.id) || [];
@@ -1264,6 +1269,7 @@ export default function CRMTab({
 
   const filteredQuotationsList = (db.crmQuotations || [])
     .filter(quote => {
+      if (!quote || (!quote.customer_name?.trim() && (!quote.items || quote.items.length === 0) && !quote.id?.trim())) return false;
       if (!quoteSearch.trim()) return true;
       const term = quoteSearch.toLowerCase().trim();
       const matchId = quote.id?.toLowerCase().includes(term);

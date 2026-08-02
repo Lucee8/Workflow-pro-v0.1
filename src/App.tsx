@@ -402,9 +402,11 @@ export default function App() {
   };
 
   const handleDeleteCRMCustomer = (id: string) => {
-    const updated = db.crmCustomers.filter(c => c.id !== id);
+    const updated = db.crmCustomers.filter(c => c.id !== id && c.id && c.id.trim() !== '' && c.name && c.name.trim() !== '');
     updateDbState({ ...db, crmCustomers: updated });
-    deleteCRMCustomerFromFirebase(id);
+    if (id && id.trim()) {
+      deleteCRMCustomerFromFirebase(id);
+    }
   };
 
   const handleSaveCRMQuotation = (quote: CRMQuotation) => {
@@ -417,9 +419,11 @@ export default function App() {
   };
 
   const handleDeleteCRMQuotation = (id: string) => {
-    const updated = db.crmQuotations.filter(q => q.id !== id);
+    const updated = db.crmQuotations.filter(q => q.id !== id && q.id && q.id.trim() !== '' && (q.customer_name?.trim() || (q.items && q.items.length > 0)));
     updateDbState({ ...db, crmQuotations: updated });
-    deleteCRMQuotationFromFirebase(id);
+    if (id && id.trim()) {
+      deleteCRMQuotationFromFirebase(id);
+    }
   };
 
   const handleSaveCRMFollowUp = (item: CRMFollowUp) => {
