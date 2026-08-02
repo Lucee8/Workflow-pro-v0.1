@@ -809,9 +809,9 @@ export default function CRMTab({
   const todayStr = new Date().toISOString().split('T')[0];
   const followupsToday = db.crmFollowUps?.filter(f => f.date === todayStr && f.status === 'Pending') || [];
   
-  // Total Revenue Calculation
-  const totalRevenue = db.payments?.reduce((acc, p) => acc + p.advance_paid, 0) || 0;
-  
+  // Total Revenue Calculation (summing payments from both orders payments and CRM direct payments)
+  const totalRevenue = ((db.payments || []).reduce((acc, p) => acc + (p.advance_paid || 0), 0)) +
+ 
   // Repeat Customers (Customers with > 1 order)
   const customerOrderCounts = db.orders?.reduce((acc: Record<string, number>, o) => {
     acc[o.customer_id] = (acc[o.customer_id] || 0) + 1;
@@ -825,26 +825,62 @@ export default function CRMTab({
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
 
-  // 2. CHART DATA CONSTRUCTIONS
-  // (a) Monthly Orders
-  const monthlyOrdersData = [
-    { name: 'Jan', orders: 4 },
-    { name: 'Feb', orders: 6 },
-    { name: 'Mar', orders: 8 },
-    { name: 'Apr', orders: db.orders?.filter(o => o.order_date.includes('-04-')).length + 3 || 3 },
-    { name: 'May', orders: db.orders?.filter(o => o.order_date.includes('-05-')).length + 5 || 5 },
-    { name: 'Jun', orders: db.orders?.filter(o => o.order_date.includes('-06-')).length || 7 },
-  ];
+  // Helper to extract YYYY-MM key from various date formats safely
+  const getYearMonthKey = (dateStr?: string): string | null => {
+    if (!dateStr) return null;
+    const str = dateStr.trim();
+    const yyyyMmMatch = str.match(/^(\d{4})-(\d{2})/);
+    if (yyyyMmMatch) {
+      return `${yyyyMmMatch[1]}-${yyyyMmMatch[2]}`;
+    }
+    const ddMmYyyyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ddMmYyyyMatch) {
+      const month = ddMmYyyyMatch[2].padStart(2, '0');
+      const year = ddMmYyyyMatch[3];
+      return `${year}-${month}`;
+    }
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return null;
+  };
 
-  // (b) Revenue Trend (using registered payment dates)
-  const revenueTrendData = [
-    { name: 'Jan', revenue: 150000 },
-    { name: 'Feb', revenue: 220000 },
-    { name: 'Mar', revenue: 310000 },
-    { name: 'Apr', revenue: 420000 },
-    { name: 'May', revenue: totalRevenue > 0 ? Math.round(totalRevenue * 0.7) : 480000 },
-    { name: 'Jun', revenue: totalRevenue > 0 ? totalRevenue : 650000 },
-  ];
+  // Generate dynamic 6-month window up to current month
+  const now = new Date();
+  const last6Months: { key: string; name: string }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const name = d.toLocaleString('en-US', { month: 'short' });
+    last6Months.push({ key, name });
+  }
+
+  // 2. DYNAMIC CHART DATA CONSTRUCTIONS
+  // (a) Monthly Orders Volume (computed from actual db.orders)
+  const monthlyOrdersData = last6Months.map(({ key, name }) => {
+    const count = (db.orders || []).filter(o => {
+      const k = getYearMonthKey(o.order_date || o.created_at);
+      return k === key;
+    }).length;
+    return { name, orders: count };
+  });
+
+
+  // (b) Revenue Trend (computed from actual db.payments & db.crmPayments)
+  const revenueTrendData = last6Months.map(({ key, name }) => {
+    const paymentSum = (db.payments || []).filter(p => {
+      const k = getYearMonthKey(p.payment_date || p.created_at);
+      return k === key;
+    }).reduce((acc, p) => acc + (p.advance_paid || 0), 0);
+
+    const crmPaymentSum = (db.crmPayments || []).filter(cp => {
+      const k = getYearMonthKey(cp.payment_date || cp.payment_date);
+      return k === key;
+    }).reduce((acc, cp) => acc + (cp.advance_paid || 0), 0);
+
+    return { name, revenue: paymentSum + crmPaymentSum };
+  });
 
   // (c) Source Performance (calculated from Customers Directory: db.crmCustomers)
   const sourceBarColors: Record<string, string> = {
