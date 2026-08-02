@@ -1431,47 +1431,6 @@ export default function CRMTab({
 
           {/* Analytics Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Monthly Orders area chart */}
-            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Monthly Orders Volume</span>
-                <TrendingUp className="text-stone-400" size={16} />
-              </div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyOrdersData}>
-                    <defs>
-                      <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#593622" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#593622" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" fontSize={10} tickLine={false} />
-                    <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="orders" stroke="#593622" strokeWidth={2.5} fillOpacity={1} fill="url(#colorOrders)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Revenue trend line/bar */}
-            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Revenue Trend (INR)</span>
-                <DollarSign className="text-stone-400" size={16} />
-              </div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={revenueTrendData}>
-                    <XAxis dataKey="name" fontSize={10} tickLine={false} />
-                    <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => value == null ? '' : `₹${Number(value).toLocaleString()}`} />
-                    <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
 
             {/* Source Performance */}
             <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
@@ -1587,6 +1546,49 @@ export default function CRMTab({
               </div>
             </div>
           </div>
+
+
+            {/* Monthly Orders area chart */}
+            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Monthly Orders Volume</span>
+                <TrendingUp className="text-stone-400" size={16} />
+              </div>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthlyOrdersData}>
+                    <defs>
+                      <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#593622" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#593622" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" fontSize={10} tickLine={false} />
+                    <YAxis fontSize={10} tickLine={false} />
+                    <Tooltip />
+                    <Area type="monotone" dataKey="orders" stroke="#593622" strokeWidth={2.5} fillOpacity={1} fill="url(#colorOrders)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Revenue trend line/bar */}
+            <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Revenue Trend (INR)</span>
+                <DollarSign className="text-stone-400" size={16} />
+              </div>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueTrendData}>
+                    <XAxis dataKey="name" fontSize={10} tickLine={false} />
+                    <YAxis fontSize={10} tickLine={false} />
+                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
           {/* Today's Follow-ups and Recent Activity timeline split row */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
