@@ -95,7 +95,7 @@ export default function Sidebar({
           <img 
             src={logoImg} 
             alt="Bhisez Logo" 
-            className="h-14 w-auto max-w-[160px] object-contain"
+            className="h-20 w-auto max-w-[180px] object-contain"
             referrerPolicy="no-referrer"
           />
         </div>
