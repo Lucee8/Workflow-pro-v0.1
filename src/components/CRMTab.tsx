@@ -554,6 +554,101 @@ export default function CRMTab({
   const [custViewMode, setCustViewMode] = React.useState<'grid' | 'table'>('table');
   const [custFilter, setCustFilter] = React.useState<'all' | 'active' | 'repeat' | 'pending_payment' | 'completed' | 'vip'>('all');
 
+  // CRM Dashboard Compact Date Range Filter State
+  type DateRangePreset = 'today' | 'all' | '7days' | '30days' | '4months' | 'custom';
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('today');
+  const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [customEndDate, setCustomEndDate] = React.useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [isFilterLoading, setIsFilterLoading] = React.useState<boolean>(false);
+
+  const handlePresetChange = (preset: DateRangePreset) => {
+    if (preset === datePreset) return;
+    setIsFilterLoading(true);
+    setDatePreset(preset);
+    setTimeout(() => {
+      setIsFilterLoading(false);
+    }, 250);
+  };
+
+  const getDateFilterBounds = (
+    preset: DateRangePreset,
+    customStart?: string,
+    customEnd?: string
+  ): { startMs: number | null; endMs: number | null } => {
+    if (preset === 'all') return { startMs: null, endMs: null };
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    if (preset === 'today') {
+      return { startMs: todayStart.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === '7days') {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 6);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === '30days') {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 29);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === '4months') {
+      const start = new Date(todayStart);
+      start.setMonth(start.getMonth() - 4);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === 'custom') {
+      let startMs: number | null = null;
+      let endMs: number | null = null;
+      if (customStart) {
+        const s = new Date(customStart + 'T00:00:00');
+        if (!isNaN(s.getTime())) startMs = s.getTime();
+      }
+      if (customEnd) {
+        const e = new Date(customEnd + 'T23:59:59.999');
+        if (!isNaN(e.getTime())) endMs = e.getTime();
+      }
+      return { startMs, endMs };
+    }
+
+    return { startMs: null, endMs: null };
+  };
+
+  const isDateInBounds = (
+    dateStr?: string,
+    startMs?: number | null,
+    endMs?: number | null
+  ): boolean => {
+    if (typeof startMs !== 'number' && typeof endMs !== 'number') return true;
+    if (!dateStr) return false;
+
+    let time: number | null = null;
+    const str = dateStr.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      time = new Date(str + 'T12:00:00').getTime();
+    } else {
+      const parsed = new Date(str).getTime();
+      if (!isNaN(parsed)) time = parsed;
+    }
+
+    if (time === null || isNaN(time)) return false;
+
+if (typeof startMs === 'number' && time < startMs) return false;
+if (typeof endMs === 'number' && time > endMs) return false;
+    return true;
+  };
+
   const isAdmin = currentUser.role === 'admin';
   const isManager = currentUser.role === 'manager';
   const isArtisan = currentUser.role === 'carpenter' || currentUser.role === 'polish_person';
@@ -815,43 +910,61 @@ export default function CRMTab({
     }
   };
 
-  // 1. STATS CALCULATIONS
-  const totalCustomers = db.crmCustomers?.length || 0;
-  const activeOrders = db.orders?.filter(o => o.current_status !== 'Dispatched').length || 0;
-  const completedOrders = db.orders?.filter(o => o.current_status === 'Dispatched').length || 0;
-  const pendingQuotes = db.crmQuotations?.filter(q => q.status === 'Sent' || q.status === 'Draft').length || 0;
+  // 1. STATS CALCULATIONS WITH DATE RANGE FILTERING
+  const { startMs, endMs } = getDateFilterBounds(datePreset, customStartDate, customEndDate);
+
+  const filteredCrmCustomers = (db.crmCustomers || []).filter(c =>
+    isDateInBounds(c.created_at, startMs, endMs)
+  );
+
+  const filteredOrders = (db.orders || []).filter(o =>
+    isDateInBounds(o.order_date || o.created_at, startMs, endMs)
+  );
+
+  const totalCustomers = filteredCrmCustomers.length;
+  const activeOrders = filteredOrders.filter(o => o.current_status !== 'Dispatched').length;
+  const completedOrders = filteredOrders.filter(o => o.current_status === 'Dispatched').length;
+  const pendingQuotes = (db.crmQuotations || []).filter(q =>
+    isDateInBounds(q.created_at, startMs, endMs) && (q.status === 'Sent' || q.status === 'Draft')
+  ).length;
   
-  const todayStr = new Date().toISOString().split('T')[0];
-  const followupsToday = db.crmFollowUps?.filter(f => f.date === todayStr && f.status === 'Pending') || [];
+  const followupsToday = (db.crmFollowUps || []).filter(f =>
+    isDateInBounds(f.date || f.created_at, startMs, endMs) && f.status === 'Pending'
+  );
   
-  // Filter valid payments linked to existing orders and customers
+  // Filter valid payments linked to existing orders and customers within date bounds
   const validOrderIds = new Set((db.orders || []).map(o => o.id));
   const validCustomerIds = new Set([
     ...(db.customers || []).map(c => c.id),
     ...(db.crmCustomers || []).map(c => c.id)
   ]);
 
-  const validPayments = (db.payments || []).filter(p => !p.order_id || validOrderIds.has(p.order_id));
+  const validPayments = (db.payments || []).filter(p =>
+    (!p.order_id || validOrderIds.has(p.order_id)) &&
+    isDateInBounds(p.payment_date || p.created_at, startMs, endMs)
+  );
+
   const validCrmPayments = (db.crmPayments || []).filter(cp => {
     if (cp.customer_id && !validCustomerIds.has(cp.customer_id)) return false;
     if (cp.order_id && !validOrderIds.has(cp.order_id)) return false;
-    return true;
+    return isDateInBounds(cp.payment_date, startMs, endMs);
   });
 
-  // Total Revenue Calculation (summing valid payments from active orders and CRM customers)
+  // Total Revenue Calculation (summing valid payments within selected date bounds)
   const totalRevenue = (validPayments.reduce((acc, p) => acc + (p.advance_paid || 0), 0)) +
                        (validCrmPayments.reduce((acc, cp) => acc + (cp.advance_paid || 0), 0));
   
   // Repeat Customers (Customers with > 1 order)
-  const customerOrderCounts = db.orders?.reduce((acc: Record<string, number>, o) => {
+  const customerOrderCounts = (db.orders || []).reduce((acc: Record<string, number>, o) => {
     acc[o.customer_id] = (acc[o.customer_id] || 0) + 1;
     return acc;
-  }, {}) || {};
+  }, {});
   
-  const repeatCustomersCount = db.crmCustomers?.filter(c => (customerOrderCounts[c.id] || 0) > 1).length || 0;
+  const repeatCustomersCount = filteredCrmCustomers.filter(c => (customerOrderCounts[c.id] || 0) > 1).length;
 
-  // Recent activity logs (Timeline Events across all customers)
+  // Recent activity logs (Timeline Events filtered by date bounds)
   const recentActivities = [...(db.crmTimelineEvents || [])]
+    .filter(t => isDateInBounds(t.timestamp, startMs, endMs))
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
 
@@ -887,16 +1000,16 @@ export default function CRMTab({
   }
 
   // 2. DYNAMIC CHART DATA CONSTRUCTIONS
-  // (a) Monthly Orders Volume (computed from actual db.orders)
+  // (a) Monthly Orders Volume (computed from filteredOrders)
   const monthlyOrdersData = last6Months.map(({ key, name }) => {
-    const count = (db.orders || []).filter(o => {
+    const count = filteredOrders.filter(o => {
       const k = getYearMonthKey(o.order_date || o.created_at);
       return k === key;
     }).length;
     return { name, orders: count };
   });
 
-  // (b) Revenue Trend (computed from valid db.payments & db.crmPayments)
+  // (b) Revenue Trend (computed from validPayments & validCrmPayments)
   const revenueTrendData = last6Months.map(({ key, name }) => {
     const paymentSum = validPayments.filter(p => {
       const k = getYearMonthKey(p.payment_date || p.created_at);
@@ -911,7 +1024,7 @@ export default function CRMTab({
     return { name, revenue: paymentSum + crmPaymentSum };
   });
 
-  // (c) Source Performance (calculated from Customers Directory: db.crmCustomers)
+  // (c) Source Performance (calculated from filteredCrmCustomers)
   const sourceBarColors: Record<string, string> = {
     'Walkin': '#D97706',        // Amber Orange
     'Social Media': '#A855F7',   // Purple
@@ -920,7 +1033,7 @@ export default function CRMTab({
   };
 
   const defaultSourcesList = ['Walkin', 'Social Media', 'Reference', 'Website'];
-  const crmCustomerList = db.crmCustomers || [];
+  const crmCustomerList = filteredCrmCustomers;
   const sourceCounts: Record<string, number> = {};
 
   crmCustomerList.forEach(cust => {
@@ -942,7 +1055,7 @@ export default function CRMTab({
 
   const maxSourceCount = Math.max(...sourcePerformanceData.map(d => d.count), 1);
 
-  // (d) Current Lead Stage Distribution (using requested palette with Amber Orange & Coffee Brown replacing Green)
+  // (d) Current Lead Stage Distribution
   const leadStageDefs = [
     { key: 'New Lead', label: 'New Lead', color: '#1A110A', aliases: ['New Inquiry', 'New Lead'] },
     { key: 'Contacted', label: 'Contacted', color: '#6366F1', aliases: ['Quotation Pending', 'Contacted'] },
@@ -965,7 +1078,7 @@ export default function CRMTab({
     'Disqualified': 0,
   };
 
-  (db.crmCustomers || []).forEach(cust => {
+  filteredCrmCustomers.forEach(cust => {
     const status = getCustomerStatus(cust);
     let matchedKey = 'New Lead';
     for (const def of leadStageDefs) {
@@ -1397,7 +1510,133 @@ export default function CRMTab({
       {/* SUBTAB: DASHBOARD */}
       {subTab === 'dashboard' && (
         <div className="space-y-6">
-          {/* Top KPI Metrics Cards */}
+          {/* Compact Date Range Filter Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/80 border border-stone-200/90 p-2.5 rounded-2xl shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black uppercase text-[#593622] tracking-wider font-display flex items-center gap-1.5">
+                <Calendar size={14} className="text-[#593622]" /> Date Filter
+              </span>
+              {isFilterLoading ? (
+                <span className="text-[10px] text-amber-800 font-bold bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                  <Loader2 size={10} className="animate-spin" /> Fetching data...
+                </span>
+              ) : (
+                <span className="text-[10px] text-stone-500 font-mono font-bold">
+                  {datePreset === 'all' && 'All Historical Records'}
+                  {datePreset === 'today' && `Today (${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })})`}
+                  {datePreset === '7days' && 'Last 7 Days'}
+                  {datePreset === '30days' && 'Last 30 Days'}
+                  {datePreset === '4months' && 'Last 4 Months'}
+                  {datePreset === 'custom' && `${customStartDate || 'Start'} to ${customEndDate || 'End'}`}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col items-end gap-2 max-w-full">
+              {/* Segmented Control Bar */}
+              <div className="flex items-center bg-stone-200/80 p-1 rounded-2xl border border-stone-300/80 max-w-full overflow-x-auto no-scrollbar shadow-2xs">
+                <button
+                  onClick={() => handlePresetChange('today')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === 'today'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => handlePresetChange('all')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === 'all'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  All Time
+                </button>
+                <button
+                  onClick={() => handlePresetChange('7days')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === '7days'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  7 Days
+                </button>
+                <button
+                  onClick={() => handlePresetChange('30days')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === '30days'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  30 Days
+                </button>
+                <button
+                  onClick={() => handlePresetChange('4months')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === '4months'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  4 Months
+                </button>
+                <button
+                  onClick={() => handlePresetChange('custom')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === 'custom'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  Custom Range
+                </button>
+              </div>
+
+              {/* Custom Date Inputs */}
+              {datePreset === 'custom' && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 pt-1 flex-wrap justify-end"
+                >
+                  <div className="flex items-center gap-1.5 bg-white border border-stone-300 rounded-xl px-2.5 py-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-stone-500">Start:</span>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => {
+                        setCustomStartDate(e.target.value);
+                        setIsFilterLoading(true);
+                        setTimeout(() => setIsFilterLoading(false), 200);
+                      }}
+                      className="bg-transparent text-xs font-mono font-bold text-stone-900 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-white border border-stone-300 rounded-xl px-2.5 py-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-stone-500">End:</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => {
+                        setCustomEndDate(e.target.value);
+                        setIsFilterLoading(true);
+                        setTimeout(() => setIsFilterLoading(false), 200);
+                      }}
+                      className="bg-transparent text-xs font-mono font-bold text-stone-900 focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
+          {/* Top KPI Metrics Cards and Charts Container */}
+          <div className={`space-y-6 transition-opacity duration-200 ${isFilterLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0">
@@ -1684,6 +1923,8 @@ export default function CRMTab({
                     <p className="text-[10px] text-stone-400">Log customer contacts, quotes or logs to trigger activities.</p>
                   </div>
                 )}
+                              </div>
+
               </div>
             </div>
           </div>
