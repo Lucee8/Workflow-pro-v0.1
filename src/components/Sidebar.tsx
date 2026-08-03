@@ -218,7 +218,7 @@ export default function Sidebar({
             {switcherExpanded && (
               <div className="mt-2.5 space-y-1.5">
                 <a
-                  href="https://bhisez-furniture.vercel.app/?view=admin"
+                  href="https://bhisezfurniture.com/?view=admin"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
@@ -231,7 +231,7 @@ export default function Sidebar({
                 </a>
 
                 <a
-                  href="https://geetas-s-masale-v0-1.onrender.com/admin"
+                  href="https://geetasmasale.com/admin"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
