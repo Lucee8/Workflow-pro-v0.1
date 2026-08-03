@@ -89,13 +89,13 @@ export default function Sidebar({
   return (
     <>
       {/* Top Header Bar for Mobile viewports */}
-      <header className="lg:hidden h-16 bg-[#593622] border-b border-[#3d2417] px-2 flex items-center justify-between sticky top-0 z-40">
+      <header className="lg:hidden h-16 bg-[#120803] border-b border-stone-900/60 px-2 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center">
           {/* Logo image */}
           <img 
             src={logoImg} 
             alt="Bhisez Logo" 
-            className="h-14 w-auto max-w-[220px] object-contain m-0 p-0"
+            className="h-14 w-auto max-w-[220px] object-contain m-0 p-0 block"
             referrerPolicy="no-referrer"
           />
         </div>
@@ -137,7 +137,7 @@ export default function Sidebar({
         } ${mobileMenuOpen ? 'h-[calc(100vh-56px)]' : 'h-screen'}`}
       >
         {/* Sidebar Brand Header (Desktop only) */}
-        <div className="p-1 border-b border-stone-900/30 hidden lg:block overflow-hidden">
+        <div className="p-0 m-0 bg-[#120803] hidden lg:block overflow-hidden">
           <div className="flex items-center justify-center">
             <img 
               src={logoImg} 
@@ -149,7 +149,7 @@ export default function Sidebar({
         </div>
 
         {/* User context profile card inside sidebar */}
-        <div className="px-4 py-4 bg-[#23170e]/80 border-b border-stone-900/20 lg:block">
+        <div className="px-4 py-3.5 bg-[#120803] border-t border-b border-stone-900/40 lg:block">
           <div className="flex items-center gap-3">
             {/* Simple User Initials Avatar with custom background */}
             <div className="h-10 w-10 rounded-xl bg-[#593622] text-amber-300 font-bold flex items-center justify-center text-xs shadow border border-stone-800">
