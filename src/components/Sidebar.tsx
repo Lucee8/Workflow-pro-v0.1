@@ -149,7 +149,7 @@ export default function Sidebar({
         </div>
 
         {/* User context profile card inside sidebar */}
-        <div className="px-4 py-3.5 bg-[#120803] border-t border-b border-stone-900/40 lg:block">
+        <div className="px-4 py-4 bg-[#23170e]/80 border-b border-stone-900/20 lg:block">
           <div className="flex items-center gap-3">
             {/* Simple User Initials Avatar with custom background */}
             <div className="h-10 w-10 rounded-xl bg-[#593622] text-amber-300 font-bold flex items-center justify-center text-xs shadow border border-stone-800">
