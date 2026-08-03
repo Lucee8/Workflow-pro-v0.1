@@ -137,12 +137,12 @@ export default function Sidebar({
         } ${mobileMenuOpen ? 'h-[calc(100vh-56px)]' : 'h-screen'}`}
       >
         {/* Sidebar Brand Header (Desktop only) */}
-        <div className="p-0 m-0 bg-[#593622] border-b border-[#3d2417] hidden lg:block overflow-hidden">
-          <div className="flex items-center justify-center p-0 m-0">
+        <div className="p-1 border-b border-stone-900/30 hidden lg:block overflow-hidden">
+          <div className="flex items-center justify-center">
             <img 
               src={logoImg} 
               alt="Bhisez Logo" 
-              className="w-full h-28 object-contain block m-0 p-0"
+              className="h-28 w-auto max-w-full object-contain"
               referrerPolicy="no-referrer"
             />
           </div>
