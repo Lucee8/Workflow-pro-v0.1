@@ -142,7 +142,7 @@ export default function Sidebar({
             <img 
               src={logoImg} 
               alt="Bhisez Logo" 
-              className="h-28 w-auto max-w-full object-contain"
+              className="w-full h-20 object-contain block m-0 p-0"
               referrerPolicy="no-referrer"
             />
           </div>
