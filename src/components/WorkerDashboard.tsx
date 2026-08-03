@@ -7,7 +7,7 @@ import React from 'react';
 import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart } from '../types';
 import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
-import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X } from 'lucide-react';
+import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare } from 'lucide-react';
 
 function getDefaultWoodSchedule(order: Order): WoodSchedule {
   const sub = (order.sub_category || '').toLowerCase();
@@ -219,7 +219,12 @@ export default function WorkerDashboard({
   const [imageLink, setImageLink] = React.useState('');
   const [parts, setParts] = React.useState<WoodPart[]>([]);
   const [showRefImg, setShowRefImg] = React.useState(false);
-    const [lightboxImg, setLightboxImg] = React.useState<string | null>(null);
+  const [lightboxImg, setLightboxImg] = React.useState<string | null>(null);
+
+  // QC Check 1 checkboxes state
+  const [qcMeasurement, setQcMeasurement] = React.useState(false);
+  const [qcFinishing, setQcFinishing] = React.useState(false);
+  const [qcBuffer, setQcBuffer] = React.useState(false);
 
   const handleUploadRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -307,6 +312,19 @@ export default function WorkerDashboard({
       }
 
       setParts(schedule.parts || []);
+      if (schedule.qc_check_1_details) {
+        setQcMeasurement(!!schedule.qc_check_1_details.measurement);
+        setQcFinishing(!!schedule.qc_check_1_details.finishing);
+        setQcBuffer(!!schedule.qc_check_1_details.buffer);
+      } else if (ord.carpenter_sub_status === 'completed') {
+        setQcMeasurement(true);
+        setQcFinishing(true);
+        setQcBuffer(true);
+      } else {
+        setQcMeasurement(false);
+        setQcFinishing(false);
+        setQcBuffer(false);
+      }
       setShowRefImg(false);
     } else {
       setProgressStatus(ord.current_status === myStage ? 'in_progress' : 'completed');
@@ -334,12 +352,14 @@ export default function WorkerDashboard({
     }
 
     let nextStage: OrderStage = myStage;
-    let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'completed' | undefined = activeOrder.carpenter_sub_status;
+    let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
       if (progressStatus === 'wood_procurement') {
         nextSubStatus = 'under_carpentry';
       } else if (progressStatus === 'under_carpentry') {
+        nextSubStatus = 'qc_check_1';
+      } else if (progressStatus === 'qc_check_1') {
         nextSubStatus = 'completed';
       } else if (progressStatus === 'completed') {
         nextSubStatus = 'completed';
@@ -352,11 +372,13 @@ export default function WorkerDashboard({
     }
 
     const statusLabel = progressStatus === 'completed'
-      ? 'Completed'
+      ? (isCarpenter ? 'Completed (Carpentry Done)' : 'Completed')
       : progressStatus === 'wood_procurement'
       ? 'Wood Procurement'
       : progressStatus === 'under_carpentry'
       ? 'Under Carpentry'
+      : progressStatus === 'qc_check_1'
+      ? 'QC Check 1'
       : 'In Progress';
 
     const log: StatusLog = {
@@ -387,8 +409,12 @@ export default function WorkerDashboard({
       size_of_product: sizeOfProduct,
       sqft: Number(sqft),
       image_link: imageLink,
-      parts: parts
-    };
+      parts: parts,
+      qc_check_1_details: {
+        measurement: qcMeasurement,
+        finishing: qcFinishing,
+        buffer: qcBuffer,
+      }    };
 
     const updatedOrder: Order = {
       ...activeOrder,
@@ -406,9 +432,11 @@ export default function WorkerDashboard({
       setProgressStatus(nextSubStatus || 'wood_procurement');
       setUpdateNotes('');
       if (progressStatus === 'wood_procurement') {
-        alert('Success: Wood procurement completed! Sub-status has been frozen and auto-advanced to "Under Carpentry".');
+        alert('Success: Wood procurement completed! Sub-status has auto-advanced to "Under Carpentry".');
       } else if (progressStatus === 'under_carpentry') {
-        alert('Success: Under Carpentry completed! Sub-status has been frozen and auto-advanced to "Completed (Move to QC Check 1)".');
+        alert('Success: Under Carpentry completed! Sub-status has auto-advanced to "QC Check 1".');
+      } else if (progressStatus === 'qc_check_1') {
+        alert('Success: QC Check 1 verified! Sub-status has auto-advanced to "Completed (Carpentry Done)".');
       }
     } else {
       setActiveOrder(null);
@@ -529,7 +557,7 @@ export default function WorkerDashboard({
               {/* Radios inputs matching completed states */}
               <div className="space-y-2.5">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider font-sans">Progress Status *</label>
-                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-2'} gap-3`}>
                   {isCarpenter ? (
                     <>
                       {/* Wood procurement tab */}
@@ -578,9 +606,35 @@ export default function WorkerDashboard({
                         />
                         <div>
                           <strong className="text-xs block font-sans">
-                            Under Carpentry {savedSub === 'completed' && '(Passed ✔)'}
+                            Under Carpentry {(savedSub === 'qc_check_1' || savedSub === 'completed') && '(Passed ✔)'}
                           </strong>
                           <span className="text-[10px] text-stone-400 font-medium font-sans">Active carpentry structure construction and assembly</span>
+                        </div>
+                      </label>
+
+                      {/* QC Check 1 tab */}
+                      <label
+                        className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
+                          savedSub !== 'qc_check_1'
+                            ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
+                            : progressStatus === 'qc_check_1'
+                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
+                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100 cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="progressRadios"
+                          checked={progressStatus === 'qc_check_1'}
+                          disabled={savedSub !== 'qc_check_1'}
+                          onChange={() => setProgressStatus('qc_check_1')}
+                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                        <div>
+                          <strong className="text-xs block font-sans">
+                            QC Check 1 {savedSub === 'completed' && '(Passed ✔)'}
+                          </strong>
+                          <span className="text-[10px] text-stone-400 font-medium font-sans">Verify measurements, finishing & buffer specs</span>
                         </div>
                       </label>
                     </>
@@ -626,12 +680,79 @@ export default function WorkerDashboard({
                     />
                     <div>
                       <strong className="text-xs block font-sans">
-                        Completed (Move to {isCarpenter ? 'QC Check 1' : 'QC Check 2'})
+                        {isCarpenter ? 'Completed (Carpentry Done)' : 'Completed (Move to QC Check 2)'}
                       </strong>
                       <span className="text-[10px] text-stone-400 font-medium font-sans">Mark department task finished successfully</span>
                     </div>
                   </label>
                 </div>
+
+                {/* QC Check 1 Checkboxes Panel */}
+                {isCarpenter && (progressStatus === 'qc_check_1' || savedSub === 'qc_check_1' || savedSub === 'completed') && (
+                  <div className="mt-3.5 p-3.5 bg-amber-50/70 border border-amber-300/80 rounded-xl space-y-2.5 animate-in fade-in duration-200 shadow-2xs">
+                    <div className="flex items-center justify-between pb-2 border-b border-amber-200/80">
+                      <div className="flex items-center gap-2">
+                        <CheckSquare className="text-[#593622]" size={16} />
+                        <span className="font-bold text-xs text-amber-950 uppercase tracking-wide font-sans">
+                          QC Check 1 Checklist
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-200/90 text-amber-950 font-sans">
+                        {[qcMeasurement, qcFinishing, qcBuffer].filter(Boolean).length} of 3 Checked
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* 1. Measurement */}
+                      <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer select-none ${
+                        qcMeasurement ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold shadow-2xs' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={qcMeasurement}
+                          onChange={(e) => setQcMeasurement(e.target.checked)}
+                          className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
+                        />
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-xs font-bold font-sans">1. Measurement</span>
+                          <span className="text-[9px] text-stone-500 font-normal font-sans">Dimensions & size verified</span>
+                        </div>
+                      </label>
+
+                      {/* 2. Finishing */}
+                      <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer select-none ${
+                        qcFinishing ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold shadow-2xs' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={qcFinishing}
+                          onChange={(e) => setQcFinishing(e.target.checked)}
+                          className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
+                        />
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-xs font-bold font-sans">2. Finishing</span>
+                          <span className="text-[9px] text-stone-500 font-normal font-sans">Surface & edge preparation</span>
+                        </div>
+                      </label>
+
+                      {/* 3. Buffer */}
+                      <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer select-none ${
+                        qcBuffer ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold shadow-2xs' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={qcBuffer}
+                          onChange={(e) => setQcBuffer(e.target.checked)}
+                          className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
+                        />
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-xs font-bold font-sans">3. Buffer</span>
+                          <span className="text-[9px] text-stone-500 font-normal font-sans">Tolerances & joint margins</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}

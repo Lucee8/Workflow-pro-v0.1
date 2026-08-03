@@ -59,6 +59,11 @@ export interface WoodSchedule {
   sqft: number;
   image_link?: string;
   parts: WoodPart[];
+  qc_check_1_details?: {
+    measurement: boolean;
+    finishing: boolean;
+    buffer: boolean;
+  };
 }
 
 export interface Order {
@@ -103,7 +108,7 @@ export interface Order {
     uploaded_by: string;
   }>;
   wood_schedule?: WoodSchedule;
-  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'completed';
+  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
   total_amount?: number;
   advance_paid?: number;
 }
