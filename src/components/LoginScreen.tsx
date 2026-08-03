@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import * as React from 'react';
 import logoImg from '../assets/images/logo.png';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '../types';
 import { 
   AlertCircle, 
@@ -199,19 +199,20 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
           >
             <div className="space-y-6">
               
-              {/* App logo framing */}
-              <div className="flex items-center justify-center pb-4 border-b border-stone-100">
+              {/* App logo framing & Workspace Sign In */}
+              <div className="flex flex-col items-center justify-center text-center">
                 <img 
                   src={logoImg} 
                   alt="Bhisez Logo" 
                   className="h-24 md:h-28 w-auto mb-[-4px] max-w-full object-contain"                  referrerPolicy="no-referrer"
                 />
-              </div>
 
-              <div>
+                <div className="mt-2">
                 <h2 className="text-lg font-black text-stone-900 tracking-tight leading-none text-center">Workspace Sign In</h2>
                 <p className="text-stone-500 text-[11px] mt-1.5 text-center">Provide credentials, or authorize single sign-on using Google login credentials.</p>
               </div>
+              </div>
+
 
               {errorMessage && (
                 <div className="bg-rose-50 border-l-4 border-rose-600 p-3.5 rounded-r-lg flex flex-col gap-2.5 text-stone-800 text-[11px]">
