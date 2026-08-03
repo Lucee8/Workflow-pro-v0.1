@@ -89,20 +89,20 @@ export default function Sidebar({
   return (
     <>
       {/* Top Header Bar for Mobile viewports */}
-      <header className="lg:hidden h-16 bg-stone-900 border-b border-stone-800 px-2 flex items-center justify-between sticky top-0 z-40">
+      <header className="lg:hidden h-16 bg-[#593622] border-b border-[#3d2417] px-2 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center">
           {/* Logo image */}
           <img 
             src={logoImg} 
             alt="Bhisez Logo" 
-            className="h-12 w-auto max-w-[220px] object-contain"
+            className="h-14 w-auto max-w-[220px] object-contain m-0 p-0"
             referrerPolicy="no-referrer"
           />
         </div>
 
         <div className="flex items-center gap-4">
           {/* Mobile Notification Badge */}
-          <button className="relative p-1 text-stone-400 hover:text-white" onClick={() => alert("Notification center: 3 new staging updates require QA check.")}>
+          <button className="relative p-1 text-stone-300 hover:text-white" onClick={() => alert("Notification center: 3 new staging updates require QA check.")}>
             <Bell size={18} />
             {notificationsCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
@@ -114,7 +114,7 @@ export default function Sidebar({
           {/* Hamburger toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 text-stone-300 hover:text-white border border-stone-800 rounded-lg"
+            className="p-1.5 text-stone-200 hover:text-white border border-stone-700 rounded-lg"
             aria-label="Toggle navigation menu"
           >
             {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -137,12 +137,12 @@ export default function Sidebar({
         } ${mobileMenuOpen ? 'h-[calc(100vh-56px)]' : 'h-screen'}`}
       >
         {/* Sidebar Brand Header (Desktop only) */}
-        <div className="p-1 border-b border-stone-900/30 hidden lg:block overflow-hidden">
-          <div className="flex items-center justify-center">
+        <div className="p-0 m-0 bg-[#593622] border-b border-[#3d2417] hidden lg:block overflow-hidden">
+          <div className="flex items-center justify-center p-0 m-0">
             <img 
               src={logoImg} 
               alt="Bhisez Logo" 
-              className="h-28 w-auto max-w-full object-contain"
+              className="w-full h-28 object-contain block m-0 p-0"
               referrerPolicy="no-referrer"
             />
           </div>
