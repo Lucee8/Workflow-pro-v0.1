@@ -219,6 +219,43 @@ export default function WorkerDashboard({
   const [imageLink, setImageLink] = React.useState('');
   const [parts, setParts] = React.useState<WoodPart[]>([]);
   const [showRefImg, setShowRefImg] = React.useState(false);
+    const [lightboxImg, setLightboxImg] = React.useState<string | null>(null);
+
+  const handleUploadRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !activeOrder) return;
+
+    const file = files[0];
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file (JPG, PNG, WEBP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const dataUrl = event.target.result as string;
+        const newImg = {
+          id: 'img_' + generateUUID().split('-')[0],
+          url: dataUrl,
+          type: 'Design Reference' as const,
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: currentUser.name,
+        };
+
+        const updatedOrder: Order = {
+          ...activeOrder,
+          images: [...(activeOrder.images || []), newImg],
+          updated_at: new Date().toISOString(),
+        };
+
+        setActiveOrder(updatedOrder);
+        onUpdateOrder(updatedOrder);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const updatePartField = (id: string, field: keyof WoodPart, value: any) => {
     setParts((currentParts) =>
@@ -383,7 +420,17 @@ export default function WorkerDashboard({
     // --- MODE B: UPDATE STATUS PAGE LAYOUT ---
     const activeCust = customers.find((c) => c.id === activeOrder.customer_id);
     const savedSub = activeOrder.carpenter_sub_status || 'wood_procurement';
-    return (
+    
+    const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
+    const allOrderImages = activeOrder.images || [];
+    const fallbackImage = activeOrder.wood_schedule?.image_link || getDefaultWoodSchedule(activeOrder).image_link;
+    const galleryImages = orderRefImages.length > 0
+      ? orderRefImages
+      : (allOrderImages.length > 0 ? allOrderImages : [{ id: 'default_ref_img', url: fallbackImage, type: 'Design Reference' as const }]);
+    
+      return (
+      <>
+
       <div className="space-y-6 animate-in fade-in duration-200">
         {/* Header navigation back */}
         <button
@@ -438,6 +485,40 @@ export default function WorkerDashboard({
                   {activeOrder.current_status}
                 </span>
               </div>
+            </div>
+
+            {/* REFERENCE IMAGES CARD IN LEFT SIDEBAR */}
+            <div className="pt-3.5 border-t border-stone-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider flex items-center gap-1">
+                  <ImageIcon size={13} className="text-[#593622]" /> Reference Drawings & Photos
+                </span>
+                <span className="text-[9px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-200">
+                  {orderRefImages.length > 0 ? `${orderRefImages.length} Attached` : 'Catalogue Spec'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {galleryImages.slice(0, 4).map((img, idx) => (
+                  <div
+                    key={img.id || idx}
+                    onClick={() => img.url && setLightboxImg(img.url)}
+                    className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
+                  >
+                    <img referrerPolicy="no-referrer" src={img.url} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[9px] font-bold gap-1">
+                      <Eye size={16} />
+                      <span>Expand</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <label className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-stone-50 hover:bg-stone-100 border border-dashed border-stone-300 rounded-lg text-stone-700 text-[11px] font-bold cursor-pointer transition">
+                <Upload size={12} className="text-[#593622]" />
+                <span>Upload Reference Photo</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
+              </label>
             </div>
           </div>
 
@@ -550,6 +631,50 @@ export default function WorkerDashboard({
                       <span className="text-[10px] text-stone-400 font-medium font-sans">Mark department task finished successfully</span>
                     </div>
                   </label>
+                </div>
+              </div>
+
+              {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}
+              <div className="bg-[#fcfaf7] border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-amber-200/60 gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#593622] text-amber-300 shrink-0">
+                      <ImageIcon size={15} />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-black text-stone-900 text-xs sm:text-sm tracking-tight leading-none">
+                        Design Reference & Blueprint Photos
+                      </h3>
+                      <p className="text-[10px] text-stone-500 mt-0.5 font-medium">
+                        Approved blueprints, sketches & catalog reference photos for Article #{activeOrder.article_no}
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-[10px] font-bold cursor-pointer transition shadow-xs w-fit">
+                    <Upload size={11} />
+                    <span>+ Add Reference Image</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {galleryImages.map((img, idx) => (
+                    <div
+                      key={img.id || idx}
+                      onClick={() => setLightboxImg(img.url ?? null)}
+                      className="relative group rounded-xl border border-stone-200 overflow-hidden bg-stone-100 h-28 cursor-pointer hover:border-[#593622] hover:shadow-md transition"
+                    >
+                      <img referrerPolicy="no-referrer" src={img.url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
+                        <Eye size={16} />
+                        <span>Click to Expand</span>
+                      </div>
+                      <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[8px] font-bold px-1.5 py-0.5 rounded backdrop-blur-xs">
+                        {img.type || 'Design Reference'} #{idx + 1}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -972,6 +1097,37 @@ export default function WorkerDashboard({
 
         </div>
       </div>
+
+            {/* Lightbox Modal for Reference Images */}
+      {lightboxImg && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="relative max-w-4xl max-h-[90vh] w-full bg-stone-900 rounded-2xl overflow-hidden border border-stone-700 shadow-2xl flex flex-col">
+            <div className="p-3 bg-stone-950 border-b border-stone-800 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <ImageIcon size={16} className="text-amber-400" />
+                <span className="font-bold text-xs uppercase tracking-wider">Design Reference Image Lightbox</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setLightboxImg(null)}
+                className="p-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-3 flex-1 flex items-center justify-center overflow-auto bg-black/50 min-h-[300px]">
+              <img referrerPolicy="no-referrer" src={lightboxImg} alt="Reference Full View" className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-lg" />
+            </div>
+            <div className="p-3 bg-stone-950 border-t border-stone-800 flex items-center justify-between text-stone-400 text-[11px]">
+              <span>Article #{activeOrder?.article_no} Blueprint Reference</span>
+              <a href={lightboxImg} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline flex items-center gap-1 font-bold">
+                <ExternalLink size={12} /> Open Full Size
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 
