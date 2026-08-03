@@ -204,7 +204,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                 <img 
                   src={logoImg} 
                   alt="Bhisez Logo" 
-                  className="h-24 md:h-28 w-auto max-w-full object-contain"
+                  className="h-24 md:h-28 w-auto mb-4max-w-full object-contain"
                   referrerPolicy="no-referrer"
                 />
               </div>
