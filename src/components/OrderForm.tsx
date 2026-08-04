@@ -406,7 +406,7 @@ export default function OrderForm({
   const [deliveryDate, setDeliveryDate] = React.useState(
     new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // today + 10 days
   );
-  const [priority, setPriority] = React.useState<OrderPriority>('normal');
+  const [priority, setPriority] = React.useState<OrderPriority>('Medium');
   const [internalNotes, setInternalNotes] = React.useState('');
 
   // Article Number Preview calculation
@@ -773,7 +773,7 @@ export default function OrderForm({
         polish_person_id: prod.polishPersonId || polishPersonId || undefined,
         polish_labour_rate: prod.polishLabourRate !== '' ? Number(prod.polishLabourRate) : undefined,
         polish_delivery_date: prod.polishPersonId ? (prod.polishDeliveryDate || polishDeliveryDate) : undefined,
-        current_status: 'Design',
+        current_status: 'Designing',
         is_delayed: false,
         priority,
         order_date: orderDate,
@@ -1610,9 +1610,9 @@ export default function OrderForm({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setPriority('normal')}
+                    onClick={() => setPriority('Medium')}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${
-                      priority === 'normal'
+                      priority === 'Medium'
                         ? 'bg-stone-100 text-stone-800 border-stone-300'
                         : 'bg-stone-50 text-stone-500 border-stone-200'
                     }`}
@@ -1621,9 +1621,9 @@ export default function OrderForm({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPriority('urgent')}
+                    onClick={() => setPriority('Urgent')}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${
-                      priority === 'urgent'
+                      priority === 'Urgent'
                         ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-sm animate-pulse'
                         : 'bg-stone-50 text-stone-500 border-stone-200'
                     }`}

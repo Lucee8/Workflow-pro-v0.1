@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { Order, User, Customer, OrderStage, StatusLog, Payment } from '../types';
+import { Order, User, Customer, OrderStage, StatusLog, Payment, normalizeStage } from '../types';
 import { generateUUID } from '../db/store';
 import { formatToDDMMYYYY, parseToInputDate } from '../utils';
 import { 
@@ -238,11 +238,11 @@ export default function OrderDetailsView({
 
   React.useEffect(() => {
     if (existingPayment) {
-      setTotalAmount(existingPayment.total_amount);
-      setAdvancePaid(existingPayment.advance_paid);
-      setPaymentDate(existingPayment.payment_date);
-      setPaymentMode(existingPayment.payment_mode);
-      setPaymentNotes(existingPayment.notes || '');
+      setTotalAmount(existingPayment.total_amount ?? 0);
+      setAdvancePaid(existingPayment.advance_paid ?? 0);
+      setPaymentDate(existingPayment.dispatchDate ?? new Date().toISOString().split('T')[0]);
+      setPaymentMode('cash');
+      setPaymentNotes(existingPayment.dispatchNotes || '');
     } else {
       setTotalAmount(order.total_amount || 0);
       setAdvancePaid(order.advance_paid || 0);
@@ -268,12 +268,9 @@ export default function OrderDetailsView({
       order_id: order.id,
       total_amount: totalAmount,
       advance_paid: advancePaid,
-      balance_due: balanceDue,
-      payment_date: paymentDate,
-      payment_mode: paymentMode,
-      notes: paymentNotes,
-      created_by: currentUser.id,
-      created_at: existingPayment?.created_at || new Date().toISOString(),
+      dispatchDate: paymentDate,
+      dispatchNotes: paymentNotes,
+      dispatchedBy: currentUser.id,
     };
 
     onAddPayment(paymentRecord);
@@ -294,34 +291,47 @@ export default function OrderDetailsView({
 
   const stages: OrderStage[] = [
     'Pending',
-    'Design',
-    'Carpentry',
-    'QC Check 1',
+    'Designing',
+    'Wood Procurement',
+    'Making Started',
+    'QC 1',
+    'Making Completed',
     'Polish',
-    'QC Check 2',
+    'QC 2',
     'Ready to Dispatch',
     'Dispatched',
   ];
 
-  const currentStageIndex = stages.indexOf(order.current_status);
+  const getStageIndex = (status: string) => {
+    const norm = normalizeStage(status);
+    const idx = stages.indexOf(norm);
+    if (idx !== -1) return idx;
+    if (status === 'Design') return 1;
+    if (status === 'Carpentry') return 3;
+    if (status === 'QC Check 1') return 4;
+    if (status === 'QC Check 2') return 7;
+    return 0;
+  };
 
-  // Auto-set Design as active gate when order is opened for the first time / in Pending status
+  const currentStageIndex = getStageIndex(order.current_status);
+
+  // Auto-set Designing as active gate when order is opened for the first time / in Pending status
   React.useEffect(() => {
     if (order && order.current_status === 'Pending') {
       const updatedOrder: Order = {
         ...order,
-        current_status: 'Design',
+        current_status: 'Designing',
         updated_at: new Date().toISOString(),
       };
       const log: StatusLog = {
         id: 'log_' + generateUUID().split('-')[0],
         order_id: order.id,
-        stage: 'Design',
+        stage: 'Designing',
         changed_by: currentUser.id,
         changed_by_name: currentUser.name,
         changed_by_role: currentUser.role,
         timestamp: new Date().toISOString(),
-        note: 'Order opened — automatically set Design as current active gate.',
+        note: 'Order opened — automatically set Designing as current active gate.',
         qc_passed: true,
       };
       onUpdateOrder(updatedOrder, log);
@@ -330,6 +340,16 @@ export default function OrderDetailsView({
 
   // Debouncing lock to prevent accidental double-clicks from skipping stages
   const [isAdvancing, setIsAdvancing] = React.useState(false);
+
+  // Dispatch Modal state
+  const [showDispatchModal, setShowDispatchModal] = React.useState(false);
+  const [dispatchForm, setDispatchForm] = React.useState({
+    dispatchDate: order.delivery_date || new Date().toISOString().split('T')[0],
+    deliveryPersonName: '',
+    deliveryPersonContact: '',
+    vehicleNumber: '',
+    dispatchNotes: '',
+  });
 
   // Administrative transition actions
   const triggerTransition = (nextStage: OrderStage, notesText = '', qcPassedValue: boolean | null = null) => {
@@ -360,15 +380,47 @@ export default function OrderDetailsView({
     onUpdateOrder(updatedOrder, log);
   };
 
+  const handleConfirmDispatch = () => {
+    if (isAdvancing) return;
+    setIsAdvancing(true);
+    setTimeout(() => setIsAdvancing(false), 1000);
+
+    const updatedOrder: Order = {
+      ...order,
+      current_status: 'Dispatched',
+      updated_at: new Date().toISOString(),
+    };
+
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: 'Dispatched',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: `Order physically dispatched from workshop. Driver: ${dispatchForm.deliveryPersonName || 'N/A'}, Vehicle: ${dispatchForm.vehicleNumber || 'N/A'}. ${dispatchForm.dispatchNotes}`,
+      qc_passed: true,
+    };
+
+    onUpdateOrder(updatedOrder, log);
+    setShowDispatchModal(false);
+  };
+
   const handleAdminStepAction = (actionType: 'forward' | 'fail_qc_1' | 'fail_qc_2') => {
     if (isAdvancing) return;
     if (actionType === 'forward') {
       const nextIdx = currentStageIndex + 1;
       if (nextIdx < stages.length) {
-        triggerTransition(stages[nextIdx], `Admin advanced order to "${stages[nextIdx]}".`);
+        const nextStage = stages[nextIdx];
+        if (nextStage === 'Dispatched') {
+          setShowDispatchModal(true);
+        } else {
+          triggerTransition(nextStage, `Admin advanced order to "${nextStage}".`);
+        }
       }
     } else if (actionType === 'fail_qc_1') {
-      setQcFailLogStage('Carpentry');
+      setQcFailLogStage('Making Started');
       setShowQcFailModal(true);
     } else if (actionType === 'fail_qc_2') {
       setQcFailLogStage('Polish');
@@ -493,7 +545,7 @@ export default function OrderDetailsView({
           </div>
           <div>
             <span className="text-[10px] text-stone-400 font-bold block uppercase">Priority</span>
-            <span className={`font-black text-[10px] block mt-0.5 uppercase ${order.priority === 'urgent' ? 'text-rose-600 animate-pulse' : 'text-stone-600'}`}>
+            <span className={`font-black text-[10px] block mt-0.5 uppercase ${order.priority === 'Urgent' ? 'text-rose-600 animate-pulse' : 'text-stone-600'}`}>
               {order.priority}
             </span>
           </div>
@@ -549,8 +601,9 @@ export default function OrderDetailsView({
               {/* Mobile View: Vertical Timeline */}
               <div className="md:hidden space-y-3.5 relative pl-1.5 py-1">
                 {stages.map((stg, i) => {
-                  const passed = i < currentStageIndex;
-                  const active = i === currentStageIndex;
+                  const isDispatched = order.current_status === 'Dispatched';
+                  const passed = isDispatched || i < currentStageIndex;
+                  const active = !isDispatched && i === currentStageIndex;
                   return (
                     <div key={stg} className="flex items-center gap-4 relative">
                       {i < stages.length - 1 && (
@@ -593,13 +646,14 @@ export default function OrderDetailsView({
 
               {/* Desktop View: Horizontal Stepper */}
               <div className="hidden md:block overflow-x-auto no-scrollbar w-full py-1">
-                <div className="relative flex justify-between min-w-[720px] font-mono text-[10px] font-bold text-stone-400 py-2">
+                <div className="relative flex justify-between min-w-[920px] font-mono text-[10px] font-bold text-stone-400 py-2 px-3">
                   <div className="absolute top-6 left-6 right-6 h-0.5 bg-stone-100 -translate-y-1/2" />
                   {stages.map((stg, i) => {
-                    const passed = i < currentStageIndex;
-                    const active = i === currentStageIndex;
+                    const isDispatched = order.current_status === 'Dispatched';
+                    const passed = isDispatched || i < currentStageIndex;
+                    const active = !isDispatched && i === currentStageIndex;
                     return (
-                      <div key={stg} className="relative z-10 flex flex-col items-center shrink-0 w-[80px]">
+                      <div key={stg} className="relative z-10 flex flex-col items-center shrink-0 w-[82px]">
                         <motion.div
                           initial={active ? { scale: 0.75, y: 4 } : { scale: 1, y: 0 }}
                           animate={active ? { scale: [1, 1.08, 1], y: [0, -3, 0] } : { scale: 1, y: 0 }}
@@ -618,7 +672,7 @@ export default function OrderDetailsView({
                             i + 1
                           )}
                         </motion.div>
-                        <span className={`text-[9px] font-sans text-center mt-2 block truncate w-full ${active ? 'text-stone-900 font-extrabold' : 'text-stone-400'}`}>
+                        <span className={`text-[9px] font-sans text-center mt-2 block leading-tight w-full ${active ? 'text-stone-900 font-extrabold' : 'text-stone-400'}`}>
                           {stg}
                         </span>
                       </div>
@@ -643,20 +697,22 @@ export default function OrderDetailsView({
                     {order.current_status}
                   </p>
                 </div>
-                <div className="font-mono text-stone-400 text-[10px] font-bold">
-                  Stage tracking: {Math.max(1, currentStageIndex)} of 7 completed
+                <div className="font-mono text-stone-500 text-[11px] font-bold bg-stone-100 px-2.5 py-1 rounded-lg border border-stone-200">
+                  Stage tracking: {order.current_status === 'Dispatched' ? 10 : currentStageIndex} of 10 stages completed
                 </div>
               </div>
 
               <p className="text-stone-600 text-[11px]">
                 {order.current_status === 'Pending' && 'Order registered. Design drawing specifications draft validation pending.'}
-                {order.current_status === 'Design' && 'Draft blueprint measurements and catalog reviews active under designers.'}
-                {order.current_status === 'Carpentry' && 'Carpentry workshop underway. Assembly, edge-banding and framework cutting.'}
-                {order.current_status === 'QC Check 1' && 'Administrator checking structural integrity, dimension margins and joints before routing to polish.'}
+                {(order.current_status === 'Designing' || order.current_status === 'Design') && 'Draft blueprint measurements and catalog reviews active under designers.'}
+                {order.current_status === 'Wood Procurement' && 'Raw timber sourcing, board selection, wood moisture inspection & schedule logging.'}
+                {(order.current_status === 'Making Started' || order.current_status === 'Carpentry') && 'Carpentry workshop underway. Assembly, edge-banding and framework cutting.'}
+                {(order.current_status === 'QC 1' || order.current_status === 'QC Check 1') && 'Administrator checking structural integrity, dimension margins and joints before routing to making completion.'}
+                {order.current_status === 'Making Completed' && 'Carpentry framework completed, sanded, and handed over to finishing department.'}
                 {order.current_status === 'Polish' && 'Polish department staining, sealing, high-gloss PU sealer coating.'}
-                {order.current_status === 'QC Check 2' && 'Admin final review checking varnish thickness, lacquer evenness, soft-closes.'}
-                {order.current_status === 'Ready to Dispatch' && 'Pass checks! Secure wrapping processed and item logged for dispatch truck.'}
-                {order.current_status === 'Dispatched' && 'Furniture item has been securely dispatched to the customer delivery destination.'}
+                {(order.current_status === 'QC 2' || order.current_status === 'QC Check 2') && 'Admin final review checking varnish thickness, lacquer evenness, hardware fittings & soft-closes.'}
+                {order.current_status === 'Ready to Dispatch' && 'Ready to Dispatch means production, finishing, inspection, and packing are completed, but the product has not left the workshop yet.'}
+                {order.current_status === 'Dispatched' && 'Dispatched means the product has physically left the workshop for customer delivery.'}
               </p>
 
               {/* Administrative Transition triggers buttons */}
@@ -664,7 +720,7 @@ export default function OrderDetailsView({
                 <div className="pt-2 flex flex-wrap gap-2 border-t border-stone-150">
                   <span className="text-[10px] font-bold text-stone-400 block w-full">ADMIN CONTROLLER GATEWAYS:</span>
                   
-                  {(order.current_status === 'Design' || order.current_status === 'Carpentry' || order.current_status === 'Polish') && (
+                  {['Pending', 'Designing', 'Design', 'Wood Procurement', 'Making Started', 'Carpentry', 'Making Completed', 'Polish'].includes(order.current_status) && (
                     <button
                       disabled={isAdvancing}
                       onClick={() => handleAdminStepAction('forward')}
@@ -679,7 +735,7 @@ export default function OrderDetailsView({
                   {order.current_status === 'Ready to Dispatch' && (
                     <button
                       disabled={isAdvancing}
-                      onClick={() => triggerTransition('Dispatched', 'Admin authorized logistics departure: Order registered on transport manifest.', true)}
+                      onClick={() => setShowDispatchModal(true)}
                       className={`bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
                         isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                       }`}
@@ -688,16 +744,16 @@ export default function OrderDetailsView({
                     </button>
                   )}
 
-                  {order.current_status === 'QC Check 1' && (
+                  {(order.current_status === 'QC 1' || order.current_status === 'QC Check 1') && (
                     <>
                       <button
                         disabled={isAdvancing}
-                        onClick={() => triggerTransition('Polish', 'Admin audited structural joints: QC Pass 1 successful.', true)}
+                        onClick={() => triggerTransition('Making Completed', 'Admin audited structural joints: QC Pass 1 successful.', true)}
                         className={`bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
                           isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                         }`}
                       >
-                        Pass QC Check 1
+                        Pass QC 1
                       </button>
                       <button
                         disabled={isAdvancing}
@@ -706,12 +762,12 @@ export default function OrderDetailsView({
                           isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                         }`}
                       >
-                        Fail (Send back to Carpentry)
+                        Fail (Send back to Making Started)
                       </button>
                     </>
                   )}
 
-                  {order.current_status === 'QC Check 2' && (
+                  {(order.current_status === 'QC 2' || order.current_status === 'QC Check 2') && (
                     <>
                       <button
                         disabled={isAdvancing}
@@ -720,7 +776,7 @@ export default function OrderDetailsView({
                           isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                         }`}
                       >
-                        Pass QC Check 2
+                        Pass QC 2
                       </button>
                       <button
                         disabled={isAdvancing}
@@ -736,6 +792,58 @@ export default function OrderDetailsView({
                 </div>
               )}
             </motion.div>
+
+            {/* Dispatch details card if order is Dispatched */}
+            {(order.current_status === 'Dispatched' || existingPayment?.dispatchDate || existingPayment?.vehicleNumber) && (
+              <div className="bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl space-y-3 text-xs text-stone-800">
+                <div className="flex items-center gap-2 border-b border-emerald-200/80 pb-2 text-emerald-800 font-bold">
+                  <CheckCircle2 size={16} className="text-emerald-600" />
+                  <span className="uppercase tracking-wider text-[11px]">Logistics & Dispatch Information</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatch Date</span>
+                      <strong className="text-stone-900 text-xs">
+                      {existingPayment?.dispatchDate ? formatToDDMMYYYY(existingPayment.dispatchDate) : (order.delivery_date ? formatToDDMMYYYY(order.delivery_date) : 'Dispatched')}
+                    </strong>
+                  </div>
+                  {existingPayment?.deliveryPersonName && (
+                    <div>
+                      <span className="text-[10px] font-bold text-stone-500 uppercase block">Delivery Agent / Driver</span>
+                      <strong className="text-stone-900 text-xs">
+                      {existingPayment?.deliveryPersonName} {existingPayment?.deliveryPersonContact ? `(${existingPayment.deliveryPersonContact})` : ''}
+                      </strong>
+                    </div>
+                  )}
+                    {existingPayment?.vehicleNumber && (
+                    <div>
+                      <span className="text-[10px] font-bold text-stone-500 uppercase block">Vehicle NO</span>
+                      <strong className="text-stone-900 text-xs">{existingPayment?.vehicleNumber}</strong>
+                    </div>
+                  )}
+                    {existingPayment?.dispatchedBy && (
+                    <div>
+                      <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatched By</span>
+                      <strong className="text-stone-900 text-xs">{existingPayment?.dispatchedBy}</strong>
+                    </div>
+                  )}
+                  {existingPayment?.dispatchedAt && (
+                    <div>
+                      <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatched Timestamp</span>
+                      <strong className="text-stone-900 text-xs">
+                      {new Date(existingPayment.dispatchedAt as string).toLocaleString()}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+                {existingPayment?.dispatchNotes && (
+                  <div className="pt-2 border-t border-emerald-200/60">
+                    <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatch Notes</span>
+                    <p className="text-stone-700 text-xs mt-0.5">{existingPayment.dispatchNotes}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* SECTION 2: PRODUCT DETAILS */}
@@ -1272,9 +1380,13 @@ export default function OrderDetailsView({
                 </div>
                 <div className="space-y-1 text-[11px] leading-relaxed text-stone-605 text-stone-650">
                   <p>• Receipt Reference ID: <strong className="font-mono text-stone-900">{existingPayment.id}</strong></p>
-                  <p>• Transacted Mode: <strong className="capitalize text-stone-900">{existingPayment.payment_mode}</strong> on <strong className="font-mono">{formatToDDMMYYYY(existingPayment.payment_date)}</strong></p>
-                  {existingPayment.notes && <p>• Audited Notes: <span className="italic">"{existingPayment.notes}"</span></p>}
-                  <p className="text-[9px] text-stone-400 font-mono text-right mt-1.5">Last verified on {formatToDDMMYYYY(existingPayment.created_at)} {new Date(existingPayment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p>
+                    • Transacted Mode: <strong className="capitalize text-stone-900">{((existingPayment as any).payment_mode as string) ?? 'N/A'}</strong> on <strong className="font-mono">{formatToDDMMYYYY(((existingPayment as any).payment_date as string) ?? existingPayment.dispatchDate ?? new Date().toISOString())}</strong>
+                  </p>
+                  {(((existingPayment as any).notes as string) || existingPayment.dispatchNotes) && <p>• Audited Notes: <span className="italic">"{((existingPayment as any).notes as string) ?? existingPayment.dispatchNotes}"</span></p>}
+                  <p className="text-[9px] text-stone-400 font-mono text-right mt-1.5">
+                    Last verified on {formatToDDMMYYYY(((existingPayment as any).created_at as string) ?? existingPayment.dispatchedAt ?? existingPayment.dispatchDate ?? new Date().toISOString())} {new Date(((existingPayment as any).created_at as string) ?? existingPayment.dispatchedAt ?? existingPayment.dispatchDate ?? new Date().toISOString()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
               </div>
             ) : (
@@ -1519,6 +1631,119 @@ export default function OrderDetailsView({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Dispatch Confirmation Modal */}
+      {showDispatchModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-stone-200 space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2 text-emerald-700">
+                <CheckCircle2 size={22} />
+                <h3 className="font-bold text-lg text-stone-900 font-sans">
+                  Confirm Order Dispatch
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowDispatchModal(false)}
+                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 font-medium">
+              Confirm that this order has physically left the workshop and is now dispatched?
+            </div>
+
+            <div className="space-y-3 text-xs text-stone-700">
+              <div>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                  Dispatch Date *
+                </label>
+                <input
+                  type="date"
+                  value={dispatchForm.dispatchDate}
+                  onChange={(e) => setDispatchForm({ ...dispatchForm, dispatchDate: e.target.value })}
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:border-emerald-600 focus:outline-none font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                    Delivery Person / Driver Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Rajesh Kumar"
+                    value={dispatchForm.deliveryPersonName}
+                    onChange={(e) => setDispatchForm({ ...dispatchForm, deliveryPersonName: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:border-emerald-600 focus:outline-none font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                    Contact Phone
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. +91 9876543210"
+                    value={dispatchForm.deliveryPersonContact}
+                    onChange={(e) => setDispatchForm({ ...dispatchForm, deliveryPersonContact: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:border-emerald-600 focus:outline-none font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                  Vehicle Registration Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. MH 04 AB 1234"
+                  value={dispatchForm.vehicleNumber}
+                  onChange={(e) => setDispatchForm({ ...dispatchForm, vehicleNumber: e.target.value })}
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:border-emerald-600 focus:outline-none font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                  Dispatch Notes / Transport Manifest
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Add packaging or dispatch notes..."
+                  value={dispatchForm.dispatchNotes}
+                  onChange={(e) => setDispatchForm({ ...dispatchForm, dispatchNotes: e.target.value })}
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:border-emerald-600 focus:outline-none font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-stone-100">
+              <button
+                onClick={() => setShowDispatchModal(false)}
+                className="px-4 py-2 rounded-xl text-stone-600 font-bold hover:bg-stone-100 transition text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isAdvancing}
+                onClick={handleConfirmDispatch}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <CheckCircle2 size={14} /> Confirm &amp; Mark Dispatched
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

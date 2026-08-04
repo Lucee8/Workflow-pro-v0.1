@@ -699,7 +699,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         return 'Delivered';
       }
       const hasInProduction = custOrders.some(o => 
-        ['Design', 'Carpentry', 'QC Check 1', 'Polish', 'QC Check 2', 'Ready to Dispatch'].includes(o.current_status)
+        !['Pending', 'Dispatched'].includes(o.current_status)
       );
       if (hasInProduction) {
         return 'In Production';
@@ -812,7 +812,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
           color_shade: 'Teak / Walnut',
           no_of_units: item.quantity || 1,
           carpenter_id: defaultCarp,
-          current_status: 'Design',
+          current_status: 'Designing',
           is_delayed: false,
           priority: 'normal',
           order_date: new Date().toISOString().split('T')[0],
@@ -872,7 +872,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         color_shade: 'Teak / Walnut',
         no_of_units: 1,
         carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
-        current_status: 'Design',
+        current_status: 'Designing',
         is_delayed: false,
         priority: 'normal',
         order_date: new Date().toISOString().split('T')[0],

@@ -437,14 +437,14 @@ export default function MaterialRequirementPlanning({ selectedOrderId, orders, c
       if (activeProject && onOrderUpdate) {
         const updatedOrder = {
           ...activeProject,
-          current_status: 'Carpentry' as const, // Transit safely to active Carpentry
+          current_status: 'Making Started' as const, // Transit safely to active Making Started
           updated_at: new Date().toISOString().slice(0, 10)
         };
         // Emitting status log info
         onOrderUpdate(updatedOrder, {
           id: `log_mrp_${Date.now()}`,
           order_id: activeProject.id,
-          stage: 'Carpentry',
+          stage: 'Making Started',
           changed_by: 'system',
           changed_by_name: 'MRP Automated System',
           changed_by_role: 'admin',

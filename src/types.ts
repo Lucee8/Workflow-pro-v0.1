@@ -33,23 +33,38 @@ export interface Customer {
 
 export type OrderStage =
   | 'Pending'
+  | 'Designing'
+  | 'Wood Procurement'
+  | 'Making Started'
+  | 'QC 1'
+  | 'Making Completed'
+  | 'Polish'
+  | 'QC 2'
+  | 'Ready to Dispatch'
+  | 'Dispatched'
+  // Legacy aliases
   | 'Design'
   | 'Carpentry'
   | 'QC Check 1'
-  | 'Polish'
-  | 'QC Check 2'
-  | 'Ready to Dispatch'
-  | 'Dispatched';
+  | 'QC Check 2';
 
-export type OrderPriority = 'normal' | 'urgent';
+export type OrderPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+
+export function normalizeStage(stage: string): OrderStage {
+  if (stage === 'Design') return 'Designing';
+  if (stage === 'Carpentry') return 'Making Started';
+  if (stage === 'QC Check 1') return 'QC 1';
+  if (stage === 'QC Check 2') return 'QC 2';
+  if (stage === 'Dispatched') return 'Dispatched';
+  return stage as OrderStage;
+}
 
 export interface WoodPart {
-  id: string;
   part_name: string;
-  width: number; // in inches
-  breadth: number; // in inches
-  length: number; // in feet
   quantity: number;
+  dimensions?: string;
+  material?: string;
+  notes?: string;
 }
 
 export interface WoodSchedule {
@@ -130,13 +145,14 @@ export interface Payment {
   id: string;
   order_id: string;
   total_amount: number;
-  advance_paid: number;
-  balance_due: number; // total - advance
-  payment_date: string;
-  payment_mode: 'cash' | 'upi' | 'transfer';
-  notes?: string;
-  created_by: string;
-  created_at: string;
+  advance_paid?: number;
+  dispatchDate?: string;
+  dispatchedAt?: string;
+  dispatchedBy?: string;
+  dispatchNotes?: string;
+  deliveryPersonName?: string;
+  deliveryPersonContact?: string;
+  vehicleNumber?: string;
 }
 
 export interface Material {

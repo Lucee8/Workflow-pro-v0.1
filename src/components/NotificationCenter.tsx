@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Order, User, NotificationItem, OrderStage, StatusLog } from '../types';
+import { Order, User, NotificationItem, OrderStage, StatusLog, normalizeStage } from '../types';
 import { generateUUID } from '../db/store';
 import { 
   Bell, 
@@ -32,15 +32,16 @@ interface NotificationCenterProps {
 // Order stage list for progression validation
 const STAGES: OrderStage[] = [
   'Pending',
-  'Design',
-  'Carpentry',
-  'QC Check 1',
+  'Designing',
+  'Wood Procurement',
+  'Making Started',
+  'QC 1',
+  'Making Completed',
   'Polish',
-  'QC Check 2',
+  'QC 2',
   'Ready to Dispatch',
   'Dispatched',
 ];
-
 interface ToastAlert {
   id: string;
   title: string;

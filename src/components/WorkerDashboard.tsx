@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart } from '../types';
+import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage } from '../types';
 import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
 import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare } from 'lucide-react';
@@ -89,6 +89,16 @@ interface WorkerDashboardProps {
   onUpdateOrder: (updatedOrder: Order, newLog?: StatusLog) => void;
 }
 
+type ExtendedWoodPart = WoodPart & {
+  id: string;
+  width: number;
+  breadth: number;
+  length: number;
+  quantity: number;
+};
+
+type WoodPartTableField = Exclude<keyof ExtendedWoodPart, 'id'>;
+
 export default function WorkerDashboard({
   currentUser,
   orders,
@@ -104,8 +114,9 @@ export default function WorkerDashboard({
     if (isCarpenter) {
       return o.carpenter_id === currentUser.id;
     } else {
-      // Polish person sees work only after carpentry passes QC Check 1
-      return o.polish_person_id === currentUser.id && o.current_status !== 'Pending' && o.current_status !== 'Design' && o.current_status !== 'Carpentry' && o.current_status !== 'QC Check 1';
+      // Polish person sees work only after carpentry passes QC 1 (i.e. Polish stage or later)
+      const stage = normalizeStage(o.current_status);
+      return o.polish_person_id === currentUser.id && ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(stage);
     }
   }).sort(compareOrdersByArticleSerialDesc);
 
@@ -217,9 +228,21 @@ export default function WorkerDashboard({
   const [sizeOfProduct, setSizeOfProduct] = React.useState('');
   const [sqft, setSqft] = React.useState<number>(0);
   const [imageLink, setImageLink] = React.useState('');
-  const [parts, setParts] = React.useState<WoodPart[]>([]);
+  const [parts, setParts] = React.useState<ExtendedWoodPart[]>([]);
   const [showRefImg, setShowRefImg] = React.useState(false);
   const [lightboxImg, setLightboxImg] = React.useState<string | null>(null);
+
+  const normalizeParts = React.useCallback((incomingParts: WoodPart[] = []) => {
+    return incomingParts.map((part, index) => ({
+      ...part,
+      id: (part as WoodPart & { id?: string }).id || `part_${index + 1}`,
+      part_name: (part as any)?.part_name || '',
+      width: (part as any)?.width ?? 1,
+      breadth: (part as any)?.breadth ?? 1,
+      length: (part as any)?.length ?? 1,
+      quantity: (part as any)?.quantity ?? 1,
+    })) as ExtendedWoodPart[];
+  }, []);
 
   // QC Check 1 checkboxes state
   const [qcMeasurement, setQcMeasurement] = React.useState(false);
@@ -262,7 +285,7 @@ export default function WorkerDashboard({
     e.target.value = '';
   };
 
-  const updatePartField = (id: string, field: keyof WoodPart, value: any) => {
+  const updatePartField = (id: string, field: WoodPartTableField, value: any) => {
     setParts((currentParts) =>
       currentParts.map((p) => {
         if (p.id === id) {
@@ -288,7 +311,7 @@ export default function WorkerDashboard({
     } else {
       setImageLink(schedule.image_link || '');
     }
-    setParts(schedule.parts || []);
+    setParts(normalizeParts(schedule.parts));
   };
 
   const handleOpenUpdate = (ord: Order) => {
@@ -311,7 +334,7 @@ export default function WorkerDashboard({
         setImageLink(schedule.image_link || originalDesignImg || '');
       }
 
-      setParts(schedule.parts || []);
+      setParts(normalizeParts(schedule.parts));
       if (schedule.qc_check_1_details) {
         setQcMeasurement(!!schedule.qc_check_1_details.measurement);
         setQcFinishing(!!schedule.qc_check_1_details.finishing);
@@ -363,11 +386,11 @@ export default function WorkerDashboard({
         nextSubStatus = 'completed';
       } else if (progressStatus === 'completed') {
         nextSubStatus = 'completed';
-        nextStage = 'QC Check 1';
+        nextStage = 'QC 1';
       }
     } else {
       if (progressStatus === 'completed') {
-        nextStage = 'QC Check 2';
+        nextStage = 'QC 2';
       }
     }
 
@@ -427,7 +450,7 @@ export default function WorkerDashboard({
 
     onUpdateOrder(updatedOrder, log);
 
-    if (isCarpenter && nextStage === 'Carpentry') {
+    if (isCarpenter && ['Making Started', 'Wood Procurement', 'Carpentry', 'QC 1', 'QC Check 1'].includes(nextStage)) {
       setActiveOrder(updatedOrder);
       setProgressStatus(nextSubStatus || 'wood_procurement');
       setUpdateNotes('');

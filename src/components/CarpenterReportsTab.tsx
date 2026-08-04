@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { User, Order } from '../types';
+import { User, Order, normalizeStage } from '../types';
 import { AppState } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
 import {
@@ -110,10 +110,10 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
       return diffDays <= Number(dateRange);
     });
 
-    const pending = filteredOrders.filter(o => o.current_status === 'Pending' || o.current_status === 'Design');
-    const highPriorityPending = pending.filter(o => o.priority === 'urgent');
+    const pending = filteredOrders.filter(o => ['Pending', 'Designing'].includes(normalizeStage(o.current_status)));
+    const highPriorityPending = pending.filter(o => o.priority === 'Urgent');
     
-    const inProgress = filteredOrders.filter(o => ['Carpentry', 'QC Check 1', 'Polish', 'QC Check 2'].includes(o.current_status));
+    const inProgress = filteredOrders.filter(o => !['Pending', 'Designing', 'Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)));
     const delayedInProgress = inProgress.filter(o => o.is_delayed || (o.delivery_date && o.delivery_date < todayStr));
 
     const completed = filteredOrders.filter(o => ['Ready to Dispatch', 'Dispatched'].includes(o.current_status));
@@ -184,7 +184,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
     });
 
     const qaFailedTasks = allOrders.filter(
-      o => ['QC Check 1', 'QC Check 2'].includes(o.current_status)
+      o => ['QC 1', 'QC Check 1', 'QC 2', 'QC Check 2'].includes(o.current_status)
     ).map(o => {
       return {
         ...o,
@@ -214,7 +214,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
       );
       
       const inProgress = activeTasks.filter(
-        (o) => ['Carpentry', 'QC Check 1', 'Polish', 'QC Check 2'].includes(o.current_status)
+        (o) => !['Pending', 'Designing', 'Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
       );
 
       const overdue = activeTasks.filter(

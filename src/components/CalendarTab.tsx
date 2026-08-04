@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { Order, Customer, OrderStage, normalizeStage } from '../types';
 import { Order, Customer, OrderStage } from '../types';
 import { ChevronLeft, ChevronRight, Filter, PlusSquare, Info } from 'lucide-react';
 
@@ -63,29 +64,37 @@ export default function CalendarTab({
 
   // Colors mapping matching screenshot
   // Design (Purple), Carpentry (Yellow), QC Check 1 (Blue), Polish (Pink), QC Check 2 (Orange), Ready to Dispatch (Green)
-  const getStageColor = (stage: OrderStage) => {
+  const getStageColor = (rawStage: string) => {
+    const stage = normalizeStage(rawStage);
     switch (stage) {
       case 'Pending': return 'bg-stone-500 text-white';
-      case 'Design': return 'bg-purple-500 text-white';
-      case 'Carpentry': return 'bg-amber-500 text-stone-900';
-      case 'QC Check 1': return 'bg-blue-500 text-white';
-      case 'Polish': return 'bg-[#ec4899] text-white'; // Pink
-      case 'QC Check 2': return 'bg-orange-500 text-white';
+      case 'Designing': return 'bg-purple-500 text-white';
+      case 'Wood Procurement': return 'bg-amber-600 text-white';
+      case 'Making Started': return 'bg-amber-500 text-stone-900';
+      case 'QC 1': return 'bg-blue-500 text-white';
+      case 'Making Completed': return 'bg-indigo-500 text-white';
+      case 'Polish': return 'bg-[#ec4899] text-white';
+      case 'QC 2': return 'bg-orange-500 text-white';
       case 'Ready to Dispatch': return 'bg-green-600 text-white';
       case 'Dispatched': return 'bg-emerald-600 text-white';
+      default: return 'bg-stone-500 text-white';
     }
   };
 
-  const getStageDotColor = (stage: OrderStage) => {
+  const getStageDotColor = (rawStage: string) => {
+    const stage = normalizeStage(rawStage);
     switch (stage) {
       case 'Pending': return 'bg-stone-500';
-      case 'Design': return 'bg-purple-500';
-      case 'Carpentry': return 'bg-amber-500';
-      case 'QC Check 1': return 'bg-blue-500';
+      case 'Designing': return 'bg-purple-500';
+      case 'Wood Procurement': return 'bg-amber-600';
+      case 'Making Started': return 'bg-amber-500';
+      case 'QC 1': return 'bg-blue-500';
+      case 'Making Completed': return 'bg-indigo-500';
       case 'Polish': return 'bg-[#ec4899]';
-      case 'QC Check 2': return 'bg-orange-500';
+      case 'QC 2': return 'bg-orange-500';
       case 'Ready to Dispatch': return 'bg-green-600';
       case 'Dispatched': return 'bg-emerald-600';
+      default: return 'bg-stone-500';
     }
   };
 

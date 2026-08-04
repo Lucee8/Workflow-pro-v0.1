@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Order, User, Customer, OrderStage, OrderPriority, Payment } from '../types';
+import { Order, User, Customer, OrderStage, OrderPriority, Payment, normalizeStage } from '../types';
 import { Search, Eye, PlusCircle, AlertCircle, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, CreditCard, Trash2 } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 
@@ -55,7 +55,9 @@ export default function OrdersTab({
       (cust && cust.phone.includes(searchTerm)) ||
       (carpenter && carpenter.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    const matchesStage = stageFilter === 'All Stages' || order.current_status === stageFilter;
+    const matchesStage =
+      stageFilter === 'All Stages' ||
+      normalizeStage(order.current_status) === normalizeStage(stageFilter);
 
     let matchesStatus = true;
     if (statusFilter !== 'All Status') {
@@ -64,7 +66,13 @@ export default function OrdersTab({
       else if (statusFilter === 'In Progress') matchesStatus = !['Ready to Dispatch', 'Dispatched'].includes(order.current_status);
     }
 
-    const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();
+    const matchesPriority =
+      priorityFilter === 'All Priority' ||
+      (priorityFilter === 'Urgent'
+        ? order.priority === 'Urgent'
+        : priorityFilter === 'Normal'
+        ? order.priority !== 'Urgent'
+        : order.priority === priorityFilter);
 
     return matchesSearch && matchesStage && matchesStatus && matchesPriority;
   }).sort(compareOrdersByArticleSerialDesc);
@@ -74,16 +82,20 @@ export default function OrdersTab({
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = filteredOrders.slice(startIndex, startIndex + itemsPerPage);
 
-  const getStatusClass = (stage: OrderStage) => {
+  const getStatusClass = (rawStage: string) => {
+    const stage = normalizeStage(rawStage);
     switch (stage) {
       case 'Pending': return 'bg-stone-100 text-stone-700 border-stone-200';
-      case 'Design': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'Carpentry': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'QC Check 1': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'Designing': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Wood Procurement': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'Making Started': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'QC 1': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'Making Completed': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
       case 'Polish': return 'bg-teal-100 text-teal-800 border-teal-200';
-      case 'QC Check 2': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-      case 'Ready to Dispatch': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Dispatched': return 'bg-emerald-100 text-emerald-850 border-emerald-300';
+      case 'QC 2': return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200';
+      case 'Ready to Dispatch': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Dispatched': return 'bg-green-100 text-green-850 border-green-300 font-bold';
+      default: return 'bg-stone-100 text-stone-700 border-stone-200';
     }
   };
 
@@ -132,15 +144,17 @@ export default function OrdersTab({
               onChange={(e) => setStageFilter(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:border-[#593622] transition min-w-[120px]"
             >
-              <option>All Stages</option>
-              <option>Pending</option>
-              <option>Design</option>
-              <option>Carpentry</option>
-              <option>QC Check 1</option>
-              <option>Polish</option>
-              <option>QC Check 2</option>
-              <option>Ready to Dispatch</option>
-              <option>Dispatched</option>
+              <option value="All Stages">All Stages</option>
+              <option value="Pending">1. Pending</option>
+              <option value="Designing">2. Designing</option>
+              <option value="Wood Procurement">3. Wood Procurement</option>
+              <option value="Making Started">4. Making Started</option>
+              <option value="QC 1">5. QC 1</option>
+              <option value="Making Completed">6. Making Completed</option>
+              <option value="Polish">7. Polish</option>
+              <option value="QC 2">8. QC 2</option>
+              <option value="Ready to Dispatch">9. Ready to Dispatch</option>
+              <option value="Dispatched">10. Dispatched</option>
             </select>
 
             {/* Status Select */}
@@ -196,7 +210,7 @@ export default function OrdersTab({
                       <td className="py-3.5 px-4 font-mono font-black text-stone-900 group">
                         <div className="flex flex-col">
                           <span className="flex items-center gap-1.5">
-                            {order.priority === 'urgent' && (
+                            {order.priority === 'Urgent' && (
                               <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" title="Urgent priority!" />
                             )}
                             {order.article_no}
@@ -262,7 +276,9 @@ export default function OrdersTab({
                               </span>
                             );
                           }
-                          if (p.balance_due <= 0) {
+                          const paidAmount = p.advance_paid ?? 0;
+                          const balanceDue = p.total_amount - paidAmount;
+                          if (balanceDue <= 0) {
                             return (
                               <span className="inline-flex items-center bg-green-50 border border-green-200 text-green-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
                                 Paid
@@ -270,7 +286,7 @@ export default function OrdersTab({
                             );
                           }
                           return (
-                            <span className="inline-flex items-center bg-amber-50 border border-amber-200 text-amber-600 text-[9px] font-black uppercase px-2 py-0.5 rounded-md" title={`Due: ₹${p.balance_due}`}>
+                            <span className="inline-flex items-center bg-amber-50 border border-amber-200 text-amber-600 text-[9px] font-black uppercase px-2 py-0.5 rounded-md" title={`Due: ₹${balanceDue}`}>
                               Partial
                             </span>
                           );

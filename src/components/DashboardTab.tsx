@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { Order, User, Customer, OrderStage, Payment } from '../types';
+import { Order, User, Customer, OrderStage, Payment, normalizeStage } from '../types';
 import { Eye, Clock, CheckCircle2, AlertTriangle, Briefcase, CalendarCheck, ArrowUpRight, PiggyBank, CreditCard, ShieldCheck, Boxes, Sparkles, UserPlus, Plus } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 
@@ -38,9 +38,6 @@ export default function DashboardTab({
   const getOrderBalanceDue = (o: Order) => {
     const p = payments.find((pay) => pay.order_id === o.id);
     if (p) {
-      if (typeof p.balance_due === 'number' && !isNaN(p.balance_due)) {
-        return Math.max(0, p.balance_due);
-      }
       const total = typeof p.total_amount === 'number' ? p.total_amount : (o.total_amount || 0);
       const adv = typeof p.advance_paid === 'number' ? p.advance_paid : (o.advance_paid || 0);
       return Math.max(0, total - adv);
@@ -59,7 +56,9 @@ export default function DashboardTab({
     if (orders.length === 0) return false;
     const p = payments.find((pay) => pay.order_id === o.id);
     if (p) {
-      return (p.balance_due ?? (p.total_amount - p.advance_paid)) <= 0;
+      const total = Number(p.total_amount) || 0;
+      const adv = Number(p.advance_paid) || 0;
+      return total - adv <= 0;
     }
     if (o.total_amount !== undefined && o.total_amount !== null && o.total_amount > 0) {
       return (o.total_amount - (o.advance_paid || 0)) <= 0;
@@ -70,14 +69,17 @@ export default function DashboardTab({
   const partialOrUnpaidCount = orders.length - fullyPaidCount;
 
   // Pie chart calculation
-  const getStageCount = (stage: OrderStage) => orders.filter((o) => o.current_status === stage).length;
+  const getStageCount = (stage: OrderStage) =>
+    orders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
   const stages: { name: OrderStage; count: number; color: string; percent: number }[] = [
     { name: 'Pending', count: getStageCount('Pending'), color: '#a8a29e', percent: 0 },
-    { name: 'Design', count: getStageCount('Design'), color: '#d97706', percent: 0 },
-    { name: 'Carpentry', count: getStageCount('Carpentry'), color: '#3b82f6', percent: 0 },
-    { name: 'QC Check 1', count: getStageCount('QC Check 1'), color: '#c084fc', percent: 0 },
+    { name: 'Designing', count: getStageCount('Designing'), color: '#d97706', percent: 0 },
+    { name: 'Wood Procurement', count: getStageCount('Wood Procurement'), color: '#ea580c', percent: 0 },
+    { name: 'Making Started', count: getStageCount('Making Started'), color: '#3b82f6', percent: 0 },
+    { name: 'QC 1', count: getStageCount('QC 1'), color: '#c084fc', percent: 0 },
+    { name: 'Making Completed', count: getStageCount('Making Completed'), color: '#6366f1', percent: 0 },
     { name: 'Polish', count: getStageCount('Polish'), color: '#0d9488', percent: 0 },
-    { name: 'QC Check 2', count: getStageCount('QC Check 2'), color: '#818cf8', percent: 0 },
+    { name: 'QC 2', count: getStageCount('QC 2'), color: '#818cf8', percent: 0 },
     { name: 'Ready to Dispatch', count: getStageCount('Ready to Dispatch'), color: '#16a34a', percent: 0 },
     { name: 'Dispatched', count: getStageCount('Dispatched'), color: '#059669', percent: 0 },
   ];
@@ -525,7 +527,7 @@ export default function DashboardTab({
 
             {/* Desktop View: Horizontal Stepper Diagram scroll container */}
             <div className="hidden md:block overflow-x-auto no-scrollbar w-full py-1">
-              <div className="relative flex justify-between items-center min-w-[720px] px-4 py-3">
+              <div className="relative flex justify-between items-center min-w-[920px] px-4 py-3">
                 {/* Connected Line Background */}
                 <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-stone-200 -translate-y-1/2 z-0" />
 

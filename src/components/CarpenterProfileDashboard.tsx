@@ -152,6 +152,15 @@ export default function CarpenterProfileDashboard({
     return 0;
   };
 
+  const isOrderFinalized = (status: string): boolean =>
+    status === 'Completed' || status === 'Delivered';
+
+  const isOrderLogistics = (status: string): boolean =>
+    isOrderFinalized(status) || status === 'Dispatched';
+
+  const isPendingApprovalStage = (status: string): boolean =>
+    ['QC 1', 'QC Check 1', 'QC 2', 'QC Check 2', 'Pending'].includes(status);
+
   // KPI Calculations (Strict Real Database Queries)
   const kpis = useMemo(() => {
     const totalAssigned = ordersInPeriod.length;
@@ -170,7 +179,7 @@ export default function CarpenterProfileDashboard({
 
     // Completed Orders in Period
     const completedOrders = ordersInPeriod.filter(
-      (o) => o.current_status === 'Completed' || o.current_status === 'Delivered' || o.carpenter_sub_status === 'completed'
+      (o) => isOrderFinalized(o.current_status) || o.carpenter_sub_status === 'completed'
     );
     const completedCount = completedOrders.length;
 
@@ -204,16 +213,16 @@ export default function CarpenterProfileDashboard({
   // Workload Status Breakdown
   const workloadStatus = useMemo(() => {
     const active = carpenterOrders.filter(
-      (o) => o.current_status !== 'Completed' && o.current_status !== 'Delivered'
+      (o) => !isOrderFinalized(o.current_status)
     ).length;
 
     const pendingApprovals = carpenterOrders.filter(
-      (o) => o.current_status === 'QC Check 1' || o.current_status === 'QC Check 2' || o.current_status === 'Pending'
+      (o) => isPendingApprovalStage(o.current_status)
     ).length;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const completedToday = carpenterOrders.filter((o) => {
-      const isComp = o.current_status === 'Completed' || o.current_status === 'Delivered' || o.carpenter_sub_status === 'completed';
+      const isComp = isOrderFinalized(o.current_status) || o.carpenter_sub_status === 'completed';
       const isToday = (o.updated_at || o.created_at || '').startsWith(todayStr);
       return isComp && isToday;
     }).length;
@@ -229,7 +238,7 @@ export default function CarpenterProfileDashboard({
   const productivityStats = useMemo(() => {
     const total = carpenterOrders.length;
     const completed = carpenterOrders.filter(
-      (o) => o.current_status === 'Completed' || o.current_status === 'Delivered' || o.carpenter_sub_status === 'completed'
+      (o) => isOrderFinalized(o.current_status) || o.carpenter_sub_status === 'completed'
     );
 
     const overallRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
@@ -274,9 +283,10 @@ export default function CarpenterProfileDashboard({
       const week: 1 | 2 | 3 | 4 = dayOfMonth <= 7 ? 1 : dayOfMonth <= 14 ? 2 : dayOfMonth <= 21 ? 3 : 4;
 
       let stage: 'Completed' | 'Logistics' | 'Working' | 'Pending' = 'Working';
-      if (o.current_status === 'Completed' || o.carpenter_sub_status === 'completed') stage = 'Completed';
-      else if (o.current_status === 'Delivered') stage = 'Logistics';
-      else if (o.current_status === 'Pending' || o.current_status === 'Design') stage = 'Pending';
+      if (isOrderFinalized(o.current_status) || o.carpenter_sub_status === 'completed') stage = 'Completed';
+      else if (isOrderLogistics(o.current_status)) stage = 'Logistics';
+      else if (['Pending', 'Designing', 'Design'].includes(o.current_status)) stage = 'Pending';
+
 
       const prodName = `${o.sub_category || o.category || 'Order'} (${stage})`;
 
@@ -299,7 +309,7 @@ export default function CarpenterProfileDashboard({
     const counts: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
 
     ordersInPeriod.forEach((o) => {
-      if (o.current_status === 'Completed' || o.current_status === 'Delivered' || o.carpenter_sub_status === 'completed') {
+      if (isOrderFinalized(o.current_status) || o.carpenter_sub_status === 'completed') {
         const d = new Date(o.updated_at || o.order_date || o.created_at);
         const dayIdx = (d.getDay() + 6) % 7; // Convert Sun=0 to Mon=0
         const dayName = days[dayIdx];
@@ -372,7 +382,7 @@ export default function CarpenterProfileDashboard({
       let type: 'completed' | 'working' | 'assigned' = 'working';
       let title = `Updated ${prodName} for ${cust}`;
 
-      if ((log.stage as string) === 'Completed' || (log.stage as string) === 'QC Check 1') {
+      if (['Completed', 'QC 1', 'QC Check 1', 'QC 2', 'QC Check 2', 'Making Completed'].includes(log.stage as string)) {
         type = 'completed';
         title = `Completed ${prodName} for ${cust}`;
       } else if (log.stage === 'Pending') {
@@ -779,7 +789,7 @@ export default function CarpenterProfileDashboard({
               <div className="flex justify-between items-center">
                 <span className="text-stone-500 font-medium">Active Level:</span>
                 <span className="text-emerald-600 font-black tracking-wider uppercase">
-                  {targetUser.status ? targetUser.status.toUpperCase() : 'ACTIVE'}
+                  ACTIVE
                 </span>
               </div>
               <div className="flex justify-between items-center">
