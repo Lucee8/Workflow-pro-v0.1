@@ -317,7 +317,9 @@ export default function WorkerDashboard({
   const handleOpenUpdate = (ord: Order) => {
     setActiveOrder(ord);
     if (isCarpenter) {
-      const initialSub = ord.carpenter_sub_status || 'wood_procurement';
+      const initialSub = (ord.carpenter_sub_status === 'qc_check_1' || ord.carpenter_sub_status === 'completed')
+        ? ord.carpenter_sub_status
+        : 'under_carpentry';
       setProgressStatus(initialSub);
 
       // Check if wood schedule was rejected
@@ -329,7 +331,7 @@ export default function WorkerDashboard({
       } catch (e) {
         console.error(e);
       }
-      
+
       // Load or Initialize Wood Schedule data
       const schedule = ord.wood_schedule || getDefaultWoodSchedule(ord);
       setCatalogueName(schedule.catalogue_name);
@@ -380,6 +382,16 @@ export default function WorkerDashboard({
     e.preventDefault();
     if (!activeOrder) return;
 
+    const woodReqStatus = (() => {
+      try {
+        const saved = localStorage.getItem('bhisez_wood_request_statuses');
+        const map = saved ? JSON.parse(saved) : {};
+        return map[activeOrder.id] || '';
+      } catch {
+        return '';
+      }
+    })();
+
     const isAllowedStage = isCarpenter
       ? ['Making Started', 'Wood Procurement', 'Carpentry', 'QC 1', 'QC Check 1', 'Designing'].includes(activeOrder.current_status)
       : activeOrder.current_status === myStage;
@@ -393,22 +405,23 @@ export default function WorkerDashboard({
     let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
-      if (progressStatus === 'wood_procurement') {
-        nextSubStatus = 'under_carpentry'; // Stays in under_carpentry until Admin approves wood sheet in Wood Management
-        nextStage = 'Making Started';
+      if (progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement') {
+        if (woodReqStatus === 'Approved') {
+          nextSubStatus = 'qc_check_1';
+          nextStage = 'Making Started';
+        } else {
+          nextSubStatus = 'under_carpentry'; // Stays in under_carpentry until Admin approves wood sheet in Wood Management
+          nextStage = 'Making Started';
 
-        // Set status in Wood Management to Pending so Admin can approve it
-        try {
-          const savedStatuses = JSON.parse(localStorage.getItem('bhisez_wood_request_statuses') || '{}');
-          savedStatuses[activeOrder.id] = 'Pending';
-          localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(savedStatuses));
-        } catch (err) {
-          console.error('Error setting wood request status to Pending:', err);
+          // Set status in Wood Management to Pending so Admin can approve it
+          try {
+            const savedStatuses = JSON.parse(localStorage.getItem('bhisez_wood_request_statuses') || '{}');
+            savedStatuses[activeOrder.id] = 'Pending';
+            localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(savedStatuses));
+          } catch (err) {
+            console.error('Error setting wood request status to Pending:', err);
+          }
         }
-
-      } else if (progressStatus === 'under_carpentry') {
-        nextSubStatus = 'qc_check_1';
-        nextStage = 'Making Started';
       } else if (progressStatus === 'qc_check_1') {
         nextSubStatus = 'completed';
         nextStage = 'Making Started';
@@ -424,8 +437,6 @@ export default function WorkerDashboard({
 
     const statusLabel = progressStatus === 'completed'
       ? (isCarpenter ? 'Completed (Carpentry Done)' : 'Completed')
-      : progressStatus === 'wood_procurement'
-      ? 'Wood Procurement'
       : progressStatus === 'under_carpentry'
       ? 'Under Carpentry'
       : progressStatus === 'qc_check_1'
@@ -465,7 +476,8 @@ export default function WorkerDashboard({
         measurement: qcMeasurement,
         finishing: qcFinishing,
         buffer: qcBuffer,
-      }    };
+      }
+    };
 
     const updatedOrder: Order = {
       ...activeOrder,
@@ -480,12 +492,14 @@ export default function WorkerDashboard({
 
     if (isCarpenter && ['Making Started', 'Wood Procurement', 'Carpentry', 'QC 1', 'QC Check 1'].includes(nextStage)) {
       setActiveOrder(updatedOrder);
-      setProgressStatus(nextSubStatus || 'wood_procurement');
+      setProgressStatus(nextSubStatus || 'under_carpentry');
       setUpdateNotes('');
-      if (progressStatus === 'wood_procurement') {
-        alert('Success: Wood requirements saved! Sent to Admin Wood Management for sheet approval.');
-      } else if (progressStatus === 'under_carpentry') {
-        alert('Success: Under Carpentry completed! Sub-status has auto-advanced to "QC Check 1".');
+      if (progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement') {
+        if (woodReqStatus === 'Approved') {
+          alert('Success: Under Carpentry progress saved! Sub-status has advanced to "QC Check 1".');
+        } else {
+          alert('Success: Wood Schedule Calculation Sheet saved! Sent to Admin Wood Management for sheet approval.');
+        }
       } else if (progressStatus === 'qc_check_1') {
         alert('Success: QC Check 1 verified! Sub-status has auto-advanced to "Completed (Carpentry Done)".');
       }
@@ -509,7 +523,7 @@ export default function WorkerDashboard({
         return '';
       }
     })();
-    const isPendingWoodApproval = isCarpenter && savedSub === 'under_carpentry' && woodReqStatus === 'Pending';
+    const isPendingWoodApproval = isCarpenter && progressStatus === 'under_carpentry' && woodReqStatus === 'Pending';
 
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
@@ -517,11 +531,10 @@ export default function WorkerDashboard({
     const galleryImages = orderRefImages.length > 0
       ? orderRefImages
       : (allOrderImages.length > 0 ? allOrderImages : [{ id: 'default_ref_img', url: fallbackImage, type: 'Design Reference' as const }]);
-    
-      return (
-      <>
 
-      <div className="space-y-6 animate-in fade-in duration-200">
+    return (
+      <>
+        <div className="space-y-6 animate-in fade-in duration-200">
         {/* Header navigation back */}
         <button
           onClick={() => setActiveOrder(null)}
@@ -592,7 +605,7 @@ export default function WorkerDashboard({
                 {galleryImages.slice(0, 4).map((img, idx) => (
                   <div
                     key={img.id || idx}
-                    onClick={() => img.url && setLightboxImg(img.url)}
+                    onClick={() => setLightboxImg(img.url)}
                     className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
                   >
                     <img referrerPolicy="no-referrer" src={img.url} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
@@ -618,20 +631,20 @@ export default function WorkerDashboard({
               if (!activeOrder) return null;
               if (woodReqStatus === 'Rejected') {
                 return (
-                    <div className="mb-5 bg-red-50 border-2 border-red-400 text-red-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle size={20} className="text-red-600 shrink-0 animate-bounce" />
-                        <h4 className="font-extrabold text-xs sm:text-sm text-red-900 uppercase tracking-wide">
-                          ⚠️ Wood Schedule Sheet Rejected by Admin
-                        </h4>
-                      </div>
-                      <p className="text-xs text-red-800 font-semibold leading-relaxed">
-                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>submitted</strong> and is currently under Admin review in <strong>Wood Management</strong>. Editing and re-submitting is locked. Once Admin approves the sheet, this order will automatically advance!
-                      </p>
+                  <div className="mb-5 bg-red-50 border-2 border-red-400 text-red-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={20} className="text-red-600 shrink-0 animate-bounce" />
+                      <h4 className="font-extrabold text-xs sm:text-sm text-red-900 uppercase tracking-wide">
+                        ⚠️ Wood Schedule Sheet Rejected by Admin
+                      </h4>
                     </div>
-                  );
-                }
-              if (woodReqStatus === 'Pending' && savedSub === 'under_carpentry') {
+                    <p className="text-xs text-red-800 font-semibold leading-relaxed">
+                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>REJECTED</strong> by Admin. Please update the item dimensions in the <strong>Wood Schedule Calculation Table</strong> below, make required corrections, and click <strong>"Save & Submit Wood Sheet to Admin"</strong> to re-submit for review.
+                    </p>
+                  </div>
+                );
+              }
+              if (woodReqStatus === 'Pending' && progressStatus === 'under_carpentry') {
                 return (
                   <div className="mb-5 bg-amber-50 border-2 border-amber-400 text-amber-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans animate-in fade-in">
                     <div className="flex items-center gap-2">
@@ -641,7 +654,22 @@ export default function WorkerDashboard({
                       </h4>
                     </div>
                     <p className="text-xs text-amber-800 font-semibold leading-relaxed">
-                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>submitted</strong> and is currently under Admin review in <strong>Wood Management</strong>. Editing and re-submitting is locked. Once Admin approves the sheet, this order will automatically advance to <strong>Under Carpentry</strong> stage!
+                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>submitted</strong> and is currently under Admin review in <strong>Wood Management</strong>. Editing and re-submitting is locked. Once Admin approves the sheet, this order will automatically advance!
+                    </p>
+                  </div>
+                );
+              }
+              if (woodReqStatus === 'Approved' && progressStatus === 'under_carpentry') {
+                return (
+                  <div className="mb-5 bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={20} className="text-emerald-600 shrink-0" />
+                      <h4 className="font-extrabold text-xs sm:text-sm text-emerald-900 uppercase tracking-wide">
+                        ✅ Wood Schedule Sheet Approved by Admin
+                      </h4>
+                    </div>
+                    <p className="text-xs text-emerald-800 font-semibold leading-relaxed">
+                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>APPROVED</strong> by Admin! You can now verify cut dimensions, complete carpentry assembly, and click <strong>"Save & Advance to QC Check 1"</strong> below.
                     </p>
                   </div>
                 );
@@ -654,39 +682,13 @@ export default function WorkerDashboard({
               {/* Radios inputs matching completed states */}
               <div className="space-y-2.5">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider font-sans">Progress Status *</label>
-                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-2'} gap-3`}>
+                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-2' : 'sm:grid-cols-2'} gap-3`}>
                   {isCarpenter ? (
                     <>
-                      {/* Wood procurement tab */}
-                      <label
-                        className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'wood_procurement'
-                            ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
-                            : progressStatus === 'wood_procurement'
-                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
-                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100 cursor-pointer'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="progressRadios"
-                          checked={progressStatus === 'wood_procurement'}
-                          disabled={savedSub !== 'wood_procurement'}
-                          onChange={() => setProgressStatus('wood_procurement')}
-                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                        <div>
-                          <strong className="text-xs block font-sans">
-                            Wood procurement {savedSub !== 'wood_procurement' && '(Passed ✔)'}
-                          </strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Log materials and start wood preparation work</span>
-                        </div>
-                      </label>
-
                       {/* Under Carpentry tab */}
                       <label
                         className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'under_carpentry'
+                          (savedSub === 'qc_check_1' || savedSub === 'completed')
                             ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
                             : progressStatus === 'under_carpentry'
                             ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
@@ -697,15 +699,15 @@ export default function WorkerDashboard({
                           type="radio"
                           name="progressRadios"
                           checked={progressStatus === 'under_carpentry'}
-                          disabled={savedSub !== 'under_carpentry'}
-                            onChange={() => setProgressStatus('under_carpentry')}
+                          disabled={savedSub === 'qc_check_1' || savedSub === 'completed'}
+                          onChange={() => setProgressStatus('under_carpentry')}
                           className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <div>
                           <strong className="text-xs block font-sans">
                             Under Carpentry {(savedSub === 'qc_check_1' || savedSub === 'completed') && '(Passed ✔)'}
                           </strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Active carpentry structure construction and assembly</span>
+                          <span className="text-[10px] text-stone-400 font-medium font-sans font-medium">Fill wood schedule calculation & construct carpentry structure</span>
                         </div>
                       </label>
 
@@ -880,7 +882,7 @@ export default function WorkerDashboard({
                   {galleryImages.map((img, idx) => (
                     <div
                       key={img.id || idx}
-                      onClick={() => setLightboxImg(img.url ?? null)}
+                      onClick={() => setLightboxImg(img.url)}
                       className="relative group rounded-xl border border-stone-200 overflow-hidden bg-stone-100 h-28 cursor-pointer hover:border-[#593622] hover:shadow-md transition"
                     >
                       <img referrerPolicy="no-referrer" src={img.url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
@@ -910,6 +912,8 @@ export default function WorkerDashboard({
                         <p className="text-[10px] text-stone-400 mt-1 font-medium select-none">Estimate and record total material volume (CFT) required for fabrication</p>
                       </div>
                     </div>
+
+
                   </div>
 
                   {/* Section 1: Product details fields */}
@@ -968,7 +972,7 @@ export default function WorkerDashboard({
                       </div>
                     )}
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
                       <div>
                         <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Catalogue Name</label>
                         <input
@@ -1036,7 +1040,7 @@ export default function WorkerDashboard({
                             <Trash2 size={10} /> Clear Table
                           </button>
                         )}
-                     <button
+                        <button
                           type="button"
                           disabled={isPendingWoodApproval}
                           onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
@@ -1192,7 +1196,6 @@ export default function WorkerDashboard({
                 </label>
                 <textarea
                   rows={3}
-                  // required={progressStatus !== 'wood_procurement'}
                   value={updateNotes}
                   onChange={(e) => setUpdateNotes(e.target.value)}
                   placeholder="Describe details: carcass work completed, wood schedule items, or cut sizes check passed..."
@@ -1202,158 +1205,157 @@ export default function WorkerDashboard({
 
               {/* Upload dynamic live photos */}
               <div className="space-y-3 font-sans">
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Local file and mobile camera buttons */}
-                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
-                    <div>
-                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Local Attachment</span>
-                      <p className="text-[11px] text-stone-500 leading-normal">Choose existing files from your mobile phone memory or PC desktop gallery.</p>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Local file and mobile camera buttons */}
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
+                      <div>
+                        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Local Attachment</span>
+                        <p className="text-[11px] text-stone-500 leading-normal">Choose existing files from your mobile phone memory or PC desktop gallery.</p>
+                      </div>
+
+                      <div className="flex gap-1.5 pt-1.5">
+                        <label className="flex-1 bg-white border border-stone-300 rounded-lg p-2 flex items-center justify-center gap-1.5 hover:border-[#593622] hover:bg-stone-50 cursor-pointer shadow-3xs font-extrabold text-[11px] text-stone-850 transition-colors">
+                          <UploadCloud size={13} className="text-[#593622]" />
+                          <span>Browse file</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLocalFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+
+                        <label className="flex-1 bg-[#593622] text-white rounded-lg p-2 flex items-center justify-center gap-1.5 hover:bg-[#402414] cursor-pointer shadow-3xs font-black uppercase text-[10px] tracking-wider transition-colors">
+                          <Camera size={13} />
+                          <span>Direct Camera</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handleLocalFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
 
-                    <div className="flex gap-1.5 pt-1.5">
-                      <label className="flex-1 bg-white border border-stone-300 rounded-lg p-2 flex items-center justify-center gap-1.5 hover:border-[#593622] hover:bg-stone-50 cursor-pointer shadow-3xs font-extrabold text-[11px] text-stone-850 transition-colors">
-                        <UploadCloud size={13} className="text-[#593622]" />
-                        <span>Browse file</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLocalFileUpload}
-                          className="hidden"
-                        />
-                      </label>
+                    {/* Webcam Live Capture block */}
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
+                      <div>
+                        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Workshop Scan</span>
+                        <p className="text-[11px] text-stone-500 leading-normal font-sans">Record snapshots of cut wood or finished polishing stages instantly.</p>
+                      </div>
 
-                      <label className="flex-1 bg-[#593622] text-white rounded-lg p-2 flex items-center justify-center gap-1.5 hover:bg-[#402414] cursor-pointer shadow-3xs font-black uppercase text-[10px] tracking-wider transition-colors">
-                        <Camera size={13} />
-                        <span>Direct Camera</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={handleLocalFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Webcam Live Capture block */}
-                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
-                    <div>
-                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Workshop Scan</span>
-                      <p className="text-[11px] text-stone-500 leading-normal font-sans">Record snapshots of cut wood or finished polishing stages instantly.</p>
-                    </div>
-
-                    {!isWebcamActive ? (
-                      <button
-                        type="button"
-                        onClick={startWebcam}
-                        className="w-full bg-[#593622]/10 border border-[#593622]/35 text-[#593622] hover:bg-[#593622]/20 font-bold uppercase text-[10px] tracking-widest p-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <Video size={13} />
-                        <span>Start Viewfinder</span>
-                      </button>
-                    ) : (
-                      <div className="bg-stone-950 rounded-lg overflow-hidden relative border border-stone-900 aspect-video flex flex-col justify-end">
-                        {webcamError ? (
-                          <div className="p-2 text-[9px] text-red-400 font-bold text-center flex flex-col items-center justify-center h-full">
-                            <span>{webcamError}</span>
-                            <button
-                              type="button"
-                              onClick={stopWebcam}
-                              className="mt-1.5 p-0.5 px-2 bg-white text-stone-900 rounded font-black text-[8px] uppercase font-sans"
-                            >
-                              Close
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <video
-                              ref={videoRef}
-                              autoPlay
-                              playsInline
-                              className="absolute inset-0 object-cover w-full h-full scale-x-[-1]"
-                            />
-                            <div className="absolute top-1 right-1 bg-black/60 p-0.5 px-1.5 rounded font-mono text-[8px] text-stone-300 font-bold tracking-widest animate-pulse flex items-center gap-0.5">
-                              <span className="h-1 w-1 bg-red-600 rounded-full inline-block" /> WORKSHOP CAM
-                            </div>
-                            <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1 z-10">
-                              <button
-                                type="button"
-                                onClick={captureSnapshot}
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1 rounded font-black uppercase text-[9px] tracking-wider shadow"
-                              >
-                                📸 SNAP
-                              </button>
+                      {!isWebcamActive ? (
+                        <button
+                          type="button"
+                          onClick={startWebcam}
+                          className="w-full bg-[#593622]/10 border border-[#593622]/35 text-[#593622] hover:bg-[#593622]/20 font-bold uppercase text-[10px] tracking-widest p-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Video size={13} />
+                          <span>Start Viewfinder</span>
+                        </button>
+                      ) : (
+                        <div className="bg-stone-950 rounded-lg overflow-hidden relative border border-stone-900 aspect-video flex flex-col justify-end">
+                          {webcamError ? (
+                            <div className="p-2 text-[9px] text-red-400 font-bold text-center flex flex-col items-center justify-center h-full">
+                              <span>{webcamError}</span>
                               <button
                                 type="button"
                                 onClick={stopWebcam}
-                                className="bg-red-700 hover:bg-red-800 text-white p-1 px-2 rounded font-bold text-[9px] uppercase shadow"
+                                className="mt-1.5 p-0.5 px-2 bg-white text-stone-900 rounded font-black text-[8px] uppercase font-sans"
                               >
-                                Cancel
+                                Close
                               </button>
                             </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Collapsible reference URL */}
-                <details className="group bg-stone-100 border border-stone-250/70 rounded-xl overflow-hidden text-xs">
-                  <summary className="p-2 font-bold text-stone-500 hover:text-[#593622] cursor-pointer select-none flex items-center justify-between text-[10px] uppercase tracking-wide">
-                    <span>🔗 Paste manual snapshot link</span>
-                    <span className="group-open:rotate-180 transition-transform">▼</span>
-                  </summary>
-                  
-                  <div className="p-3 border-t bg-stone-50 space-y-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={simulateUrlInput}
-                        onChange={(e) => setSimulateUrlInput(e.target.value)}
-                        placeholder="https://images.unsplash.com/photo-1595..."
-                        className="flex-1 px-2.5 py-1.5 bg-white border border-stone-250 rounded focus:outline-none text-xs text-stone-850 font-semibold"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddPhotos}
-                        className="bg-[#593622] text-white hover:bg-[#402414] px-3.5 py-1.5 font-bold rounded text-[10px] uppercase transition shrink-0"
-                      >
-                        Append Link
-                      </button>
+                          ) : (
+                            <>
+                              <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                className="absolute inset-0 object-cover w-full h-full scale-x-[-1]"
+                              />
+                              <div className="absolute top-1 right-1 bg-black/60 p-0.5 px-1.5 rounded font-mono text-[8px] text-stone-300 font-bold tracking-widest animate-pulse flex items-center gap-0.5">
+                                <span className="h-1 w-1 bg-red-600 rounded-full inline-block" /> WORKSHOP CAM
+                              </div>
+                              <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1 z-10">
+                                <button
+                                  type="button"
+                                  onClick={captureSnapshot}
+                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1 rounded font-black uppercase text-[9px] tracking-wider shadow"
+                                >
+                                  📸 SNAP
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={stopWebcam}
+                                  className="bg-red-700 hover:bg-red-800 text-white p-1 px-2 rounded font-bold text-[9px] uppercase shadow"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </details>
 
-                {/* Grid gallery of files uploaded */}
-                {inProgressFiles.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2 pt-2">
-                    {inProgressFiles.map((url, idx) => (
-                      <div key={idx} className="relative aspect-video rounded-xl overflow-hidden border border-stone-200">
-                        <img referrerPolicy="no-referrer" src={url} alt="Uploaded" className="object-cover w-full h-full" />
+                  {/* Collapsible reference URL */}
+                  <details className="group bg-stone-100 border border-stone-250/70 rounded-xl overflow-hidden text-xs">
+                    <summary className="p-2 font-bold text-stone-500 hover:text-[#593622] cursor-pointer select-none flex items-center justify-between text-[10px] uppercase tracking-wide">
+                      <span>🔗 Paste manual snapshot link</span>
+                      <span className="group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+
+                    <div className="p-3 border-t bg-stone-50 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={simulateUrlInput}
+                          onChange={(e) => setSimulateUrlInput(e.target.value)}
+                          placeholder="https://images.unsplash.com/photo-1595..."
+                          className="flex-1 px-2.5 py-1.5 bg-white border border-stone-250 rounded focus:outline-none text-xs text-stone-850 font-semibold"
+                        />
                         <button
                           type="button"
-                          onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
-                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-md font-bold text-[10px] h-5 w-5 flex items-center justify-center transition shadow"
-                          title="Delete photograph"
+                          onClick={handleAddPhotos}
+                          className="bg-[#593622] text-white hover:bg-[#402414] px-3.5 py-1.5 font-bold rounded text-[10px] uppercase transition shrink-0"
                         >
-                          ✕
+                          Append Link
                         </button>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-8 border-2 border-dashed border-stone-250 rounded-xl flex flex-col items-center justify-center text-stone-400 select-none">
-                    <ImageIcon size={24} className="text-stone-300 mb-1 animate-pulse" />
-                    <p className="font-bold text-stone-500">No progress snapshots attached</p>
-                    <p className="text-[10px] text-stone-400 mt-0.5">Use camera button, local files browser, or paste custom urls.</p>
-                  </div>
-                )}
-              </div>
-              
+                    </div>
+                  </details>
+
+                  {/* Grid gallery of files uploaded */}
+                  {inProgressFiles.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2 pt-2">
+                      {inProgressFiles.map((url, idx) => (
+                        <div key={idx} className="relative aspect-video rounded-xl overflow-hidden border border-stone-200">
+                          <img referrerPolicy="no-referrer" src={url} alt="Uploaded" className="object-cover w-full h-full" />
+                          <button
+                            type="button"
+                            onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
+                            className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-md font-bold text-[10px] h-5 w-5 flex items-center justify-center transition shadow"
+                            title="Delete photograph"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-8 border-2 border-dashed border-stone-250 rounded-xl flex flex-col items-center justify-center text-stone-400 select-none">
+                      <ImageIcon size={24} className="text-stone-300 mb-1 animate-pulse" />
+                      <p className="font-bold text-stone-500">No progress snapshots attached</p>
+                      <p className="text-[10px] text-stone-400 mt-0.5">Use camera button, local files browser, or paste custom urls.</p>
+                    </div>
+                  )}
+                </div>
 
               {/* Action save brown button */}
               <div className="pt-3 border-t border-stone-100 flex justify-end gap-2">
@@ -1368,9 +1370,9 @@ export default function WorkerDashboard({
                   type="submit"
                   disabled={
                     isPendingWoodApproval || (
-                    isCarpenter
-                      ? !['Wood Procurement', 'Making Started', 'Carpentry', 'QC 1', 'QC Check 1', 'Designing'].includes(activeOrder.current_status)
-                      : activeOrder.current_status !== myStage
+                      isCarpenter
+                        ? !['Wood Procurement', 'Making Started', 'Carpentry', 'QC 1', 'QC Check 1', 'Designing'].includes(activeOrder.current_status)
+                        : activeOrder.current_status !== myStage
                     )
                   }
                   className={`font-black px-5 py-2.5 rounded-xl shadow transition text-xs flex items-center gap-2 ${
@@ -1378,26 +1380,31 @@ export default function WorkerDashboard({
                       ? 'bg-amber-800/70 text-amber-100 cursor-not-allowed opacity-80'
                       : 'bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white cursor-pointer disabled:cursor-not-allowed'
                   }`}
-                  >
-                  {isPendingWoodApproval ? (
-                    <>
+                >
+                  {progressStatus === 'under_carpentry' ? (
+                    isPendingWoodApproval ? (
+                      <>
                         <Clock size={14} className="animate-pulse text-amber-200 shrink-0" />
                         <span>✓ Submitted - Awaiting Admin Approval</span>
-                    </>
-                  ) : progressStatus === 'wood_procurement' ? (
+                      </>
+                    ) : woodReqStatus === 'Approved' ? (
+                      <span>Save & Advance to QC Check 1</span>
+                    ) : (
                       'Save & Submit Wood Sheet to Admin'
+                    )
                   ) : (
                     'Save Update'
                   )}
-                  </button>
+                </button>
               </div>
+
             </form>
           </div>
 
         </div>
       </div>
 
-            {/* Lightbox Modal for Reference Images */}
+      {/* Lightbox Modal for Reference Images */}
       {lightboxImg && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="relative max-w-4xl max-h-[90vh] w-full bg-stone-900 rounded-2xl overflow-hidden border border-stone-700 shadow-2xl flex flex-col">
@@ -1493,11 +1500,18 @@ export default function WorkerDashboard({
                           try {
                             const saved = localStorage.getItem('bhisez_wood_request_statuses');
                             const map = saved ? JSON.parse(saved) : {};
+                            if (map[ord.id] === 'Approved' && (ord.carpenter_sub_status === 'under_carpentry' || !ord.carpenter_sub_status)) {
+                              return (
+                                <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                                  ✅ Sheet Approved
+                                </span>
+                              );
+                            }
                             if (map[ord.id] === 'Rejected') {
                               return (
-                          <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
-                            ❌ Sheet Rejected
-                          </span>
+                                <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
+                                  ❌ Sheet Rejected
+                                </span>
                               );
                             }
                             if (map[ord.id] === 'Pending' && (ord.carpenter_sub_status === 'under_carpentry' || ord.carpenter_sub_status === 'wood_procurement' || !ord.carpenter_sub_status)) {
@@ -1522,18 +1536,18 @@ export default function WorkerDashboard({
                           }
                         })() && (
                           isStagedMine ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
-                            Needs Update
-                          </span>
-                        ) : ord.current_status === 'Ready to Dispatch' ? (
-                          <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                            Dispatched
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-stone-400 bg-stone-50 border border-stone-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                            Staged
-                          </span>
-                        )
+                            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
+                              Needs Update
+                            </span>
+                          ) : ord.current_status === 'Ready to Dispatch' ? (
+                            <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                              Dispatched
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-stone-400 bg-stone-50 border border-stone-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                              Staged
+                            </span>
+                          )
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
