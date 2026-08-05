@@ -4118,7 +4118,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
             const htmlString = '<html><head><title>Estimate_' + quoteDisplayId + '</title>' +
               '<script src="https://cdn.tailwindcss.com"></script>' +
               '<style>' +
-              '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
+              // '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
               '@page { size: A4 portrait; margin: 8mm; }' +
               'body, * { font-family: Calibri, "Segoe UI", Arial, sans-serif !important; }' +
               'body { background-color: white; color: black; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
