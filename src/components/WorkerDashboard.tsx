@@ -369,21 +369,28 @@ export default function WorkerDashboard({
     e.preventDefault();
     if (!activeOrder) return;
 
-    if (activeOrder.current_status !== myStage) {
-      alert(`Access denied: You are assigned, but you can update order files and stage only during the "${myStage}" stage.`);
+    const isAllowedStage = isCarpenter
+      ? ['Making Started', 'Wood Procurement', 'Carpentry', 'QC 1', 'QC Check 1', 'Designing'].includes(activeOrder.current_status)
+      : activeOrder.current_status === myStage;
+
+    if (!isAllowedStage) {
+      alert(`Access denied: You are assigned, but you can update order files and stage only during active production stages.`);
       return;
     }
 
-    let nextStage: OrderStage = myStage;
+    let nextStage: OrderStage = activeOrder.current_status;
     let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
       if (progressStatus === 'wood_procurement') {
-        nextSubStatus = 'under_carpentry';
+        nextSubStatus = 'wood_procurement'; // Stays in wood_procurement until Admin approves wood sheet in Wood Management
+        nextStage = 'Wood Procurement';
       } else if (progressStatus === 'under_carpentry') {
         nextSubStatus = 'qc_check_1';
+        nextStage = 'Making Started';
       } else if (progressStatus === 'qc_check_1') {
         nextSubStatus = 'completed';
+        nextStage = 'Making Started';
       } else if (progressStatus === 'completed') {
         nextSubStatus = 'completed';
         nextStage = 'QC 1';
@@ -455,7 +462,7 @@ export default function WorkerDashboard({
       setProgressStatus(nextSubStatus || 'wood_procurement');
       setUpdateNotes('');
       if (progressStatus === 'wood_procurement') {
-        alert('Success: Wood procurement completed! Sub-status has auto-advanced to "Under Carpentry".');
+        alert('Success: Wood requirements saved! Sent to Admin Wood Management for sheet approval.');
       } else if (progressStatus === 'under_carpentry') {
         alert('Success: Under Carpentry completed! Sub-status has auto-advanced to "QC Check 1".');
       } else if (progressStatus === 'qc_check_1') {

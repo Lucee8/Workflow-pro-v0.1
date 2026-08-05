@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Order, Customer } from '../types';
 import { formatToDDMMYYYY } from '../utils';
+import { generateUUID } from '../db/store';
 
 export interface WoodRequirementItem {
   id: string;
@@ -195,6 +196,59 @@ export default function WoodManagementTab({
 
     if (selectedRequest && selectedRequest.id === id) {
       setSelectedRequest((prev) => (prev ? { ...prev, status: newStatus } : null));
+    }
+
+    if (newStatus === 'Approved') {
+      const req = synchronizedRequests.find((r) => r.id === id);
+      const targetOrderId = req?.orderId || id;
+      const targetOrder = orders.find((o) => o.id === targetOrderId);
+
+      if (targetOrder && onOrderUpdate) {
+        const updatedOrder: Order = {
+          ...targetOrder,
+          current_status: 'Making Started',
+          carpenter_sub_status: 'under_carpentry',
+          updated_at: new Date().toISOString()
+        };
+
+        const log = {
+          id: 'log_' + generateUUID().split('-')[0],
+          order_id: targetOrder.id,
+          stage: 'Making Started',
+          changed_by: 'admin',
+          changed_by_name: 'Admin Manager',
+          changed_by_role: 'admin',
+          timestamp: new Date().toISOString(),
+          note: `Wood sheet approved by Admin. Order moved into Under Carpentry.`
+        };
+
+        onOrderUpdate(updatedOrder, log);
+
+        // Push notification for the carpenter
+        try {
+          const newNotif = {
+            id: 'notif_wood_' + Date.now(),
+            order_id: targetOrder.id,
+            article_no: targetOrder.article_no || 'N/A',
+            category: targetOrder.category || 'Furniture',
+            sub_category: targetOrder.sub_category,
+            old_stage: 'Wood Procurement',
+            new_stage: 'Making Started',
+            changed_by_name: 'Admin Manager',
+            timestamp: new Date().toISOString(),
+            is_read: false,
+            title: '🪵 Wood Sheet Approved',
+            message: `Wood calculation sheet for Article #${targetOrder.article_no} has been approved by Admin! Order is now under Carpentry.`
+          };
+
+          const existingNotifs = JSON.parse(localStorage.getItem('bhise_notifications_list_v1') || '[]');
+          localStorage.setItem('bhise_notifications_list_v1', JSON.stringify([newNotif, ...existingNotifs]));
+        } catch (e) {
+          console.error('Error storing notification:', e);
+        }
+
+        alert(`Success: Wood sheet approved for Article #${targetOrder.article_no}! Carpenter notified and order moved into Under Carpentry.`);
+      }
     }
   };
 
