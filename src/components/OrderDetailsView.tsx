@@ -410,6 +410,10 @@ export default function OrderDetailsView({
   const handleAdminStepAction = (actionType: 'forward' | 'fail_qc_1' | 'fail_qc_2') => {
     if (isAdvancing) return;
     if (actionType === 'forward') {
+      if (order.current_status === 'Wood Procurement') {
+        alert('Advance Stage Forward is disabled during Wood Procurement. Please approve the wood calculation sheet in Wood Management tab to advance this order.');
+        return;
+      }
       const nextIdx = currentStageIndex + 1;
       if (nextIdx < stages.length) {
         const nextStage = stages[nextIdx];
@@ -722,10 +726,13 @@ export default function OrderDetailsView({
                   
                   {['Pending', 'Designing', 'Design', 'Wood Procurement', 'Making Started', 'Carpentry', 'Making Completed', 'Polish'].includes(order.current_status) && (
                     <button
-                      disabled={isAdvancing}
+                      disabled={isAdvancing || order.current_status === 'Wood Procurement'}
                       onClick={() => handleAdminStepAction('forward')}
-                      className={`bg-[#593622] hover:bg-[#402414] text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
-                        isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      title={order.current_status === 'Wood Procurement' ? 'Advance Stage Forward is disabled during Wood Procurement. Wood sheet must be approved in Admin Wood Management.' : undefined}
+                      className={`text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
+                        isAdvancing || order.current_status === 'Wood Procurement'
+                          ? 'opacity-50 bg-stone-400 cursor-not-allowed'
+                          : 'bg-[#593622] hover:bg-[#402414] cursor-pointer'
                       }`}
                     >
                       <CheckCircle2 size={11} /> Advance Stage Forward
@@ -742,6 +749,12 @@ export default function OrderDetailsView({
                     >
                       <CheckCircle2 size={11} /> Ship & Dispatch Furniture
                     </button>
+                  )}
+
+                  {order.current_status === 'Wood Procurement' && (
+                    <p className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 w-full mt-1">
+                      🪵 Wood Procurement active: Carpenter submits wood calculation sheet from Workbench. Admin approves sheet in <strong>Wood Management</strong> tab to advance order to Making Started.
+                    </p>
                   )}
 
                   {(order.current_status === 'QC 1' || order.current_status === 'QC Check 1') && (
