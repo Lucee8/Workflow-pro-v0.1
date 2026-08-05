@@ -249,6 +249,36 @@ export default function WoodManagementTab({
 
         alert(`Success: Wood sheet approved for Article #${targetOrder.article_no}! Carpenter notified and order moved into Under Carpentry.`);
       }
+    } else if (newStatus === 'Rejected') {
+      const req = synchronizedRequests.find((r) => r.id === id);
+      const targetOrderId = req?.orderId || id;
+      const targetOrder = orders.find((o) => o.id === targetOrderId);
+
+      if (targetOrder) {
+        try {
+          const newNotif = {
+            id: 'notif_wood_rej_' + Date.now(),
+            order_id: targetOrder.id,
+            article_no: targetOrder.article_no || 'N/A',
+            category: targetOrder.category || 'Furniture',
+            sub_category: targetOrder.sub_category,
+            old_stage: 'Wood Procurement',
+            new_stage: 'Wood Procurement',
+            changed_by_name: 'Admin Manager',
+            timestamp: new Date().toISOString(),
+            is_read: false,
+            title: '❌ Wood Sheet Rejected',
+            message: `Wood calculation sheet for Article #${targetOrder.article_no} was rejected by Admin. Please update table and re-submit in Workbench.`
+          };
+
+          const existingNotifs = JSON.parse(localStorage.getItem('bhise_notifications_list_v1') || '[]');
+          localStorage.setItem('bhise_notifications_list_v1', JSON.stringify([newNotif, ...existingNotifs]));
+        } catch (e) {
+          console.error('Error storing notification:', e);
+        }
+
+        alert(`Notice: Wood sheet for Article #${targetOrder.article_no} set to Rejected. Carpenter has been notified to revise and re-submit.`);
+      }
     }
   };
 

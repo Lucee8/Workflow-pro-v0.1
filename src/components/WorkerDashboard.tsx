@@ -7,7 +7,7 @@ import React from 'react';
 import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage } from '../types';
 import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
-import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare } from 'lucide-react';
+import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, AlertTriangle } from 'lucide-react';
 
 function getDefaultWoodSchedule(order: Order): WoodSchedule {
   const sub = (order.sub_category || '').toLowerCase();
@@ -318,6 +318,16 @@ export default function WorkerDashboard({
     setActiveOrder(ord);
     if (isCarpenter) {
       setProgressStatus(ord.carpenter_sub_status || 'wood_procurement');
+
+      // Check if wood schedule was rejected
+      try {
+        const savedStatuses = JSON.parse(localStorage.getItem('bhisez_wood_request_statuses') || '{}');
+        if (savedStatuses[ord.id] === 'Rejected') {
+          alert(`⚠️ REJECTED WOOD SHEET NOTICE:\n\nYour Wood Schedule Sheet for Article #${ord.article_no} was REJECTED by Admin!\n\nPlease review item dimensions in the Wood Schedule Calculation Table, update necessary parts, and click "Save & Submit Wood Sheet to Admin" to re-submit.`);
+        }
+      } catch (e) {
+        console.error(e);
+      }
       
       // Load or Initialize Wood Schedule data
       const schedule = ord.wood_schedule || getDefaultWoodSchedule(ord);
@@ -592,6 +602,31 @@ export default function WorkerDashboard({
 
           {/* Right actual Update Status inputs panel column matching screenshot 2 */}
           <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
+            {isCarpenter && (() => {
+              try {
+                const saved = localStorage.getItem('bhisez_wood_request_statuses');
+                const map = saved ? JSON.parse(saved) : {};
+                if (activeOrder && map[activeOrder.id] === 'Rejected') {
+                  return (
+                    <div className="mb-5 bg-red-50 border-2 border-red-400 text-red-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={20} className="text-red-600 shrink-0 animate-bounce" />
+                        <h4 className="font-extrabold text-xs sm:text-sm text-red-900 uppercase tracking-wide">
+                          ⚠️ Wood Schedule Sheet Rejected by Admin
+                        </h4>
+                      </div>
+                      <p className="text-xs text-red-800 font-semibold leading-relaxed">
+                        Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>REJECTED</strong> by Admin. Please update the item dimensions in the <strong>Wood Schedule Calculation Table</strong> below, make required corrections, and click <strong>"Save & Submit Wood Sheet to Admin"</strong> to re-submit for review.
+                      </p>
+                    </div>
+                  );
+                }
+              } catch {
+                return null;
+              }
+              return null;
+            })()}
+
             <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
               
               {/* Radios inputs matching completed states */}
@@ -1358,8 +1393,19 @@ export default function WorkerDashboard({
                         )}
                       </td>
                       <td className="py-3.5 px-4">
-                        {isStagedMine ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
+                        {isCarpenter && (() => {
+                          try {
+                            const saved = localStorage.getItem('bhisez_wood_request_statuses');
+                            const map = saved ? JSON.parse(saved) : {};
+                            return map[ord.id] === 'Rejected';
+                          } catch {
+                            return false;
+                          }
+                        })() ? (
+                          <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
+                            ❌ Sheet Rejected
+                          </span>
+                        ) : isStagedMine ? (                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
                             Needs Update
                           </span>
                         ) : ord.current_status === 'Ready to Dispatch' ? (
