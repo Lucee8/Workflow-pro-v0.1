@@ -385,6 +385,16 @@ export default function WorkerDashboard({
       if (progressStatus === 'wood_procurement') {
         nextSubStatus = 'wood_procurement'; // Stays in wood_procurement until Admin approves wood sheet in Wood Management
         nextStage = 'Wood Procurement';
+
+        // Set status in Wood Management to Pending so Admin can approve it
+        try {
+          const savedStatuses = JSON.parse(localStorage.getItem('bhisez_wood_request_statuses') || '{}');
+          savedStatuses[activeOrder.id] = 'Pending';
+          localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(savedStatuses));
+        } catch (err) {
+          console.error('Error setting wood request status to Pending:', err);
+        }
+
       } else if (progressStatus === 'under_carpentry') {
         nextSubStatus = 'qc_check_1';
         nextStage = 'Making Started';
@@ -1060,19 +1070,21 @@ export default function WorkerDashboard({
 
               {/* Add Progress notes */}
               <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">Add Notes *</label>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">
+                  Add Notes {progressStatus === 'wood_procurement' ? '(Optional)' : '*'}
+                </label>
                 <textarea
                   rows={3}
-                  required
+                  required={progressStatus !== 'wood_procurement'}
                   value={updateNotes}
                   onChange={(e) => setUpdateNotes(e.target.value)}
-                  placeholder="Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."
+                  placeholder={progressStatus === 'wood_procurement' ? "Optional notes for wood requirement sheet..." : "Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."}
                   className="w-full p-3 bg-stone-50 border border-stone-250 focus:border-[#593622] rounded-xl text-xs focus:outline-none font-semibold text-stone-850"
                 />
               </div>
 
-              {/* Upload dynamic live photos (Simulated Paste url) */}
-              <div className="space-y-3 font-sans">
+              {/* Upload dynamic live photos (Only shown in Carpentry / Polish making stages, NOT in Wood Procurement) */}
+              {progressStatus !== 'wood_procurement' && (              <div className="space-y-3 font-sans">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1224,22 +1236,27 @@ export default function WorkerDashboard({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Action save brown button */}
               <div className="pt-3 border-t border-stone-100 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setActiveOrder(null)}
-                  className="px-4 py-2.5 border rounded-xl text-stone-500 font-bold hover:bg-stone-50"
+                  className="px-4 py-2.5 border rounded-xl text-stone-500 font-bold hover:bg-stone-50 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={activeOrder.current_status !== myStage}
-                  className="bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl shadow transition text-xs"
+                  disabled={
+                    isCarpenter
+                      ? !['Wood Procurement', 'Making Started', 'Carpentry', 'QC 1', 'QC Check 1', 'Designing'].includes(activeOrder.current_status)
+                      : activeOrder.current_status !== myStage
+                  }
+                  className="bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl shadow transition text-xs cursor-pointer disabled:cursor-not-allowed"
                 >
-                  Save Update
+                  {progressStatus === 'wood_procurement' ? 'Save & Submit Wood Sheet to Admin' : 'Save Update'}
                 </button>
               </div>
 
