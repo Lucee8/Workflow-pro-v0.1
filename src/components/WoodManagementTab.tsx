@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Trees,
   Search,
@@ -110,6 +110,18 @@ export default function WoodManagementTab({
   const [printModalRequest, setPrintModalRequest] = useState<WoodRequirementRequest | null>(null);
   const [deleteConfirmReq, setDeleteConfirmReq] = useState<WoodRequirementRequest | null>(null);
 
+  // Sync statusMap from localStorage whenever component mounts or orders change
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('bhisez_wood_request_statuses');
+      if (saved) {
+        setStatusMap(JSON.parse(saved));
+      }
+    } catch {
+      // ignore
+    }
+  }, [orders]);
+  
   // Automatically derive & synchronize Wood Schedule records from Orders in real time
   const synchronizedRequests = useMemo(() => {
     const list: WoodRequirementRequest[] = [];
@@ -121,10 +133,9 @@ export default function WoodManagementTab({
       if (deletedIds.includes(orderKey)) return;
 
       const hasWoodStatus = !!statusMap[ord.id];
-      const hasParts = (ord.wood_schedule?.parts && ord.wood_schedule.parts.length > 0);
-      const isWoodStageOrBeyond = !['Pending', 'Designing', 'Design'].includes(ord.current_status);
 
-      if (!hasWoodStatus && !hasParts && !isWoodStageOrBeyond) {
+      // Order appears in Admin Wood Management tab ONLY AFTER carpenter submits the wood calculation sheet
+      if (!hasWoodStatus) {
         return;
       }
 
