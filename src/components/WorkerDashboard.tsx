@@ -317,7 +317,10 @@ export default function WorkerDashboard({
   const handleOpenUpdate = (ord: Order) => {
     setActiveOrder(ord);
     if (isCarpenter) {
-      setProgressStatus(ord.carpenter_sub_status || 'wood_procurement');
+      const initialSub = (ord.carpenter_sub_status === 'wood_procurement' || !ord.carpenter_sub_status)
+        ? 'under_carpentry'
+        : ord.carpenter_sub_status;
+      setProgressStatus(initialSub);
 
       // Check if wood schedule was rejected
       try {
@@ -392,9 +395,9 @@ export default function WorkerDashboard({
     let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
-      if (progressStatus === 'wood_procurement') {
-        nextSubStatus = 'wood_procurement'; // Stays in wood_procurement until Admin approves wood sheet in Wood Management
-        nextStage = 'Wood Procurement';
+      if (progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement') {
+        nextSubStatus = 'under_carpentry'; // Stays in under_carpentry until Admin approves wood sheet in Wood Management
+        nextStage = 'Making Started';
 
         // Set status in Wood Management to Pending so Admin can approve it
         try {
@@ -508,7 +511,7 @@ export default function WorkerDashboard({
         return '';
       }
     })();
-    const isPendingWoodApproval = isCarpenter && progressStatus === 'wood_procurement' && woodReqStatus === 'Pending';
+    const isPendingWoodApproval = isCarpenter && (progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement') && woodReqStatus === 'Pending';
 
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
@@ -625,7 +628,7 @@ export default function WorkerDashboard({
                         </h4>
                       </div>
                       <p className="text-xs text-red-800 font-semibold leading-relaxed">
-                        Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>REJECTED</strong> by Admin. Please update the item dimensions in the <strong>Wood Schedule Calculation Table</strong> below, make required corrections, and click <strong>"Save & Submit Wood Sheet to Admin"</strong> to re-submit for review.
+                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>submitted</strong> and is currently under Admin review in <strong>Wood Management</strong>. Editing and re-submitting is locked. Once Admin approves the sheet, this order will automatically advance!
                       </p>
                     </div>
                   );
@@ -685,7 +688,7 @@ export default function WorkerDashboard({
                       {/* Under Carpentry tab */}
                       <label
                         className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'under_carpentry'
+                          (savedSub !== 'under_carpentry' && savedSub !== 'wood_procurement')
                             ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
                             : progressStatus === 'under_carpentry'
                             ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
@@ -696,8 +699,8 @@ export default function WorkerDashboard({
                           type="radio"
                           name="progressRadios"
                           checked={progressStatus === 'under_carpentry'}
-                          disabled={savedSub !== 'under_carpentry'}
-                          onChange={() => setProgressStatus('under_carpentry')}
+                          disabled={savedSub !== 'under_carpentry' && savedSub !== 'wood_procurement'}
+                            onChange={() => setProgressStatus('under_carpentry')}
                           className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <div>
@@ -1378,7 +1381,7 @@ export default function WorkerDashboard({
                       : 'bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white cursor-pointer disabled:cursor-not-allowed'
                   }`}                
                   >
-                  {progressStatus === 'wood_procurement' ? (
+                  {progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement' ? (
                     isPendingWoodApproval ? (
                       <>
                         <Clock size={14} className="animate-pulse text-amber-200 shrink-0" />
