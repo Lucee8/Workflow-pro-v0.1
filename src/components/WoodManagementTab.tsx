@@ -970,24 +970,24 @@ export default function WoodManagementTab({
                   </div>
 
                   <div className="flex items-center gap-1">
-                    {isPending && (
-                      <button
-                        onClick={() => handleUpdateStatus(req.id, 'Approved')}
-                        className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl transition border border-emerald-300/60 cursor-pointer"
-                        title="Approve Wood Request"
-                      >
-                        <CheckCircle2 size={16} />
-                      </button>
-                    )}
-                    {isPending && (
-                      <button
-                        onClick={() => handleUpdateStatus(req.id, 'Rejected')}
-                        className="p-2 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl transition border border-rose-300/60 cursor-pointer"
-                        title="Reject Wood Request"
-                      >
-                        <XCircle size={16} />
-                      </button>
-                    )}
+                    <button
+                      disabled={!isPending}
+                      onClick={() => handleUpdateStatus(req.id, 'Approved')}
+                      className="p-2 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-40 disabled:hover:bg-emerald-100 disabled:cursor-not-allowed text-emerald-800 rounded-xl transition border border-emerald-300/60 cursor-pointer"
+                      title="Approve Wood Request"
+                    >
+                      <CheckCircle2 size={16} />
+                    </button>
+
+                    <button
+                      disabled={!isPending}
+                      onClick={() => handleUpdateStatus(req.id, 'Rejected')}
+                      className="p-2 bg-rose-100 hover:bg-rose-200 disabled:opacity-40 disabled:hover:bg-rose-100 disabled:cursor-not-allowed text-rose-800 rounded-xl transition border border-rose-300/60 cursor-pointer"
+                      title="Reject Wood Request"
+                    >
+                      <XCircle size={16} />
+                    </button>
+
                   </div>
                 </div>
               </div>
@@ -1247,24 +1247,24 @@ export default function WoodManagementTab({
               </div>
 
               <div className="flex items-center gap-2">
-                {selectedRequest.status === 'Pending' && (
-                  <button
-                    onClick={() => handleUpdateStatus(selectedRequest.id, 'Approved')}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <CheckCircle2 size={15} />
-                    Approve Wood Sheet
-                  </button>
-                )}
-                {selectedRequest.status === 'Pending' && (
-                  <button
-                    onClick={() => handleUpdateStatus(selectedRequest.id, 'Rejected')}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <XCircle size={15} />
-                    Reject Sheet
-                  </button>
-                )}
+                <button
+                  disabled={selectedRequest.status !== 'Pending'}
+                  onClick={() => handleUpdateStatus(selectedRequest.id, 'Approved')}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:hover:bg-emerald-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <CheckCircle2 size={15} />
+                  Approve Wood Sheet
+                </button>
+
+                <button
+                  disabled={selectedRequest.status !== 'Pending'}
+                  onClick={() => handleUpdateStatus(selectedRequest.id, 'Rejected')}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:hover:bg-rose-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <XCircle size={15} />
+                  Reject Sheet
+                </button>
+
                 <button
                   onClick={() => handlePrintRequest(selectedRequest)}
                   className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
