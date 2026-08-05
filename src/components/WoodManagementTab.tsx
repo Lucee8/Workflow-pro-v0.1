@@ -120,6 +120,14 @@ export default function WoodManagementTab({
       const orderKey = ord.id;
       if (deletedIds.includes(orderKey)) return;
 
+      const hasWoodStatus = !!statusMap[ord.id];
+      const hasParts = (ord.wood_schedule?.parts && ord.wood_schedule.parts.length > 0);
+      const isWoodStageOrBeyond = !['Pending', 'Designing', 'Design'].includes(ord.current_status);
+
+      if (!hasWoodStatus && !hasParts && !isWoodStageOrBeyond) {
+        return;
+      }
+
       seenOrderIds.add(orderKey);
 
       const cust = customers.find((c) => c.id === ord.customer_id);
