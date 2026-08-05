@@ -814,7 +814,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
           carpenter_id: defaultCarp,
           current_status: 'Designing',
           is_delayed: false,
-          priority: 'normal',
+          priority: 'Medium',
           order_date: new Date().toISOString().split('T')[0],
           delivery_date: latestQuote.validUntil,
           portal_token: Math.random().toString(36).substring(2, 10),
@@ -855,8 +855,9 @@ if (typeof endMs === 'number' && time > endMs) return false;
       });
     } else {
       const orderId = generateNewOrderNo(undefined, db.orders, db.crmQuotations);
-      const articleNo = `${new Date().getFullYear().toString().slice(-2)}/${String(new Date().getMonth() + 1).padStart(2, '0')}/CRM/${Math.floor(1000 + Math.random() * 9000)}`;
-      
+      const defaultCarp = users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod';
+      const articleNo = generateArticleNumber('Living Room', defaultCarp, db.orders || [], users, 0);
+     
       const newOrder: Order = {
         id: orderId,
         article_no: articleNo,
@@ -874,7 +875,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Designing',
         is_delayed: false,
-        priority: 'normal',
+        priority: 'Medium',
         order_date: new Date().toISOString().split('T')[0],
         delivery_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         portal_token: Math.random().toString(36).substring(2, 10),
@@ -944,7 +945,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
 
   const validPayments = (db.payments || []).filter(p =>
     (!p.order_id || validOrderIds.has(p.order_id)) &&
-    isDateInBounds(p.payment_date || p.created_at, startMs, endMs)
+    // Payment type may not have a strongly-typed `created_at` property; fallback via any
+    isDateInBounds((p as any).created_at, startMs, endMs)
   );
 
   const validCrmPayments = (db.crmPayments || []).filter(cp => {
@@ -1015,7 +1017,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
   // (b) Revenue Trend (computed from validPayments & validCrmPayments)
   const revenueTrendData = last6Months.map(({ key, name }) => {
     const paymentSum = validPayments.filter(p => {
-      const k = getYearMonthKey(p.payment_date || p.created_at);
+      const k = getYearMonthKey((p as any).payment_date || (p as any).created_at);
       return k === key;
     }).reduce((acc, p) => acc + (p.advance_paid || 0), 0);
 
@@ -1373,7 +1375,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
       const ordersForCust = db.orders?.filter(o => o.customer_id === c.id) || [];
       const hasCompletedOrder = ordersForCust.some(o => o.current_status === 'Dispatched');
       const hasActiveOrder = ordersForCust.some(o => o.current_status !== 'Dispatched' && o.current_status !== 'Pending');
-      const hasPendingPayment = db.payments?.some(p => ordersForCust.some(o => o.id === p.order_id) && p.balance_due > 0);
+      const hasPendingPayment = db.payments?.some(p => ordersForCust.some(o => o.id === p.order_id) && (p.total_amount - (p.advance_paid || 0)) > 0);
       const isVip = ordersForCust.length >= 2 || (db.payments?.filter(p => ordersForCust.some(o => o.id === p.order_id)).reduce((sum, p) => sum + p.total_amount, 0) || 0) > 200000;
 
       switch (custFilter) {
@@ -2009,7 +2011,11 @@ if (typeof endMs === 'number' && time > endMs) return false;
                       {filteredCustomersList.map(cust => {
                         const totalOrders = db.orders?.filter(o => o.customer_id === cust.id).length || 0;
                         const paymentsForCust = db.payments?.filter(p => db.orders?.some(o => o.id === p.order_id && o.customer_id === cust.id)) || [];
-                        const unpaidAmount = paymentsForCust.reduce((acc, p) => acc + p.balance_due, 0);
+                        // Payment type may not have `balance_due` property; fallback to common alternatives or zero
+                        const unpaidAmount = paymentsForCust.reduce((acc, p) => {
+                          const bal = (p as any).balance_due ?? (p as any).balance ?? (p as any).amount_due ?? 0;
+                          return acc + (typeof bal === 'number' ? bal : 0);
+                        }, 0);
                         const displayStatus = getCustomerStatus(cust);
                         
                         return (

@@ -75,8 +75,8 @@ export default function CustomersTab({
 
         if (orderPayment && orderPayment.total_amount > 0) {
           ordInvoiced = orderPayment.total_amount;
-          ordPaid = orderPayment.advance_paid;
-          ordOutstanding = orderPayment.balance_due;
+          ordPaid = orderPayment.advance_paid || 0;
+          ordOutstanding = Math.max(0, ordInvoiced - ordPaid);
         } else if (ord.total_amount !== undefined && ord.total_amount !== null) {
           ordInvoiced = ord.total_amount;
           ordPaid = ord.advance_paid || 0;
@@ -88,7 +88,7 @@ export default function CustomersTab({
           const packing = 1200;
           const transportation = 1800;
           ordInvoiced = (finalRate * qty) + packing + transportation;
-          ordPaid = orderPayment ? orderPayment.advance_paid : 0;
+          ordPaid = orderPayment ? (orderPayment.advance_paid || 0) : 0;
           ordOutstanding = Math.max(0, ordInvoiced - ordPaid);
         }
 
@@ -365,7 +365,7 @@ export default function CustomersTab({
                           const orderRef = customerOrders.find((ord) => ord.id === p.order_id);
                           return (
                             <tr key={p.id} className="hover:bg-stone-50/50 transition">
-                              <td className="py-3 font-mono font-semibold">{p.payment_date}</td>
+                              <td className="py-3 font-mono font-semibold">{p.dispatchedAt || orderRef?.order_date || '—'}</td>
                               <td className="py-3 font-mono font-bold text-stone-800">
                                 {orderRef ? (
                                   <button
@@ -379,21 +379,15 @@ export default function CustomersTab({
                                 )}
                               </td>
                               <td className="py-3 font-mono text-stone-900">₹ {p.total_amount.toLocaleString('en-IN')}</td>
-                              <td className="py-3 font-mono text-emerald-600 font-bold">₹ {p.advance_paid.toLocaleString('en-IN')}</td>
-                              <td className="py-3 font-mono font-bold text-rose-600">₹ {p.balance_due.toLocaleString('en-IN')}</td>
+                              <td className="py-3 font-mono text-emerald-600 font-bold">₹ {(p.advance_paid || 0).toLocaleString('en-IN')}</td>
+                              <td className="py-3 font-mono font-bold text-rose-600">₹ {Math.max(0, p.total_amount - (p.advance_paid || 0)).toLocaleString('en-IN')}</td>
                               <td className="py-3 capitalize">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                  p.payment_mode === 'cash'
-                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                    : p.payment_mode === 'upi'
-                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
-                                    : 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                                }`}>
-                                  {p.payment_mode}
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-stone-50 text-stone-700 border-stone-200">
+                                  {p.dispatchedBy ? 'Dispatched' : 'Pending'}
                                 </span>
                               </td>
-                              <td className="py-3 text-right font-medium text-stone-550 max-w-[180px] truncate" title={p.notes}>
-                                {p.notes || '—'}
+                              <td className="py-3 text-right font-medium text-stone-550 max-w-[180px] truncate" title={p.dispatchNotes}>
+                                {p.dispatchNotes || '—'}
                               </td>
                             </tr>
                           );

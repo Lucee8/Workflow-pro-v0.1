@@ -200,35 +200,51 @@ export function loadState(): AppState {
           localStorage.removeItem('mrp_wood_v2');
           localStorage.removeItem('mrp_consumption_logs');
         } else {
-          // Fix any duplicate article_no in existing orders
-          if (Array.isArray(parsed.orders)) {
+          // Fix any duplicate or out-of-series article_no in existing orders
+          if (Array.isArray(parsed.orders) && parsed.orders.length > 0) {
             const seen = new Set<string>();
             let maxSerialSeen = 0;
+            let hasOutlier = false;
             parsed.orders.forEach((o: any) => {
               if (o.article_no) {
+                if (seen.has(o.article_no)) {
+                  // Track duplicates for later re-sequencing
+                  return;
+                }
+                seen.add(o.article_no);
                 const parts = o.article_no.split('/');
                 const num = parseInt(parts[parts.length - 1], 10);
-                if (!isNaN(num) && num > maxSerialSeen) {
-                  maxSerialSeen = num;
+                if (!isNaN(num)) {
+                  if (num > maxSerialSeen) maxSerialSeen = num;
+                  if (num > parsed.orders.length + 5) hasOutlier = true;
                 }
               }
             });
+            // If there are duplicate article numbers, missing numbers, or outlier jump numbers (> count + 5), re-sequence chronologically
+            if (hasOutlier || parsed.orders.some((o: any) => !o.article_no || seen.has(o.article_no))) {
+              // Sort orders by created_at / order_date ascending to preserve historical sequence
+              const sortedOrders = [...parsed.orders].sort((a: any, b: any) => {
+                const dateA = new Date(a.created_at || a.order_date || 0).getTime();
+                const dateB = new Date(b.created_at || b.order_date || 0).getTime();
+                return dateA - dateB;
+              });
 
-            parsed.orders = parsed.orders.map((o: any) => {
-              if (!o.article_no || seen.has(o.article_no)) {
-                maxSerialSeen++;
-                const date = new Date();
-                const dd = String(date.getDate()).padStart(2, '0');
-                const mm = String(date.getMonth() + 1).padStart(2, '0');
+              let serialCounter = 0;
+              parsed.orders = sortedOrders.map((o: any) => {
+                serialCounter++;
                 const parts = o.article_no ? o.article_no.split('/') : [];
+                let datePart = parts.length >= 2 ? `${parts[0]}/${parts[1]}` : '';
+                if (!datePart || datePart.length < 5) {
+                  const date = new Date(o.created_at || o.order_date || Date.now());
+                  const dd = String(date.getDate()).padStart(2, '0');
+                  const mm = String(date.getMonth() + 1).padStart(2, '0');
+                  datePart = `${dd}/${mm}`;
+                }
                 const carpenterPart = parts.length >= 3 ? parts[2] : 'XX';
-                const newArtNo = `${dd}/${mm}/${carpenterPart}/${String(maxSerialSeen).padStart(4, '0')}`;
-                seen.add(newArtNo);
+                const newArtNo = `${datePart}/${carpenterPart}/${String(serialCounter).padStart(4, '0')}`;
                 return { ...o, article_no: newArtNo };
-              }
-              seen.add(o.article_no);
-              return o;
-            });
+              });
+            }
           }
 
           return {
@@ -317,12 +333,16 @@ export function generateArticleNumber(
         const parts = o.article_no.split('/');
         const lastPart = parts[parts.length - 1];
         const num = parseInt(lastPart, 10);
-        if (!isNaN(num) && num > maxSerial) {
-          maxSerial = num;
+        if (!isNaN(num)) {
+          if (allOrders.length < 100 && num > 1000) {
+            // Ignore legacy stray random numbers
+          } else if (num > maxSerial) {
+            maxSerial = num;
+          }
         }
       }
     });
-    if (allOrders.length > maxSerial) {
+    if (allOrders.length > maxSerial && allOrders.length < 1000) {
       maxSerial = allOrders.length;
     }
   }
