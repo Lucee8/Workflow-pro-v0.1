@@ -1314,7 +1314,9 @@ export default function WorkerDashboard({
               {myOrders.length > 0 ? (
                 myOrders.map((ord) => {
                   const matchingCust = customers.find((c) => c.id === ord.customer_id);
-                  const isStagedMine = ord.current_status === myStage;
+                  const isStagedMine = isCarpenter
+                    ? ['Wood Procurement', 'Making Started', 'Carpentry', 'Design', 'Designing'].includes(ord.current_status)
+                    : ord.current_status === myStage;
                   return (
                     <tr key={ord.id} className="hover:bg-stone-50/50 transition">
                       <td className="py-3.5 px-4 font-mono font-black text-stone-900">
@@ -1389,7 +1391,7 @@ export default function WorkerDashboard({
         <div>
           <span className="font-bold">Technical update restriction guidelines</span>
           <p className="text-stone-600 mt-1">
-            As a <strong>{currentUser.role.replace('_', ' ')}</strong> profile, you can update status and attach completion photos exclusively for orders currently at the <strong>{myStage}</strong> stage. Orders under QC or other departments are read-only.
+            As a <strong>{currentUser.role.replace('_', ' ')}</strong> profile, you can update status, fill wood calculation sheets, and attach completion photos for orders currently at the <strong>{isCarpenter ? 'Wood Procurement & Carpentry' : myStage}</strong> stages. Orders under QC or other departments are read-only.
           </p>
         </div>
       </div>
