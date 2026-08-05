@@ -768,24 +768,25 @@ export default function WoodManagementTab({
                           >
                             <Eye size={15} />
                           </button>
-                          {isPending && (
-                            <button
-                              onClick={() => handleUpdateStatus(req.id, 'Approved')}
-                              className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition border border-emerald-300"
-                              title="Approve Wood Request"
-                            >
-                              <CheckCircle2 size={15} />
-                            </button>
-                          )}
-                          {isPending && (
-                            <button
-                              onClick={() => handleUpdateStatus(req.id, 'Rejected')}
-                              className="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg transition border border-rose-300"
-                              title="Reject Wood Request"
-                            >
-                              <XCircle size={15} />
-                            </button>
-                          )}
+
+                          <button
+                            disabled={!isPending}
+                            onClick={() => handleUpdateStatus(req.id, 'Approved')}
+                            className="p-1.5 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-40 disabled:hover:bg-emerald-100 disabled:cursor-not-allowed text-emerald-800 rounded-lg transition border border-emerald-300"
+                            title="Approve Wood Request"
+                          >
+                            <CheckCircle2 size={15} />
+                          </button>
+
+                          <button
+                            disabled={!isPending}
+                            onClick={() => handleUpdateStatus(req.id, 'Rejected')}
+                            className="p-1.5 bg-rose-100 hover:bg-rose-200 disabled:opacity-40 disabled:hover:bg-rose-100 disabled:cursor-not-allowed text-rose-800 rounded-lg transition border border-rose-300"
+                            title="Reject Wood Request"
+                          >
+                            <XCircle size={15} />
+                          </button>
+
                           <button
                             onClick={() => handlePrintRequest(req)}
                             className="p-1.5 bg-white hover:bg-stone-100 text-stone-700 rounded-lg transition border border-stone-300"
