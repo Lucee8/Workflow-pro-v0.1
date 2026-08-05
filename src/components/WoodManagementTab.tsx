@@ -190,17 +190,15 @@ export default function WoodManagementTab({
 
   // Persist status updates
   const handleUpdateStatus = (id: string, newStatus: 'Approved' | 'Rejected' | 'Pending') => {
-    const updatedMap = { ...statusMap, [id]: newStatus };
-    setStatusMap(updatedMap);
-    localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(updatedMap));
+    const req = synchronizedRequests.find((r) => r.id === id);
+    const targetOrderId = req?.orderId || id;
 
-    if (selectedRequest && selectedRequest.id === id) {
-      setSelectedRequest((prev) => (prev ? { ...prev, status: newStatus } : null));
+    const updatedMap = { ...statusMap, [id]: newStatus };
+    if (targetOrderId) {
+      updatedMap[targetOrderId] = newStatus;
     }
 
     if (newStatus === 'Approved') {
-      const req = synchronizedRequests.find((r) => r.id === id);
-      const targetOrderId = req?.orderId || id;
       const targetOrder = orders.find((o) => o.id === targetOrderId);
 
       if (targetOrder && onOrderUpdate) {

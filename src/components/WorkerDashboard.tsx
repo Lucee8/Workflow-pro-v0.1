@@ -498,7 +498,18 @@ export default function WorkerDashboard({
     // --- MODE B: UPDATE STATUS PAGE LAYOUT ---
     const activeCust = customers.find((c) => c.id === activeOrder.customer_id);
     const savedSub = activeOrder.carpenter_sub_status || 'wood_procurement';
-    
+
+    const woodReqStatus = (() => {
+      try {
+        const saved = localStorage.getItem('bhisez_wood_request_statuses');
+        const map = saved ? JSON.parse(saved) : {};
+        return map[activeOrder.id] || '';
+      } catch {
+        return '';
+      }
+    })();
+    const isPendingWoodApproval = isCarpenter && progressStatus === 'wood_procurement' && woodReqStatus === 'Pending';
+
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
     const fallbackImage = activeOrder.wood_schedule?.image_link || getDefaultWoodSchedule(activeOrder).image_link;
@@ -603,11 +614,9 @@ export default function WorkerDashboard({
           {/* Right actual Update Status inputs panel column matching screenshot 2 */}
           <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
             {isCarpenter && (() => {
-              try {
-                const saved = localStorage.getItem('bhisez_wood_request_statuses');
-                const map = saved ? JSON.parse(saved) : {};
-                if (activeOrder && map[activeOrder.id] === 'Rejected') {
-                  return (
+              if (!activeOrder) return null;
+              if (woodReqStatus === 'Rejected') {
+                return (
                     <div className="mb-5 bg-red-50 border-2 border-red-400 text-red-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans">
                       <div className="flex items-center gap-2">
                         <AlertTriangle size={20} className="text-red-600 shrink-0 animate-bounce" />
@@ -621,8 +630,20 @@ export default function WorkerDashboard({
                     </div>
                   );
                 }
-              } catch {
-                return null;
+                            if (woodReqStatus === 'Pending' && progressStatus === 'wood_procurement') {
+                return (
+                  <div className="mb-5 bg-amber-50 border-2 border-amber-400 text-amber-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <Clock size={20} className="text-amber-700 shrink-0 animate-pulse" />
+                      <h4 className="font-extrabold text-xs sm:text-sm text-amber-900 uppercase tracking-wide">
+                        ⏳ Wood Sheet Submitted - Awaiting Admin Approval
+                      </h4>
+                    </div>
+                    <p className="text-xs text-amber-800 font-semibold leading-relaxed">
+                      Your Wood Schedule Calculation Sheet for Article #{activeOrder.article_no} was <strong>submitted</strong> and is currently under Admin review in <strong>Wood Management</strong>. Editing and re-submitting is locked. Once Admin approves the sheet, this order will automatically advance to <strong>Under Carpentry</strong> stage!
+                    </p>
+                  </div>
+                );
               }
               return null;
             })()}
@@ -955,16 +976,18 @@ export default function WorkerDashboard({
                         {parts.length > 0 && (
                           <button
                             type="button"
+                            disabled={isPendingWoodApproval}
                             onClick={() => setParts([])}
-                            className="inline-flex items-center gap-1 bg-stone-200 hover:bg-stone-300 text-stone-700 p-1 px-2.5 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                            className="inline-flex items-center gap-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed text-stone-700 p-1 px-2.5 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
                           >
                             <Trash2 size={10} /> Clear Table
                           </button>
                         )}
-                        <button
+                     <button
                           type="button"
+                          disabled={isPendingWoodApproval}
                           onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
-                          className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                          className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] disabled:opacity-50 disabled:cursor-not-allowed text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
                         >
                           <Plus size={10} /> Add Part Row
                         </button>
@@ -996,10 +1019,11 @@ export default function WorkerDashboard({
                                       <input
                                         type="text"
                                         required
+                                        disabled={isPendingWoodApproval}
                                         value={p.part_name}
                                         onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
                                         placeholder="e.g. Backside Legs"
-                                        className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold"
+                                        className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                       />
                                     </td>
 
@@ -1010,10 +1034,11 @@ export default function WorkerDashboard({
                                         step="0.01"
                                         required
                                         min={0}
+                                        disabled={isPendingWoodApproval}
                                         value={p.width || ''}
                                         onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
                                         placeholder='0.0"'
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                       />
                                     </td>
 
@@ -1024,10 +1049,11 @@ export default function WorkerDashboard({
                                         step="0.01"
                                         required
                                         min={0}
+                                        disabled={isPendingWoodApproval}
                                         value={p.breadth || ''}
                                         onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
                                         placeholder='0.0"'
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                       />
                                     </td>
 
@@ -1038,10 +1064,11 @@ export default function WorkerDashboard({
                                         step="0.1"
                                         required
                                         min={0}
+                                        disabled={isPendingWoodApproval}
                                         value={p.length || ''}
                                         onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
                                         placeholder="0.0'"
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                       />
                                     </td>
 
@@ -1051,10 +1078,11 @@ export default function WorkerDashboard({
                                         type="number"
                                         required
                                         min={1}
+                                        disabled={isPendingWoodApproval}
                                         value={p.quantity || ''}
                                         onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
                                         placeholder="qty"
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                                       />
                                     </td>
 
@@ -1067,8 +1095,9 @@ export default function WorkerDashboard({
                                     <td className="py-1 px-1.5">
                                       <button
                                         type="button"
+                                        disabled={isPendingWoodApproval}
                                         onClick={() => setParts(parts.filter(pt => pt.id !== p.id))}
-                                        className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 rounded transition flex items-center justify-center mx-auto"
+                                        className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed rounded transition flex items-center justify-center mx-auto"
                                         title="Remove part row"
                                       >
                                         <Trash2 size={13} />
@@ -1285,14 +1314,31 @@ export default function WorkerDashboard({
                 <button
                   type="submit"
                   disabled={
+                    isPendingWoodApproval || (
                     isCarpenter
                       ? !['Wood Procurement', 'Making Started', 'Carpentry', 'QC 1', 'QC Check 1', 'Designing'].includes(activeOrder.current_status)
                       : activeOrder.current_status !== myStage
+                    )
                   }
-                  className="bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl shadow transition text-xs cursor-pointer disabled:cursor-not-allowed"
-                >
-                  {progressStatus === 'wood_procurement' ? 'Save & Submit Wood Sheet to Admin' : 'Save Update'}
-                </button>
+                  className={`font-black px-5 py-2.5 rounded-xl shadow transition text-xs flex items-center gap-2 ${
+                    isPendingWoodApproval
+                      ? 'bg-amber-800/70 text-amber-100 cursor-not-allowed opacity-80'
+                      : 'bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white cursor-pointer disabled:cursor-not-allowed'
+                  }`}                
+                  >
+                  {progressStatus === 'wood_procurement' ? (
+                    isPendingWoodApproval ? (
+                      <>
+                        <Clock size={14} className="animate-pulse text-amber-200 shrink-0" />
+                        <span>✓ Submitted - Awaiting Admin Approval</span>
+                      </>
+                    ) : (
+                      'Save & Submit Wood Sheet to Admin'
+                    )
+                  ) : (
+                    'Save Update'
+                  )}                
+                  </button>
               </div>
 
             </form>
@@ -1397,15 +1443,36 @@ export default function WorkerDashboard({
                           try {
                             const saved = localStorage.getItem('bhisez_wood_request_statuses');
                             const map = saved ? JSON.parse(saved) : {};
-                            return map[ord.id] === 'Rejected';
-                          } catch {
-                            return false;
-                          }
-                        })() ? (
+                            if (map[ord.id] === 'Rejected') {
+                              return (
                           <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
                             ❌ Sheet Rejected
                           </span>
-                        ) : isStagedMine ? (                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
+                              );
+                            }
+                            if (map[ord.id] === 'Pending' && ord.carpenter_sub_status === 'wood_procurement') {
+                              return (
+                                <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-300 rounded-full px-2 py-0.5 font-bold text-[9px]">
+                                  ⏳ Sheet Pending Approval
+                                </span>
+                              );
+                            }
+                          } catch {
+                            // ignore
+                          }
+                          return null;
+                        })()}
+                        {!(() => {
+                          try {
+                            const saved = localStorage.getItem('bhisez_wood_request_statuses');
+                            const map = saved ? JSON.parse(saved) : {};
+                            return map[ord.id] === 'Rejected' || (map[ord.id] === 'Pending' && ord.carpenter_sub_status === 'wood_procurement');
+                          } catch {
+                            return false;
+                          }
+                        })() && (
+                          isStagedMine ? (
+                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
                             Needs Update
                           </span>
                         ) : ord.current_status === 'Ready to Dispatch' ? (
@@ -1416,6 +1483,7 @@ export default function WorkerDashboard({
                           <span className="inline-flex items-center gap-1 text-stone-400 bg-stone-50 border border-stone-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
                             Staged
                           </span>
+                        )
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
