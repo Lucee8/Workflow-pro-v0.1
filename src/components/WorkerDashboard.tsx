@@ -317,9 +317,7 @@ export default function WorkerDashboard({
   const handleOpenUpdate = (ord: Order) => {
     setActiveOrder(ord);
     if (isCarpenter) {
-      const initialSub = (ord.carpenter_sub_status === 'wood_procurement' || !ord.carpenter_sub_status)
-        ? 'under_carpentry'
-        : ord.carpenter_sub_status;
+      const initialSub = ord.carpenter_sub_status || 'wood_procurement';
       setProgressStatus(initialSub);
 
       // Check if wood schedule was rejected
@@ -395,7 +393,7 @@ export default function WorkerDashboard({
     let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
-      if (progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement') {
+      if (progressStatus === 'wood_procurement') {
         nextSubStatus = 'under_carpentry'; // Stays in under_carpentry until Admin approves wood sheet in Wood Management
         nextStage = 'Making Started';
 
@@ -511,7 +509,7 @@ export default function WorkerDashboard({
         return '';
       }
     })();
-    const isPendingWoodApproval = isCarpenter && (progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement') && woodReqStatus === 'Pending';
+    const isPendingWoodApproval = isCarpenter && savedSub === 'under_carpentry' && woodReqStatus === 'Pending';
 
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
@@ -633,7 +631,7 @@ export default function WorkerDashboard({
                     </div>
                   );
                 }
-                            if (woodReqStatus === 'Pending' && progressStatus === 'wood_procurement') {
+              if (woodReqStatus === 'Pending' && savedSub === 'under_carpentry') {
                 return (
                   <div className="mb-5 bg-amber-50 border-2 border-amber-400 text-amber-950 p-4 rounded-xl space-y-1.5 shadow-xs font-sans animate-in fade-in">
                     <div className="flex items-center gap-2">
@@ -652,7 +650,7 @@ export default function WorkerDashboard({
             })()}
 
             <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
-              
+
               {/* Radios inputs matching completed states */}
               <div className="space-y-2.5">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider font-sans">Progress Status *</label>
@@ -688,7 +686,7 @@ export default function WorkerDashboard({
                       {/* Under Carpentry tab */}
                       <label
                         className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          (savedSub !== 'under_carpentry' && savedSub !== 'wood_procurement')
+                          savedSub !== 'under_carpentry'
                             ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
                             : progressStatus === 'under_carpentry'
                             ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
@@ -699,7 +697,7 @@ export default function WorkerDashboard({
                           type="radio"
                           name="progressRadios"
                           checked={progressStatus === 'under_carpentry'}
-                          disabled={savedSub !== 'under_carpentry' && savedSub !== 'wood_procurement'}
+                          disabled={savedSub !== 'under_carpentry'}
                             onChange={() => setProgressStatus('under_carpentry')}
                           className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
@@ -1190,20 +1188,20 @@ export default function WorkerDashboard({
               {/* Add Progress notes */}
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">
-                  Add Notes {progressStatus === 'wood_procurement' ? '(Optional)' : '*'}
+                  Add Notes (Optional)
                 </label>
                 <textarea
                   rows={3}
-                  required={progressStatus !== 'wood_procurement'}
+                  // required={progressStatus !== 'wood_procurement'}
                   value={updateNotes}
                   onChange={(e) => setUpdateNotes(e.target.value)}
-                  placeholder={progressStatus === 'wood_procurement' ? "Optional notes for wood requirement sheet..." : "Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."}
+                  placeholder="Describe details: carcass work completed, wood schedule items, or cut sizes check passed..."
                   className="w-full p-3 bg-stone-50 border border-stone-250 focus:border-[#593622] rounded-xl text-xs focus:outline-none font-semibold text-stone-850"
                 />
               </div>
 
-              {/* Upload dynamic live photos (Only shown in Carpentry / Polish making stages, NOT in Wood Procurement) */}
-              {progressStatus !== 'wood_procurement' && (              <div className="space-y-3 font-sans">
+              {/* Upload dynamic live photos */}
+              <div className="space-y-3 font-sans">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1355,7 +1353,7 @@ export default function WorkerDashboard({
                   </div>
                 )}
               </div>
-              )}
+              
 
               {/* Action save brown button */}
               <div className="pt-3 border-t border-stone-100 flex justify-end gap-2">
@@ -1379,23 +1377,20 @@ export default function WorkerDashboard({
                     isPendingWoodApproval
                       ? 'bg-amber-800/70 text-amber-100 cursor-not-allowed opacity-80'
                       : 'bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white cursor-pointer disabled:cursor-not-allowed'
-                  }`}                
+                  }`}
                   >
-                  {progressStatus === 'under_carpentry' || progressStatus === 'wood_procurement' ? (
-                    isPendingWoodApproval ? (
-                      <>
+                  {isPendingWoodApproval ? (
+                    <>
                         <Clock size={14} className="animate-pulse text-amber-200 shrink-0" />
                         <span>✓ Submitted - Awaiting Admin Approval</span>
-                      </>
-                    ) : (
+                    </>
+                  ) : progressStatus === 'wood_procurement' ? (
                       'Save & Submit Wood Sheet to Admin'
-                    )
                   ) : (
                     'Save Update'
-                  )}                
+                  )}
                   </button>
               </div>
-
             </form>
           </div>
 
@@ -1505,7 +1500,7 @@ export default function WorkerDashboard({
                           </span>
                               );
                             }
-                            if (map[ord.id] === 'Pending' && ord.carpenter_sub_status === 'wood_procurement') {
+                            if (map[ord.id] === 'Pending' && (ord.carpenter_sub_status === 'under_carpentry' || ord.carpenter_sub_status === 'wood_procurement' || !ord.carpenter_sub_status)) {
                               return (
                                 <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-300 rounded-full px-2 py-0.5 font-bold text-[9px]">
                                   ⏳ Sheet Pending Approval
@@ -1521,7 +1516,7 @@ export default function WorkerDashboard({
                           try {
                             const saved = localStorage.getItem('bhisez_wood_request_statuses');
                             const map = saved ? JSON.parse(saved) : {};
-                            return map[ord.id] === 'Rejected' || (map[ord.id] === 'Pending' && ord.carpenter_sub_status === 'wood_procurement');
+                            return map[ord.id] === 'Rejected' || (map[ord.id] === 'Pending' && (ord.carpenter_sub_status === 'under_carpentry' || ord.carpenter_sub_status === 'wood_procurement' || !ord.carpenter_sub_status));
                           } catch {
                             return false;
                           }
