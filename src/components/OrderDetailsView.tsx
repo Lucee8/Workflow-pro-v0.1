@@ -905,7 +905,7 @@ export default function OrderDetailsView({
                     </div>
                   )}
                 </div>
-              )}            
+              )}
               </motion.div>
 
             {/* Dispatch details card if order is Dispatched */}
