@@ -315,28 +315,14 @@ export default function OrderDetailsView({
 
   const currentStageIndex = getStageIndex(order.current_status);
 
-  // Auto-set Designing as active gate when order is opened for the first time / in Pending status
-  React.useEffect(() => {
-    if (order && order.current_status === 'Pending') {
-      const updatedOrder: Order = {
-        ...order,
-        current_status: 'Designing',
-        updated_at: new Date().toISOString(),
-      };
-      const log: StatusLog = {
-        id: 'log_' + generateUUID().split('-')[0],
-        order_id: order.id,
-        stage: 'Designing',
-        changed_by: currentUser.id,
-        changed_by_name: currentUser.name,
-        changed_by_role: currentUser.role,
-        timestamp: new Date().toISOString(),
-        note: 'Order opened — automatically set Designing as current active gate.',
-        qc_passed: true,
-      };
-      onUpdateOrder(updatedOrder, log);
-    }
-  }, [order?.id, order?.current_status]);
+  // QC Checklists State
+  const [qc1Measurements, setQc1Measurements] = React.useState(false);
+  const [qc1Finish, setQc1Finish] = React.useState(false);
+  const [qc1Buffer, setQc1Buffer] = React.useState(false);
+
+  const [qc2PolishQuality, setQc2PolishQuality] = React.useState(false);
+  const [qc2SurfaceFinish, setQc2SurfaceFinish] = React.useState(false);
+  const [qc2FinalProduct, setQc2FinalProduct] = React.useState(false);
 
   // Debouncing lock to prevent accidental double-clicks from skipping stages
   const [isAdvancing, setIsAdvancing] = React.useState(false);
@@ -721,90 +707,206 @@ export default function OrderDetailsView({
 
               {/* Administrative Transition triggers buttons */}
               {isAdmin && order.current_status !== 'Dispatched' && (
-                <div className="pt-2 flex flex-wrap gap-2 border-t border-stone-150">
-                  <span className="text-[10px] font-bold text-stone-400 block w-full">ADMIN CONTROLLER GATEWAYS:</span>
+                <div className="pt-2 flex flex-col gap-3 border-t border-stone-150">
+                  <span className="text-[10px] font-bold text-stone-400 block uppercase tracking-wider">
+                    DEPARTMENT ACTION CONTROLLER:
+                  </span>
                   
-                  {['Pending', 'Designing', 'Design', 'Wood Procurement', 'Making Started', 'Carpentry', 'Making Completed', 'Polish'].includes(order.current_status) && (
-                    <button
-                      disabled={isAdvancing || order.current_status === 'Wood Procurement'}
-                      onClick={() => handleAdminStepAction('forward')}
-                      title={order.current_status === 'Wood Procurement' ? 'Advance Stage Forward is disabled during Wood Procurement. Wood sheet must be approved in Admin Wood Management.' : undefined}
-                      className={`text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
-                        isAdvancing || order.current_status === 'Wood Procurement'
-                          ? 'opacity-50 bg-stone-400 cursor-not-allowed'
-                          : 'bg-[#593622] hover:bg-[#402414] cursor-pointer'
-                      }`}
-                    >
-                      <CheckCircle2 size={11} /> Advance Stage Forward
-                    </button>
+                  {/* Stage 1: Pending */}
+                  {order.current_status === 'Pending' && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={isAdvancing}
+                        onClick={() => triggerTransition('Designing', 'Order moved to Designing stage.')}
+                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <CheckCircle2 size={14} /> Move to Designing
+                      </button>
+                    </div>
                   )}
 
-                  {order.current_status === 'Ready to Dispatch' && (
-                    <button
-                      disabled={isAdvancing}
-                      onClick={() => setShowDispatchModal(true)}
-                      className={`bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm flex items-center gap-1 ${
-                        isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                      }`}
-                    >
-                      <CheckCircle2 size={11} /> Ship & Dispatch Furniture
-                    </button>
+                  {/* Stage 2: Designing */}
+                  {(order.current_status === 'Designing' || order.current_status === 'Design') && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={isAdvancing}
+                        onClick={() => triggerTransition('Wood Procurement', 'Design specifications finalized. Order moved to Wood Procurement.')}
+                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <CheckCircle2 size={14} /> Finalize Design
+                      </button>
+                    </div>
                   )}
 
+                  {/* Stage 3: Wood Procurement */}
                   {order.current_status === 'Wood Procurement' && (
-                    <p className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 w-full mt-1">
-                      🪵 Wood Procurement active: Carpenter submits wood calculation sheet from Workbench. Admin approves sheet in <strong>Wood Management</strong> tab to advance order to Making Started.
-                    </p>
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-amber-900 text-xs font-medium space-y-1">
+                      <div className="font-bold flex items-center gap-1.5 text-amber-950">
+                        <span>🪵 Wood Procurement Active</span>
+                      </div>
+                      <p>
+                        Assigned Carpenter fills the Wood Schedule Calculation Table in Carpenter Workbench. Once submitted, Admin approves the sheet in the <strong>Wood Management</strong> tab, which automatically advances the order to <strong>Making Started</strong>.
+                      </p>
+                    </div>
                   )}
 
+                  {/* Stage 4: Making Started (Carpentry) */}
+                  {(order.current_status === 'Making Started' || order.current_status === 'Carpentry') && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={isAdvancing}
+                        onClick={() => triggerTransition('QC 1', 'Carpentry completed. Order moved to QC 1.')}
+                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <CheckCircle2 size={14} /> Complete Carpentry (Move to QC 1)
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Stage 5: QC 1 */}
                   {(order.current_status === 'QC 1' || order.current_status === 'QC Check 1') && (
-                    <>
-                      <button
-                        disabled={isAdvancing}
-                        onClick={() => triggerTransition('Making Completed', 'Admin audited structural joints: QC Pass 1 successful.', true)}
-                        className={`bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                        }`}
-                      >
-                        Pass QC 1
-                      </button>
-                      <button
-                        disabled={isAdvancing}
-                        onClick={() => handleAdminStepAction('fail_qc_1')}
-                        className={`bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                        }`}
-                      >
-                        Fail (Send back to Making Started)
-                      </button>
-                    </>
+                    <div className="space-y-3 bg-white p-3.5 rounded-xl border border-stone-200">
+                      <span className="text-xs font-bold text-stone-800 uppercase block">QC 1 Internal Check Required:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc1Measurements ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
+                          <input type="checkbox" checked={qc1Measurements} onChange={(e) => setQc1Measurements(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
+                          <span>Measurements Verified</span>
+                        </label>
+                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc1Finish ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
+                          <input type="checkbox" checked={qc1Finish} onChange={(e) => setQc1Finish(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
+                          <span>Finish Verified</span>
+                        </label>
+                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc1Buffer ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
+                          <input type="checkbox" checked={qc1Buffer} onChange={(e) => setQc1Buffer(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
+                          <span>Buffer Verified</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          disabled={isAdvancing || !(qc1Measurements && qc1Finish && qc1Buffer)}
+                          onClick={() => triggerTransition('Making Completed', 'QC 1 verification passed successfully.', true)}
+                          className={`px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition flex items-center gap-1.5 ${
+                            qc1Measurements && qc1Finish && qc1Buffer && !isAdvancing
+                              ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer shadow-sm'
+                              : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <CheckCircle2 size={14} /> Save QC 1
+                        </button>
+
+                        <button
+                          disabled={isAdvancing}
+                          onClick={() => handleAdminStepAction('fail_qc_1')}
+                          className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition cursor-pointer"
+                        >
+                          Fail (Send back to Making Started)
+                        </button>
+                      </div>
+                    </div>
                   )}
 
+                  {/* Stage 6: Making Completed */}
+                  {order.current_status === 'Making Completed' && (
+                    <div className="space-y-3">
+                      <div className="bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                        <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                        <span>✔ Carpentry Completed Successfully</span>
+                      </div>
+                      <button
+                        disabled={isAdvancing}
+                        onClick={() => triggerTransition('Polish', 'Carpentry completed. Order moved to Polish stage.')}
+                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <CheckCircle2 size={14} /> Carpentry Done - Move to Polish
+                      </button>
+                    </div>
+                  )}
+                  {/* Stage 7: Polish */}
+                  {order.current_status === 'Polish' && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={isAdvancing}
+                        onClick={() => triggerTransition('QC 2', 'Polishing completed. Order moved to QC 2 stage.')}
+                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <CheckCircle2 size={14} /> Complete Polish (Move to QC 2)
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Stage 8: QC 2 */}
                   {(order.current_status === 'QC 2' || order.current_status === 'QC Check 2') && (
-                    <>
+                    <div className="space-y-3 bg-white p-3.5 rounded-xl border border-stone-200">
+                      <span className="text-xs font-bold text-stone-800 uppercase block">QC 2 Final Inspection Required:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc2PolishQuality ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
+                          <input type="checkbox" checked={qc2PolishQuality} onChange={(e) => setQc2PolishQuality(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
+                          <span>Polish Quality Verified</span>
+                        </label>
+                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc2SurfaceFinish ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
+                          <input type="checkbox" checked={qc2SurfaceFinish} onChange={(e) => setQc2SurfaceFinish(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
+                          <span>Surface Finish Approved</span>
+                        </label>
+                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc2FinalProduct ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
+                          <input type="checkbox" checked={qc2FinalProduct} onChange={(e) => setQc2FinalProduct(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
+                          <span>Final Product Approved</span>
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          disabled={isAdvancing || !(qc2PolishQuality && qc2SurfaceFinish && qc2FinalProduct)}
+                          onClick={() => triggerTransition('Ready to Dispatch', 'Final QC 2 inspection passed successfully.', true)}
+                          className={`px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition flex items-center gap-1.5 ${
+                            qc2PolishQuality && qc2SurfaceFinish && qc2FinalProduct && !isAdvancing
+                              ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer shadow-sm'
+                              : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <CheckCircle2 size={14} /> Approve Final QC
+                        </button>
+
+                        <button
+                          disabled={isAdvancing}
+                          onClick={() => handleAdminStepAction('fail_qc_2')}
+                          className="bg-[#be123c] hover:bg-[#9f1239] text-white px-3 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition cursor-pointer"
+                        >
+                          Fail (Send back to Polish)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Stage 9: Ready to Dispatch */}
+                  {order.current_status === 'Ready to Dispatch' && (
+                    <div className="space-y-2">
+                      <div className="bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                        <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                        <span>✔ Product Ready for Dispatch</span>
+                      </div>
                       <button
                         disabled={isAdvancing}
-                        onClick={() => triggerTransition('Ready to Dispatch', 'Admin audited PU luster coats: QC Pass 2 successful.', true)}
-                        className={`bg-green-600 hover:bg-green-700 text-white px-2.5 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                        onClick={() => setShowDispatchModal(true)}
+                        className={`bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       >
-                        Pass QC 2
+                        <CheckCircle2 size={14} /> Dispatch Order
                       </button>
-                      <button
-                        disabled={isAdvancing}
-                        onClick={() => handleAdminStepAction('fail_qc_2')}
-                        className={`bg-[#be123c] hover:bg-[#9f1239] text-white px-2.5 py-1.5 font-bold rounded-lg text-[10px] uppercase tracking-wider transition ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                        }`}
-                      >
-                        Fail (Send back to Polish)
-                      </button>
-                    </>
+                    </div>
                   )}
                 </div>
-              )}
-            </motion.div>
+              )}            
+              </motion.div>
 
             {/* Dispatch details card if order is Dispatched */}
             {(order.current_status === 'Dispatched' || existingPayment?.dispatchDate || existingPayment?.vehicleNumber) && (

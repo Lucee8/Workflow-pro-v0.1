@@ -29,7 +29,7 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     sizeOfProduct = '5FT X 6.5FT';
     sqft = 32.5;
     if (!designRefImg) {
-      defaultImage = 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=650&auto=format&fit=crop';
+      defaultImage = '  https://images.unsplash.com/photo-1540518614846-7eded433c457?w=650&auto=format&fit=crop';
     }
     parts = [];
   } else if (sub.includes('wardrobe') || sub.includes('cabinet') || sub.includes('almirah') || cat.includes('kitchen')) {

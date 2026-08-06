@@ -812,7 +812,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
           color_shade: 'Teak / Walnut',
           no_of_units: item.quantity || 1,
           carpenter_id: defaultCarp,
-          current_status: 'Designing',
+          current_status: 'Pending',
           is_delayed: false,
           priority: 'Medium',
           order_date: new Date().toISOString().split('T')[0],

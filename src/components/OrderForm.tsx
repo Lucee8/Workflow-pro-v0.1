@@ -773,7 +773,7 @@ export default function OrderForm({
         polish_person_id: prod.polishPersonId || polishPersonId || undefined,
         polish_labour_rate: prod.polishLabourRate !== '' ? Number(prod.polishLabourRate) : undefined,
         polish_delivery_date: prod.polishPersonId ? (prod.polishDeliveryDate || polishDeliveryDate) : undefined,
-        current_status: 'Designing',
+        current_status: 'Pending',
         is_delayed: false,
         priority,
         order_date: orderDate,
