@@ -938,6 +938,7 @@ export default function App() {
                 payments={db.payments}
                 crmQuotations={db.crmQuotations}
                 crmCustomers={db.crmCustomers}
+                crmAttachments={db.crmAttachments}
                 preselectedQuotationId={preselectedQuotationId}
                 onClearPreselectedQuotation={() => setPreselectedQuotationId(null)}
                 onSendToWorkOrder={(draft) => {

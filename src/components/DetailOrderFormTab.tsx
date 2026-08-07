@@ -1,6 +1,6 @@
 import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
-import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight } from 'lucide-react';
+import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc, generateNewOrderNo } from '../utils';
 import logoImg from '../assets/images/logo.png';
 
@@ -22,6 +22,7 @@ interface AgreementItem {
   hardware: number;
   productName: string;
   itemDescription: string;
+  images?: Array<{ id: string; url: string; type: 'Design Reference' }>;
 }
 
 const CATEGORY_MAP: Record<string, string[]> = {
@@ -56,6 +57,7 @@ interface DetailOrderFormTabProps {
   payments: Payment[];
   crmQuotations?: any[];
   crmCustomers?: any[];
+  crmAttachments?: any[];
   preselectedQuotationId?: string | null;
   onClearPreselectedQuotation?: () => void;
   onSendToWorkOrder?: (draft: any) => void;
@@ -68,6 +70,7 @@ export default function DetailOrderFormTab({
   payments,
   crmQuotations = [],
   crmCustomers = [],
+  crmAttachments = [],
   preselectedQuotationId = null,
   onClearPreselectedQuotation,
   onSendToWorkOrder
@@ -154,14 +157,19 @@ export default function DetailOrderFormTab({
       reader.onload = async (event) => {
         const rawUrl = event.target?.result as string;
         const compressedUrl = await compressImage(rawUrl);
-        setRefImages((prev) => [
-          ...prev,
-          {
-            id: `img_${Math.random().toString(36).substring(2, 9)}`,
-            url: compressedUrl,
-            type: 'Design Reference',
-          },
-        ]);
+        const newImgObj = {
+          id: `img_${Math.random().toString(36).substring(2, 9)}`,
+          url: compressedUrl,
+          type: 'Design Reference' as const,
+        };
+        setRefImages((prev) => [...prev, newImgObj]);
+        setItems((prev) =>
+          prev.map((itm, i) =>
+            i === activeItemIndex
+              ? { ...itm, images: [...(itm.images || []), newImgObj] }
+              : itm
+          )
+        );
       };
       reader.readAsDataURL(file);
     });
@@ -170,19 +178,33 @@ export default function DetailOrderFormTab({
 
   const handleAddImageUrl = () => {
     if (!imgUrlInput.trim()) return;
-    setRefImages((prev) => [
-      ...prev,
-      {
-        id: `img_${Math.random().toString(36).substring(2, 9)}`,
-        url: imgUrlInput.trim(),
-        type: 'Design Reference',
-      },
-    ]);
+    const newImgObj = {
+      id: `img_${Math.random().toString(36).substring(2, 9)}`,
+      url: imgUrlInput.trim(),
+      type: 'Design Reference' as const,
+    };
+    setRefImages((prev) => [...prev, newImgObj]);
+    setItems((prev) =>
+      prev.map((itm, i) =>
+        i === activeItemIndex
+          ? { ...itm, images: [...(itm.images || []), newImgObj] }
+          : itm
+      )
+    );
     setImgUrlInput('');
   };
 
   const handleRemoveImage = (id: string) => {
+    const imgToRemove = refImages.find((img) => img.id === id);
     setRefImages((prev) => prev.filter((img) => img.id !== id));
+    if (imgToRemove) {
+      setItems((prev) =>
+        prev.map((itm) => ({
+          ...itm,
+          images: (itm.images || []).filter((img) => img.id !== id && img.url !== imgToRemove.url),
+        }))
+      );
+    }
   };
 
   // Initialize with a default product if empty
@@ -362,7 +384,10 @@ export default function DetailOrderFormTab({
     }
 
     const draft = {
-      items, // Send all items in the combined agreement!
+      items: items.map((itm) => ({
+        ...itm,
+        refImages: (itm.images && itm.images.length > 0) ? itm.images : allCombinedRefImages,
+      })),
       category,
       subCategory,
       size,
@@ -376,7 +401,7 @@ export default function DetailOrderFormTab({
       customerName,
       whatsappNo,
       address,
-      refImages,
+      refImages: allCombinedRefImages.length > 0 ? allCombinedRefImages : refImages,
       quotedRate,
       cushion,
       discount,
@@ -532,11 +557,27 @@ export default function DetailOrderFormTab({
 
     setOrderDate(formatToDDMMYYYY(quoteDate));
     setDeliveryDate(formatToDDMMYYYY(first.validUntil ? first.validUntil.split('T')[0] : ''));
+    const allExtractedImages: Array<{ id: string; url: string; type: 'Design Reference' }> = [];
 
     const mappedItems: AgreementItem[] = selectedItems.map((selected, itemIdx) => {
       const { quoteId, item, notes, quoteObj } = selected;
       const quote = quoteObj || crmQuotations?.find((q) => q.id === quoteId);
+
+      // Extract reference images uploaded during quotation stage for this specific item
+      const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
       
+      const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> = rawItemImages.map((imgUrl: string, imgIdx: number) => {
+        const imgObj = {
+          id: `ref_q_${item.id || itemIdx}_${imgIdx}_${Math.random().toString(36).substring(2, 6)}`,
+          url: imgUrl,
+          type: 'Design Reference' as const,
+        };
+        if (!allExtractedImages.some((existing) => existing.url === imgUrl)) {
+          allExtractedImages.push(imgObj);
+        }
+        return imgObj;
+      });
+
       let matchedCat = 'Beds';
       for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
         if (subs.some((s) => (item.furnitureItem || '').toLowerCase().includes(s.toLowerCase()))) {
@@ -581,10 +622,33 @@ export default function DetailOrderFormTab({
         hardware: 0,
         productName: nameStr,
         itemDescription: descStr,
+        images: itemRefImages,
       };
     });
 
+    // Also check if customer attachments exist in crmAttachments
+    if (crmAttachments && first && first.customer) {
+      const custId = first.customer.id;
+      const relevantAttachments = crmAttachments.filter(
+        (att: any) => att.customer_id === custId && att.url && (att.fileCategory === 'Design Image' || att.fileCategory === 'Reference Photo')
+      );
+      relevantAttachments.forEach((att: any, attIdx: number) => {
+        if (!allExtractedImages.some((existing) => existing.url === att.url)) {
+          allExtractedImages.push({
+            id: att.id || `att_${attIdx}`,
+            url: att.url,
+            type: 'Design Reference',
+          });
+        }
+      });
+    }
+
     setItems(mappedItems);
+    if (allExtractedImages.length > 0) {
+      setRefImages(allExtractedImages);
+    } else {
+      setRefImages([]);
+    }
     setActiveItemIndex(0);
 
     const firstItem = mappedItems[0];
@@ -674,6 +738,14 @@ export default function DetailOrderFormTab({
       setWhatsappNo(cust ? cust.phone : '');
       setAddress(cust && cust.address ? cust.address : '');
 
+      const loadedImgs = (order.images && order.images.length > 0)
+        ? order.images.map((img) => ({
+            id: img.id || Math.random().toString(36).substring(2, 8),
+            url: img.url,
+            type: 'Design Reference' as const,
+          }))
+        : [];
+
       const ordItem: AgreementItem = {
         id: `ord_item_${order.id}`,
         category: order.category || 'Beds',
@@ -692,8 +764,10 @@ export default function DetailOrderFormTab({
         hardware: 0,
         productName: `${order.category || 'Beds'} › ${order.sub_category || 'Custom'} (${order.size || 'Custom'})`,
         itemDescription: `Structure: ${order.material || 'Sagwan'}. Finish: ${order.finish_type || order.finish || 'Hand Polish'}. Color: ${order.color_shade || 'Walnut'}. ${order.special_notes || ''}`,
+        images: loadedImgs,
       };
 
+      setRefImages(loadedImgs);
       setItems([ordItem]);
       setActiveItemIndex(0);
 
@@ -830,12 +904,35 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     return chunkArray(items, 2);
   }, [items]);
 
+  const allCombinedRefImages = React.useMemo(() => {
+    const list: Array<{ id: string; url: string; type: 'Design Reference' }> = [];
+    const urls = new Set<string>();
+
+    refImages.forEach((img) => {
+      if (img && img.url && !urls.has(img.url)) {
+        urls.add(img.url);
+        list.push(img);
+      }
+    });
+
+    items.forEach((itm) => {
+      (itm.images || []).forEach((img) => {
+        if (img && img.url && !urls.has(img.url)) {
+          urls.add(img.url);
+          list.push(img);
+        }
+      });
+    });
+
+    return list;
+  }, [refImages, items]);
+
   const imagePages = React.useMemo(() => {
-    if (refImages.length === 0) {
+    if (allCombinedRefImages.length === 0) {
       return [[]];
     }
-    return chunkArray(refImages, 9);
-  }, [refImages]);
+    return chunkArray(allCombinedRefImages, 9);
+  }, [allCombinedRefImages]);
 
   return (
     <div className="space-y-6 font-sans pb-16">
@@ -1366,6 +1463,45 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
               />
             </div>
+            {/* Reference Images for Active Product */}
+            {items[activeItemIndex] && (
+              <div className="md:col-span-12 border border-amber-200/80 bg-amber-50/40 rounded-xl p-3.5 space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1.5 font-display">
+                    <ImageIcon size={13} className="text-[#593622]" />
+                    Quotation Reference Images (Product #{activeItemIndex + 1}: {items[activeItemIndex].productName || items[activeItemIndex].category})
+                  </span>
+                  <span className="text-[9px] bg-amber-100/80 text-amber-900 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                    {(items[activeItemIndex].images || []).length} Image(s) Preserved
+                  </span>
+                </div>
+
+                {(items[activeItemIndex].images && items[activeItemIndex].images!.length > 0) ? (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 pt-1">
+                    {items[activeItemIndex].images!.map((img) => (
+                      <div key={img.id} className="relative group border border-stone-200 rounded-lg overflow-hidden aspect-square bg-white flex items-center justify-center shadow-2xs">
+                        <img src={img.url} alt="Reference" className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updatedImgs = (items[activeItemIndex].images || []).filter(i => i.id !== img.id && i.url !== img.url);
+                            setItems(prev => prev.map((itm, i) => i === activeItemIndex ? { ...itm, images: updatedImgs } : itm));
+                          }}
+                          className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition hover:bg-rose-700 shadow"
+                          title="Remove image from item"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-stone-500 italic py-1">
+                    No reference images directly attached to this item during quotation. Any customer attachment photos will still be carried into Section IV drawings below.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -1559,11 +1695,11 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               </div>
             </div>
 
-            {/* Uploaded Reference Images grid */}
-            {refImages.length > 0 && (
+            {/* Uploaded & Quotation Reference Images grid */}
+            {allCombinedRefImages.length > 0 && (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 border border-stone-150 p-2.5 rounded-xl bg-stone-50/50">
-                {refImages.map((img) => (
-                  <div key={img.id} className="relative group border border-stone-200 rounded-lg overflow-hidden aspect-square bg-white flex items-center justify-center">
+                {allCombinedRefImages.map((img) => (
+                  <div key={img.id} className="relative group border border-stone-200 rounded-lg overflow-hidden aspect-square bg-white flex items-center justify-center shadow-2xs">
                     <img src={img.url} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
                     <button
                       type="button"
@@ -1867,6 +2003,22 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                                        {item.specialNotes && (
                                         <div className="mt-1.5 pl-2 border-l-2 border-amber-600 bg-amber-50/30 py-0.5 text-[8.5px] text-stone-600 font-sans italic">
                                           <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Mfg Notes:'}</strong> {item.specialNotes}
+                                        </div>
+                                      )}
+                                      {item.images && item.images.length > 0 && (
+                                        <div className="mt-1.5 flex items-center gap-1.5 font-sans">
+                                          <span className="text-[7.5px] font-extrabold text-stone-500 uppercase tracking-wider">{language === 'mr' ? 'संदर्भ चित्रे:' : 'Ref Photos:'}</span>
+                                          <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                                            {item.images.map((img, imgIdx) => (
+                                              <img
+                                                key={img.id || imgIdx}
+                                                src={img.url}
+                                                alt={`Ref ${imgIdx + 1}`}
+                                                className="w-8 h-8 rounded border border-stone-250 object-cover bg-stone-50 shrink-0"
+                                                referrerPolicy="no-referrer"
+                                              />
+                                            ))}
+                                          </div>
                                         </div>
                                       )}
                                     </td>
@@ -2293,6 +2445,22 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                                 {item.specialNotes && (
                                   <div className="mt-1 pl-2 text-[8.5px] text-stone-600 font-sans italic">
                                     <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Special/Mfg Notes:'}</strong> {item.specialNotes}
+                                  </div>
+                                )}
+                                                                {item.images && item.images.length > 0 && (
+                                  <div className="mt-1 pl-2 flex items-center gap-1.5 font-sans">
+                                    <span className="text-[8px] font-bold text-stone-700 uppercase">{language === 'mr' ? 'संदर्भ चित्रे:' : 'Ref Photos:'}</span>
+                                    <div className="flex items-center gap-1">
+                                      {item.images.map((img, imgIdx) => (
+                                        <img
+                                          key={img.id || imgIdx}
+                                          src={img.url}
+                                          alt={`Ref ${imgIdx + 1}`}
+                                          className="w-7 h-7 rounded border border-stone-300 object-cover bg-stone-50"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
                               </td>
