@@ -25,8 +25,7 @@ import {
   Plus,
   Save
 } from 'lucide-react';
-import { Order, Customer, OrderStage, StatusLog } from '../types';
-import { generateUUID } from '../db/store';
+import { Order, Customer } from '../types';
 import { formatToDDMMYYYY } from '../utils';
 
 export interface WoodRequirementItem {
@@ -188,42 +187,27 @@ export default function WoodManagementTab({
     return list;
   }, [orders, customers, statusMap, deletedIds, manualRequests]);
 
-  // Persist status updates
+  // Persist status updates & sync immediately to order
   const handleUpdateStatus = (id: string, newStatus: 'Approved' | 'Rejected' | 'Pending') => {
     const updatedMap = { ...statusMap, [id]: newStatus };
     setStatusMap(updatedMap);
     localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(updatedMap));
 
-    if (selectedRequest && selectedRequest.id === id) {
+    if (selectedRequest && (selectedRequest.id === id || selectedRequest.orderId === id)) {
       setSelectedRequest((prev) => (prev ? { ...prev, status: newStatus } : null));
     }
 
-    // Auto-advance order if linked to an order
-    const req = synchronizedRequests.find((r) => r.id === id);
-    if (req && req.orderId && onOrderUpdate) {
-      const targetOrder = orders.find((o) => o.id === req.orderId);
-      if (targetOrder) {
-        const nextStage: OrderStage = newStatus === 'Approved' && targetOrder.current_status === 'Wood Procurement' ? 'Making Started' : targetOrder.current_status;
-        const updatedOrder: Order = {
-          ...targetOrder,
-          wood_schedule_status: newStatus === 'Pending' ? 'Pending Review' : newStatus,
-          current_status: nextStage,
-          updated_at: new Date().toISOString(),
-        };
-        const log: StatusLog = {
-          id: 'log_' + generateUUID().split('-')[0],
-          order_id: targetOrder.id,
-          stage: nextStage,
-          changed_by: 'admin',
-          changed_by_name: 'Administrator',
-          changed_by_role: 'admin',
-          timestamp: new Date().toISOString(),
-          note: newStatus === 'Approved' 
-            ? 'Wood Sheet approved by Admin. Production moved to Making Started.' 
-            : 'Wood Sheet rejected by Admin. Revision required.',
-        };
-        onOrderUpdate(updatedOrder, log);
-      }
+    const targetOrder = orders.find((o) => o.id === id || (selectedRequest && selectedRequest.orderId === o.id));
+    if (targetOrder && onOrderUpdate) {
+      const updatedOrder: Order = {
+        ...targetOrder,
+        wood_schedule_status: newStatus,
+        wood_schedule: targetOrder.wood_schedule
+          ? { ...targetOrder.wood_schedule, status: newStatus }
+          : undefined,
+        updated_at: new Date().toISOString()
+      };
+      onOrderUpdate(updatedOrder);
     }
   };
 
@@ -1194,7 +1178,7 @@ export default function WoodManagementTab({
               </div>
 
               <div className="flex items-center gap-2">
-                {selectedRequest.status === 'Pending' && (
+                {selectedRequest.status !== 'Approved' && (
                   <button
                     onClick={() => handleUpdateStatus(selectedRequest.id, 'Approved')}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -1203,13 +1187,22 @@ export default function WoodManagementTab({
                     Approve Wood Sheet
                   </button>
                 )}
-                {selectedRequest.status === 'Pending' && (
+                {selectedRequest.status !== 'Rejected' && (
                   <button
                     onClick={() => handleUpdateStatus(selectedRequest.id, 'Rejected')}
                     className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                   >
                     <XCircle size={15} />
                     Reject Sheet
+                  </button>
+                )}
+                {selectedRequest.status !== 'Pending' && (
+                  <button
+                    onClick={() => handleUpdateStatus(selectedRequest.id, 'Pending')}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Clock size={15} />
+                    Reopen for Edit
                   </button>
                 )}
                 <button

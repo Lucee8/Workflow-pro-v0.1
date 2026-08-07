@@ -7,17 +7,17 @@ import React from 'react';
 import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage } from '../types';
 import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
-import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare } from 'lucide-react';
+import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, ShieldCheck, CheckCircle2, Lock } from 'lucide-react';
 
 function getDefaultWoodSchedule(order: Order): WoodSchedule {
   const sub = (order.sub_category || '').toLowerCase();
   const cat = (order.category || '').toLowerCase();
-
+  
   let parts: WoodPart[] = [];
   let modelName = order.article_no ? order.article_no.split('/').pop() || 'BED-01' : 'BED-01';
   let sizeOfProduct = order.size === 'Custom' ? (order.custom_size || '5FT X 6.5FT') : (order.size || '5FT X 6.5FT');
   let catalogueName = order.category ? `${order.category} Catalogue` : 'Beds Catalogue';
-
+  
   // Find any Design Reference image from order
   const designRefImg = order.images?.find((img) => img.type === 'Design Reference')?.url;
   let defaultImage = designRefImg || 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
@@ -97,30 +97,26 @@ export default function WorkerDashboard({
   onUpdateOrder,
 }: WorkerDashboardProps) {
   const isCarpenter = currentUser.role === 'carpenter';
-  const isPolish = currentUser.role === 'polish_person';
-  const myStage: OrderStage = isCarpenter ? 'Making Started' : 'Polish';
+  const myStage: OrderStage = isCarpenter ? 'Carpentry' : 'Polish';
 
   const isOrderInMyStage = (ordStage: OrderStage) => {
     const normalized = normalizeStage(ordStage);
     if (isCarpenter) {
-      return normalized === 'Wood Procurement' || normalized === 'Making Started';
-    }
-    if (isPolish) {
+      return normalized === 'Wood Procurement' || normalized === 'Making Started' || normalized === 'Carpentry';
+    } else {
       return normalized === 'Polish';
     }
-    return false;
   };
 
   // Filter orders assigned to this worker
   const myOrders = orders.filter((o) => {
     if (isCarpenter) {
       return o.carpenter_id === currentUser.id;
-    } else if (isPolish) {
+    } else {
       // Polish person sees work only after carpentry passes QC 1 (i.e. Polish stage or later)
       const stage = normalizeStage(o.current_status);
       return o.polish_person_id === currentUser.id && ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(stage);
     }
-    return false;
   }).sort(compareOrdersByArticleSerialDesc);
 
   // State: selected order for active edit
@@ -202,7 +198,7 @@ export default function WorkerDashboard({
       };
       reader.readAsDataURL(file);
     });
-
+    
     e.target.value = '';
   };
 
@@ -239,6 +235,45 @@ export default function WorkerDashboard({
   const [qcMeasurement, setQcMeasurement] = React.useState(false);
   const [qcFinishing, setQcFinishing] = React.useState(false);
   const [qcBuffer, setQcBuffer] = React.useState(false);
+
+  // Approval status sync from localStorage and Order object
+  const [showApprovedModal, setShowApprovedModal] = React.useState(false);
+
+  const woodStatusMap = React.useMemo(() => {
+    try {
+      const saved = localStorage.getItem('bhisez_wood_request_statuses');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }, [activeOrder]);
+
+  const isWoodScheduleApproved = React.useMemo(() => {
+    if (!activeOrder) return false;
+    return (
+      activeOrder.wood_schedule_status === 'Approved' ||
+      activeOrder.wood_schedule?.status === 'Approved' ||
+      woodStatusMap[activeOrder.id] === 'Approved'
+    );
+  }, [activeOrder, woodStatusMap]);
+
+  React.useEffect(() => {
+    if (activeOrder && isWoodScheduleApproved) {
+      try {
+        const savedSeen = localStorage.getItem('bhisez_seen_approved_schedules');
+        const seenMap = savedSeen ? JSON.parse(savedSeen) : {};
+        if (!seenMap[activeOrder.id]) {
+          setShowApprovedModal(true);
+          seenMap[activeOrder.id] = true;
+          localStorage.setItem('bhisez_seen_approved_schedules', JSON.stringify(seenMap));
+        }
+      } catch {
+        setShowApprovedModal(true);
+      }
+    } else {
+      setShowApprovedModal(false);
+    }
+  }, [activeOrder?.id, isWoodScheduleApproved]);
 
   const handleUploadRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -309,7 +344,7 @@ export default function WorkerDashboard({
     setActiveOrder(ord);
     if (isCarpenter) {
       setProgressStatus(ord.carpenter_sub_status || 'wood_procurement');
-
+      
       // Load or Initialize Wood Schedule data
       const schedule = ord.wood_schedule || getDefaultWoodSchedule(ord);
       setCatalogueName(schedule.catalogue_name);
@@ -429,6 +464,7 @@ export default function WorkerDashboard({
       sqft: Number(sqft),
       image_link: imageLink,
       parts: parts,
+      status: isWoodScheduleApproved ? 'Approved' : (activeOrder.wood_schedule_status || 'Pending'),
       qc_check_1_details: {
         measurement: qcMeasurement,
         finishing: qcFinishing,
@@ -439,6 +475,7 @@ export default function WorkerDashboard({
     const updatedOrder: Order = {
       ...activeOrder,
       current_status: nextStage,
+      wood_schedule_status: isWoodScheduleApproved ? 'Approved' : (activeOrder.wood_schedule_status || 'Pending'),
       carpenter_sub_status: isCarpenter ? nextSubStatus : activeOrder.carpenter_sub_status,
       images: [...existingOtherImages, ...newInProgressImages],
       updated_at: new Date().toISOString(),
@@ -478,6 +515,37 @@ export default function WorkerDashboard({
 
     return (
       <>
+        {/* Approved Wood Schedule Toast Popup Modal */}
+        {showApprovedModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-400 space-y-4 text-center">
+              <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300 shadow-sm">
+                <CheckCircle2 size={36} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black uppercase tracking-wider border border-emerald-300">
+                  ✓ Wood Schedule Approved
+                </div>
+                <h3 className="text-lg font-black text-stone-900 font-display">
+                  Wood Schedule Approved
+                </h3>
+                <p className="text-xs text-stone-600 font-medium leading-relaxed pt-1">
+                  The submitted wood schedule has been reviewed and approved by Admin.
+                </p>
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowApprovedModal(false)}
+                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-md cursor-pointer"
+                >
+                  Got It — Proceed with Carpentry Work
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-6 animate-in fade-in duration-200">
         {/* Header navigation back */}
         <button
@@ -494,11 +562,11 @@ export default function WorkerDashboard({
 
         {/* Dynamic Splits design columns */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
+          
           {/* Left specification summarizations column */}
           <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4 font-sans text-xs">
             <h3 className="font-display font-black text-stone-900 text-sm border-b border-stone-100 pb-2">Order Information Details</h3>
-
+            
             <div className="space-y-3.5 leading-relaxed text-stone-600">
               <div>
                 <span className="text-[10px] text-stone-400 font-bold block uppercase">Article Number</span>
@@ -549,7 +617,7 @@ export default function WorkerDashboard({
                 {galleryImages.slice(0, 4).map((img, idx) => (
                   <div
                     key={img.id || idx}
-                    onClick={() => img.url && setLightboxImg(img.url)}
+                      onClick={() => img.url && setLightboxImg(img.url)}
                     className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
                   >
                     <img referrerPolicy="no-referrer" src={img.url} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
@@ -572,7 +640,7 @@ export default function WorkerDashboard({
           {/* Right actual Update Status inputs panel column matching screenshot 2 */}
           <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
             <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
-
+              
               {/* Radios inputs matching completed states */}
               <div className="space-y-2.5">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider font-sans">Progress Status *</label>
@@ -832,14 +900,14 @@ export default function WorkerDashboard({
                         <p className="text-[10px] text-stone-400 mt-1 font-medium select-none">Estimate and record total material volume (CFT) required for fabrication</p>
                       </div>
                     </div>
-
+                    
 
                   </div>
 
                   {/* Section 1: Product details fields */}
                   <div className="bg-stone-50 p-4 border border-stone-200 rounded-xl space-y-4">
                     <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">1. Product Identification Details</h4>
-
+                    
                     {/* Fetched Product Configuration & Specifications from Section 2 */}
                     {activeOrder && (
                       <div className="bg-white p-3.5 border border-amber-200/80 rounded-xl shadow-xs space-y-2.5">
@@ -898,10 +966,15 @@ export default function WorkerDashboard({
                         <input
                           type="text"
                           required
+                          disabled={isWoodScheduleApproved}
                           value={catalogueName}
                           onChange={(e) => setCatalogueName(e.target.value)}
                           placeholder="e.g. Beds Catalogue"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
+                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 ${
+                            isWoodScheduleApproved
+                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
+                              : 'bg-white border-stone-250'
+                          }`}
                         />
                       </div>
                       <div>
@@ -909,10 +982,15 @@ export default function WorkerDashboard({
                         <input
                           type="text"
                           required
+                          disabled={isWoodScheduleApproved}
                           value={modelName}
                           onChange={(e) => setModelName(e.target.value)}
                           placeholder="e.g. BED-01"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
+                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 ${
+                            isWoodScheduleApproved
+                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
+                              : 'bg-white border-stone-250'
+                          }`}
                         />
                       </div>
                       <div>
@@ -920,10 +998,15 @@ export default function WorkerDashboard({
                         <input
                           type="text"
                           required
+                          disabled={isWoodScheduleApproved}
                           value={sizeOfProduct}
                           onChange={(e) => setSizeOfProduct(e.target.value)}
                           placeholder="e.g. 5ft × 6.5ft"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900"
+                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 ${
+                            isWoodScheduleApproved
+                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
+                              : 'bg-white border-stone-250'
+                          }`}
                         />
                       </div>
                       <div>
@@ -932,21 +1015,49 @@ export default function WorkerDashboard({
                           type="number"
                           step="0.01"
                           required
+                          disabled={isWoodScheduleApproved}
                           value={sqft || ''}
                           onChange={(e) => setSqft(Number(e.target.value))}
                           placeholder="e.g. 32.5"
-                          className="w-full px-2.5 py-1.5 bg-white border border-stone-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 font-mono"
+                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 font-mono ${
+                            isWoodScheduleApproved
+                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
+                              : 'bg-white border-stone-250'
+                          }`}
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Section 2: Wooden components table spreadsheet */}
-                  <div className="space-y-2">
+                  <div className="space-y-3">
+                    {/* Approved Badge & Confirmation Banner */}
+                    {isWoodScheduleApproved && (
+                      <div className="p-3.5 bg-emerald-50/90 border border-emerald-300 rounded-2xl space-y-2 shadow-2xs">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black text-xs shadow-2xs">
+                            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                            <span>✓ Wood Schedule Approved</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                            <Lock size={12} className="text-emerald-700" />
+                            Locked (Approved by Admin)
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-emerald-950 font-bold flex items-center gap-2 pt-0.5">
+                          <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                          Wood Schedule Approved by Admin. You can now proceed with carpentry work.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between">
-                      <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">2. Wood Schedule Calculation Table</h4>
+                      <h4 className={`text-[10px] font-black uppercase tracking-widest leading-none ${isWoodScheduleApproved ? 'text-emerald-800' : 'text-stone-400'}`}>
+                        2. Wood Schedule Calculation Table
+                      </h4>
                       <div className="flex items-center gap-2">
-                        {parts.length > 0 && (
+                        {!isWoodScheduleApproved && parts.length > 0 && (
                           <button
                             type="button"
                             onClick={() => setParts([])}
@@ -955,118 +1066,139 @@ export default function WorkerDashboard({
                             <Trash2 size={10} /> Clear Table
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
-                          className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
-                        >
-                          <Plus size={10} /> Add Part Row
-                        </button>
+                        {!isWoodScheduleApproved && (
+                          <button
+                            type="button"
+                            onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
+                            className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                          >
+                            <Plus size={10} /> Add Part Row
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    <div className="border border-stone-250 rounded-xl overflow-hidden shadow-xs">
+                    <div className={`border rounded-xl overflow-hidden shadow-xs transition-colors duration-200 ${
+                      isWoodScheduleApproved
+                        ? 'border-emerald-300 bg-emerald-50/20'
+                        : 'border-stone-250'
+                    }`}>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
-                            <tr className="bg-stone-100 border-b border-stone-250 text-center text-stone-500 font-bold uppercase text-[9px] tracking-wider select-none">
-                              <th className="py-2.5 px-3 text-left min-w-[145px] border-r border-stone-200">Part Name & Component Purpose</th>
-                              <th className="py-2.5 px-2 w-[75px] border-r border-stone-200 text-center">Width (Inches)</th>
-                              <th className="py-2.5 px-2 w-[75px] border-r border-stone-200 text-center">Breadth (Inches)</th>
-                              <th className="py-2.5 px-2 w-[75px] border-r border-stone-200 text-center">Length (Feet)</th>
-                              <th className="py-2.5 px-2 w-[65px] border-r border-stone-200 text-center">QTY</th>
-                              <th className="py-2.5 px-2 w-[85px] border-r border-stone-200 text-right">CFT Vol.</th>
+                            <tr className={`border-b text-center font-bold uppercase text-[9px] tracking-wider select-none ${
+                              isWoodScheduleApproved
+                                ? 'bg-emerald-100/80 border-emerald-300 text-emerald-950'
+                                : 'bg-stone-100 border-stone-250 text-stone-500'
+                            }`}>
+                              <th className={`py-2.5 px-3 text-left min-w-[145px] border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Part Name & Component Purpose</th>
+                              <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Width (Inches)</th>
+                              <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Breadth (Inches)</th>
+                              <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Length (Feet)</th>
+                              <th className={`py-2.5 px-2 w-[65px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>QTY</th>
+                              <th className={`py-2.5 px-2 w-[85px] border-r text-right ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>CFT Vol.</th>
                               <th className="py-2.5 px-1.5 w-[45px]">Action</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-stone-200 bg-white">
+                          <tbody className={`divide-y ${isWoodScheduleApproved ? 'divide-emerald-200 bg-white/90' : 'divide-stone-200 bg-white'}`}>
                             {parts.length > 0 ? (
                               parts.map((p, idx) => {
                                 const partCft = ((p.width * p.breadth * p.length) / 144) * p.quantity;
                                 return (
-                                  <tr key={p.id} className="hover:bg-amber-50/10 text-center font-semibold text-stone-850">
+                                  <tr key={p.id} className={`${isWoodScheduleApproved ? 'hover:bg-emerald-50/30' : 'hover:bg-amber-50/10'} text-center font-semibold text-stone-850`}>
                                     {/* Name input */}
-                                    <td className="py-1 px-2 text-left border-r border-stone-200">
+                                    <td className={`py-1 px-2 text-left border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
                                       <input
                                         type="text"
                                         required
+                                        disabled={isWoodScheduleApproved}
                                         value={p.part_name}
                                         onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
                                         placeholder="e.g. Backside Legs"
-                                        className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold"
+                                        className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold disabled:cursor-not-allowed disabled:text-stone-800"
                                       />
                                     </td>
 
                                     {/* Width (inches) */}
-                                    <td className="py-1 px-1 border-r border-stone-200">
+                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
                                       <input
                                         type="number"
                                         step="0.01"
                                         required
+                                        disabled={isWoodScheduleApproved}
                                         min={0}
                                         value={p.width || ''}
                                         onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
                                         placeholder='0.0"'
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
                                       />
                                     </td>
 
                                     {/* Breadth (inches) */}
-                                    <td className="py-1 px-1 border-r border-stone-200">
+                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
                                       <input
                                         type="number"
                                         step="0.01"
                                         required
+                                        disabled={isWoodScheduleApproved}
                                         min={0}
                                         value={p.breadth || ''}
                                         onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
                                         placeholder='0.0"'
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
                                       />
                                     </td>
 
                                     {/* Length (feet) */}
-                                    <td className="py-1 px-1 border-r border-stone-200">
+                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
                                       <input
                                         type="number"
                                         step="0.1"
                                         required
+                                        disabled={isWoodScheduleApproved}
                                         min={0}
                                         value={p.length || ''}
                                         onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
                                         placeholder="0.0'"
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
                                       />
                                     </td>
 
                                     {/* Quantity */}
-                                    <td className="py-1 px-1 border-r border-stone-200">
+                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
                                       <input
                                         type="number"
                                         required
+                                        disabled={isWoodScheduleApproved}
                                         min={1}
                                         value={p.quantity || ''}
                                         onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
                                         placeholder="qty"
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold"
+                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
                                       />
                                     </td>
 
                                     {/* Computed CFT */}
-                                    <td className="py-1 px-3 border-r border-stone-200 text-stone-850 font-mono whitespace-nowrap text-right">
+                                    <td className={`py-1 px-3 border-r font-mono whitespace-nowrap text-right ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950 font-bold' : 'border-stone-200 text-stone-850'}`}>
                                       {isNaN(partCft) ? '0.00' : partCft.toFixed(2)} CFT
                                     </td>
 
                                     {/* Delete trigger */}
                                     <td className="py-1 px-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setParts(parts.filter(pt => pt.id !== p.id))}
-                                        className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 rounded transition flex items-center justify-center mx-auto"
-                                        title="Remove part row"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
+                                      {!isWoodScheduleApproved ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setParts(parts.filter(pt => pt.id !== p.id))}
+                                          className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 rounded transition flex items-center justify-center mx-auto cursor-pointer"
+                                          title="Remove part row"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      ) : (
+                                        <span className="text-emerald-600 flex justify-center" title="Approved (Read only)">
+                                          <Lock size={12} />
+                                        </span>
+                                      )}
                                     </td>
                                   </tr>
                                 );
@@ -1080,14 +1212,18 @@ export default function WorkerDashboard({
                             )}
 
                             {/* Total CFT Summary Row */}
-                            <tr className="bg-amber-50/40 font-bold border-t border-stone-250 select-none text-[#593622]">
-                              <td colSpan={5} className="py-3 px-3 uppercase text-right text-[10px] tracking-wider border-r border-stone-200 font-bold font-sans">
+                            <tr className={`font-bold border-t select-none ${
+                              isWoodScheduleApproved
+                                ? 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black'
+                                : 'bg-amber-50/40 text-[#593622] border-stone-250'
+                            }`}>
+                              <td colSpan={5} className={`py-3 px-3 uppercase text-right text-[10px] tracking-wider border-r font-bold font-sans ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
                                 🛠️ Total Wood Volume Required:
                               </td>
-                              <td className="py-3 px-3 text-right font-mono text-[13px] border-r border-stone-200 font-black">
+                              <td className={`py-3 px-3 text-right font-mono text-[13px] border-r font-black ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950' : 'border-stone-200'}`}>
                                 {parts.reduce((tot, p) => tot + (((p.width * p.breadth * p.length) / 144) * p.quantity), 0).toFixed(2)} CFT
                               </td>
-                              <td className="bg-white"></td>
+                              <td className={isWoodScheduleApproved ? 'bg-emerald-100' : 'bg-white'}></td>
                             </tr>
                           </tbody>
                         </table>
@@ -1113,7 +1249,7 @@ export default function WorkerDashboard({
               {/* Upload dynamic live photos (Simulated Paste url) */}
               <div className="space-y-3 font-sans">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
-
+                
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Local file and mobile camera buttons */}
                   <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
@@ -1217,7 +1353,7 @@ export default function WorkerDashboard({
                     <span>🔗 Paste manual snapshot link</span>
                     <span className="group-open:rotate-180 transition-transform">▼</span>
                   </summary>
-
+                  
                   <div className="p-3 border-t bg-stone-50 space-y-2">
                     <div className="flex gap-2">
                       <input
@@ -1297,7 +1433,7 @@ export default function WorkerDashboard({
                 <ImageIcon size={16} className="text-amber-400" />
                 <span className="font-bold text-xs uppercase tracking-wider">Design Reference Image Lightbox</span>
               </div>
-              <button
+              <button 
                 type="button"
                 onClick={() => setLightboxImg(null)}
                 className="p-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer"
@@ -1324,7 +1460,7 @@ export default function WorkerDashboard({
   // --- MODE A: LISTING WINDOW ---
   return (
     <div className="space-y-6">
-
+      
       {/* Worker workbench Header details block */}
       <div>
         <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">
@@ -1353,7 +1489,6 @@ export default function WorkerDashboard({
               {myOrders.length > 0 ? (
                 myOrders.map((ord) => {
                   const matchingCust = customers.find((c) => c.id === ord.customer_id);
-                  const normalizedStage = normalizeStage(ord.current_status);
                   const isStagedMine = isOrderInMyStage(ord.current_status);
                   return (
                     <tr key={ord.id} className="hover:bg-stone-50/50 transition">
@@ -1383,11 +1518,7 @@ export default function WorkerDashboard({
                           <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
                             Needs Update
                           </span>
-                        ) : normalizedStage === 'Ready to Dispatch' ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                            Ready
-                          </span>
-                        ) : normalizedStage === 'Dispatched' ? (
+                        ) : ord.current_status === 'Ready to Dispatch' ? (
                           <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
                             Dispatched
                           </span>

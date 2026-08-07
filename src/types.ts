@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person' | 'qc_staff';
+export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person';
 
 export interface User {
   id: string; // Firebase Auth UID equivalent
@@ -41,34 +41,29 @@ export type OrderStage =
   | 'Polish'
   | 'QC 2'
   | 'Ready to Dispatch'
-  | 'Ready To Dispatch'
   | 'Dispatched'
-  // Legacy aliases still used by older UI flows
+  // Legacy aliases
   | 'Design'
   | 'Carpentry'
   | 'QC Check 1'
   | 'QC Check 2';
 
 export function normalizeStage(stage: string): OrderStage {
-  if (stage === 'Design' || stage === 'Designing') return 'Designing';
-  if (stage === 'Carpentry' || stage === 'Making Started') return 'Making Started';
-  if (stage === 'QC Check 1' || stage === 'QC 1') return 'QC 1';
-  if (stage === 'QC Check 2' || stage === 'QC 2') return 'QC 2';
-  if (stage === 'Ready to Dispatch' || stage === 'Ready To Dispatch') return 'Ready to Dispatch';
+  if (stage === 'Design') return 'Designing';
+  if (stage === 'Carpentry') return 'Making Started';
+  if (stage === 'QC Check 1') return 'QC 1';
+  if (stage === 'QC Check 2') return 'QC 2';
   if (stage === 'Dispatched') return 'Dispatched';
-  if (stage === 'Wood Procurement') return 'Wood Procurement';
-  if (stage === 'Making Completed') return 'Making Completed';
-  if (stage === 'Polish') return 'Polish';
-  return 'Pending';
+  return stage as OrderStage;
 }
 
-export type OrderPriority = 'normal' | 'urgent' | 'Low' | 'Medium' | 'High' | 'Urgent';
+export type OrderPriority = 'normal' | 'urgent';
 
 export interface WoodPart {
   id: string;
   part_name: string;
   width: number; // in inches
-  breadth: number; // in inches (thickness)
+  breadth: number; // in inches
   length: number; // in feet
   quantity: number;
 }
@@ -80,6 +75,7 @@ export interface WoodSchedule {
   sqft: number;
   image_link?: string;
   parts: WoodPart[];
+  status?: 'Pending' | 'Approved' | 'Rejected';
   qc_check_1_details?: {
     measurement: boolean;
     finishing: boolean;
@@ -129,20 +125,8 @@ export interface Order {
     uploaded_by: string;
   }>;
   wood_schedule?: WoodSchedule;
+  wood_schedule_status?: 'Pending' | 'Approved' | 'Rejected';
   carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
-  wood_schedule_status?: 'Pending Review' | 'Approved' | 'Rejected';
-  wood_rejection_note?: string;
-  carpentry_notes?: string;
-  carpentry_progress?: string;
-  carpentry_completion_notes?: string;
-  qc_1_measurements_verified?: boolean;
-  qc_1_finish_verified?: boolean;
-  qc_1_buffer_verified?: boolean;
-  polishing_notes?: string;
-  polish_completion_notes?: string;
-  qc_2_polish_quality_verified?: boolean;
-  qc_2_surface_finish_approved?: boolean;
-  qc_2_final_product_approved?: boolean;
   total_amount?: number;
   advance_paid?: number;
   dispatchDate?: string;
@@ -152,8 +136,6 @@ export interface Order {
   deliveryPersonName?: string;
   deliveryPersonContact?: string;
   vehicleNumber?: string;
-  transportDetails?: string;
-  trackingNumber?: string;
 }
 
 export interface StatusLog {
@@ -178,15 +160,6 @@ export interface Payment {
   payment_date: string;
   payment_mode: 'cash' | 'upi' | 'transfer';
   notes?: string;
-  dispatchDate?: string;
-  dispatchedAt?: string;
-  dispatchedBy?: string;
-  dispatchNotes?: string;
-  deliveryPersonName?: string;
-  deliveryPersonContact?: string;
-  vehicleNumber?: string;
-  transportDetails?: string;
-  trackingNumber?: string;
   created_by: string;
   created_at: string;
 }
@@ -383,4 +356,5 @@ export interface CRMTimelineEvent {
   timestamp: string;
   operator: string;
 }
+
 
