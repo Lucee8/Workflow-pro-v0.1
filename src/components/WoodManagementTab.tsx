@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Trees,
   Search,
@@ -25,9 +25,9 @@ import {
   Plus,
   Save
 } from 'lucide-react';
-import { Order, Customer } from '../types';
-import { formatToDDMMYYYY } from '../utils';
+import { Order, Customer, OrderStage, StatusLog } from '../types';
 import { generateUUID } from '../db/store';
+import { formatToDDMMYYYY } from '../utils';
 
 export interface WoodRequirementItem {
   id: string;
@@ -110,18 +110,6 @@ export default function WoodManagementTab({
   const [printModalRequest, setPrintModalRequest] = useState<WoodRequirementRequest | null>(null);
   const [deleteConfirmReq, setDeleteConfirmReq] = useState<WoodRequirementRequest | null>(null);
 
-  // Sync statusMap from localStorage whenever component mounts or orders change
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('bhisez_wood_request_statuses');
-      if (saved) {
-        setStatusMap(JSON.parse(saved));
-      }
-    } catch {
-      // ignore
-    }
-  }, [orders]);
-  
   // Automatically derive & synchronize Wood Schedule records from Orders in real time
   const synchronizedRequests = useMemo(() => {
     const list: WoodRequirementRequest[] = [];
@@ -131,13 +119,6 @@ export default function WoodManagementTab({
     orders.forEach((ord) => {
       const orderKey = ord.id;
       if (deletedIds.includes(orderKey)) return;
-
-      const hasWoodStatus = !!statusMap[ord.id];
-
-      // Order appears in Admin Wood Management tab ONLY AFTER carpenter submits the wood calculation sheet
-      if (!hasWoodStatus) {
-        return;
-      }
 
       seenOrderIds.add(orderKey);
 
@@ -209,92 +190,39 @@ export default function WoodManagementTab({
 
   // Persist status updates
   const handleUpdateStatus = (id: string, newStatus: 'Approved' | 'Rejected' | 'Pending') => {
-    const req = synchronizedRequests.find((r) => r.id === id);
-    const targetOrderId = req?.orderId || id;
-
     const updatedMap = { ...statusMap, [id]: newStatus };
-    if (targetOrderId) {
-      updatedMap[targetOrderId] = newStatus;
+    setStatusMap(updatedMap);
+    localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(updatedMap));
+
+    if (selectedRequest && selectedRequest.id === id) {
+      setSelectedRequest((prev) => (prev ? { ...prev, status: newStatus } : null));
     }
 
-    if (newStatus === 'Approved') {
-      const targetOrder = orders.find((o) => o.id === targetOrderId);
-
-      if (targetOrder && onOrderUpdate) {
+    // Auto-advance order if linked to an order
+    const req = synchronizedRequests.find((r) => r.id === id);
+    if (req && req.orderId && onOrderUpdate) {
+      const targetOrder = orders.find((o) => o.id === req.orderId);
+      if (targetOrder) {
+        const nextStage: OrderStage = newStatus === 'Approved' && targetOrder.current_status === 'Wood Procurement' ? 'Making Started' : targetOrder.current_status;
         const updatedOrder: Order = {
           ...targetOrder,
-          current_status: 'Making Started',
-          carpenter_sub_status: 'under_carpentry',
-          updated_at: new Date().toISOString()
+          wood_schedule_status: newStatus === 'Pending' ? 'Pending Review' : newStatus,
+          current_status: nextStage,
+          updated_at: new Date().toISOString(),
         };
-
-        const log = {
+        const log: StatusLog = {
           id: 'log_' + generateUUID().split('-')[0],
           order_id: targetOrder.id,
-          stage: 'Making Started',
+          stage: nextStage,
           changed_by: 'admin',
-          changed_by_name: 'Admin Manager',
+          changed_by_name: 'Administrator',
           changed_by_role: 'admin',
           timestamp: new Date().toISOString(),
-          note: `Wood sheet approved by Admin. Order moved into Under Carpentry.`
+          note: newStatus === 'Approved' 
+            ? 'Wood Sheet approved by Admin. Production moved to Making Started.' 
+            : 'Wood Sheet rejected by Admin. Revision required.',
         };
-
         onOrderUpdate(updatedOrder, log);
-
-        // Push notification for the carpenter
-        try {
-          const newNotif = {
-            id: 'notif_wood_' + Date.now(),
-            order_id: targetOrder.id,
-            article_no: targetOrder.article_no || 'N/A',
-            category: targetOrder.category || 'Furniture',
-            sub_category: targetOrder.sub_category,
-            old_stage: 'Wood Procurement',
-            new_stage: 'Making Started',
-            changed_by_name: 'Admin Manager',
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            title: '🪵 Wood Sheet Approved',
-            message: `Wood calculation sheet for Article #${targetOrder.article_no} has been approved by Admin! Order is now under Carpentry.`
-          };
-
-          const existingNotifs = JSON.parse(localStorage.getItem('bhise_notifications_list_v1') || '[]');
-          localStorage.setItem('bhise_notifications_list_v1', JSON.stringify([newNotif, ...existingNotifs]));
-        } catch (e) {
-          console.error('Error storing notification:', e);
-        }
-
-        alert(`Success: Wood sheet approved for Article #${targetOrder.article_no}! Carpenter notified and order moved into Under Carpentry.`);
-      }
-    } else if (newStatus === 'Rejected') {
-      const req = synchronizedRequests.find((r) => r.id === id);
-      const targetOrderId = req?.orderId || id;
-      const targetOrder = orders.find((o) => o.id === targetOrderId);
-
-      if (targetOrder) {
-        try {
-          const newNotif = {
-            id: 'notif_wood_rej_' + Date.now(),
-            order_id: targetOrder.id,
-            article_no: targetOrder.article_no || 'N/A',
-            category: targetOrder.category || 'Furniture',
-            sub_category: targetOrder.sub_category,
-            old_stage: 'Wood Procurement',
-            new_stage: 'Wood Procurement',
-            changed_by_name: 'Admin Manager',
-            timestamp: new Date().toISOString(),
-            is_read: false,
-            title: '❌ Wood Sheet Rejected',
-            message: `Wood calculation sheet for Article #${targetOrder.article_no} was rejected by Admin. Please update table and re-submit in Workbench.`
-          };
-
-          const existingNotifs = JSON.parse(localStorage.getItem('bhise_notifications_list_v1') || '[]');
-          localStorage.setItem('bhise_notifications_list_v1', JSON.stringify([newNotif, ...existingNotifs]));
-        } catch (e) {
-          console.error('Error storing notification:', e);
-        }
-
-        alert(`Notice: Wood sheet for Article #${targetOrder.article_no} set to Rejected. Carpenter has been notified to revise and re-submit.`);
       }
     }
   };
@@ -787,25 +715,24 @@ export default function WoodManagementTab({
                           >
                             <Eye size={15} />
                           </button>
-
-                          <button
-                            disabled={!isPending}
-                            onClick={() => handleUpdateStatus(req.id, 'Approved')}
-                            className="p-1.5 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-40 disabled:hover:bg-emerald-100 disabled:cursor-not-allowed text-emerald-800 rounded-lg transition border border-emerald-300"
-                            title="Approve Wood Request"
-                          >
-                            <CheckCircle2 size={15} />
-                          </button>
-
-                          <button
-                            disabled={!isPending}
-                            onClick={() => handleUpdateStatus(req.id, 'Rejected')}
-                            className="p-1.5 bg-rose-100 hover:bg-rose-200 disabled:opacity-40 disabled:hover:bg-rose-100 disabled:cursor-not-allowed text-rose-800 rounded-lg transition border border-rose-300"
-                            title="Reject Wood Request"
-                          >
-                            <XCircle size={15} />
-                          </button>
-
+                          {isPending && (
+                            <button
+                              onClick={() => handleUpdateStatus(req.id, 'Approved')}
+                              className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition border border-emerald-300"
+                              title="Approve Wood Request"
+                            >
+                              <CheckCircle2 size={15} />
+                            </button>
+                          )}
+                          {isPending && (
+                            <button
+                              onClick={() => handleUpdateStatus(req.id, 'Rejected')}
+                              className="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg transition border border-rose-300"
+                              title="Reject Wood Request"
+                            >
+                              <XCircle size={15} />
+                            </button>
+                          )}
                           <button
                             onClick={() => handlePrintRequest(req)}
                             className="p-1.5 bg-white hover:bg-stone-100 text-stone-700 rounded-lg transition border border-stone-300"
@@ -990,24 +917,24 @@ export default function WoodManagementTab({
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <button
-                      disabled={!isPending}
-                      onClick={() => handleUpdateStatus(req.id, 'Approved')}
-                      className="p-2 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-40 disabled:hover:bg-emerald-100 disabled:cursor-not-allowed text-emerald-800 rounded-xl transition border border-emerald-300/60 cursor-pointer"
-                      title="Approve Wood Request"
-                    >
-                      <CheckCircle2 size={16} />
-                    </button>
-
-                    <button
-                      disabled={!isPending}
-                      onClick={() => handleUpdateStatus(req.id, 'Rejected')}
-                      className="p-2 bg-rose-100 hover:bg-rose-200 disabled:opacity-40 disabled:hover:bg-rose-100 disabled:cursor-not-allowed text-rose-800 rounded-xl transition border border-rose-300/60 cursor-pointer"
-                      title="Reject Wood Request"
-                    >
-                      <XCircle size={16} />
-                    </button>
-
+                    {isPending && (
+                      <button
+                        onClick={() => handleUpdateStatus(req.id, 'Approved')}
+                        className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl transition border border-emerald-300/60 cursor-pointer"
+                        title="Approve Wood Request"
+                      >
+                        <CheckCircle2 size={16} />
+                      </button>
+                    )}
+                    {isPending && (
+                      <button
+                        onClick={() => handleUpdateStatus(req.id, 'Rejected')}
+                        className="p-2 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl transition border border-rose-300/60 cursor-pointer"
+                        title="Reject Wood Request"
+                      >
+                        <XCircle size={16} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1267,24 +1194,24 @@ export default function WoodManagementTab({
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  disabled={selectedRequest.status !== 'Pending'}
-                  onClick={() => handleUpdateStatus(selectedRequest.id, 'Approved')}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:hover:bg-emerald-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
-                >
-                  <CheckCircle2 size={15} />
-                  Approve Wood Sheet
-                </button>
-
-                <button
-                  disabled={selectedRequest.status !== 'Pending'}
-                  onClick={() => handleUpdateStatus(selectedRequest.id, 'Rejected')}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:hover:bg-rose-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
-                >
-                  <XCircle size={15} />
-                  Reject Sheet
-                </button>
-
+                {selectedRequest.status === 'Pending' && (
+                  <button
+                    onClick={() => handleUpdateStatus(selectedRequest.id, 'Approved')}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <CheckCircle2 size={15} />
+                    Approve Wood Sheet
+                  </button>
+                )}
+                {selectedRequest.status === 'Pending' && (
+                  <button
+                    onClick={() => handleUpdateStatus(selectedRequest.id, 'Rejected')}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <XCircle size={15} />
+                    Reject Sheet
+                  </button>
+                )}
                 <button
                   onClick={() => handlePrintRequest(selectedRequest)}
                   className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"

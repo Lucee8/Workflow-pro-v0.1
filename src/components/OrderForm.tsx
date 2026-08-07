@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Customer, User, Order, OrderPriority, OrderStage } from '../types';
+import { Customer, User, Order, OrderPriority, OrderStage, normalizeStage } from '../types';
 import { generateUUID, generateArticleNumber } from '../db/store';
 import { generateNewOrderNo } from '../utils';
 import { 
@@ -115,7 +115,7 @@ export default function OrderForm({
 
   // Helper workload count
   const getWorkload = (userId: string) => {
-    return orders.filter((o) => (o.carpenter_id === userId || o.polish_person_id === userId) && o.current_status !== 'Ready to Dispatch').length;
+    return orders.filter((o) => (o.carpenter_id === userId || o.polish_person_id === userId) && !['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))).length;
   };
 
   // --- STEP 1: PRODUCT STATE ---
@@ -406,7 +406,7 @@ export default function OrderForm({
   const [deliveryDate, setDeliveryDate] = React.useState(
     new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // today + 10 days
   );
-  const [priority, setPriority] = React.useState<OrderPriority>('Medium');
+  const [priority, setPriority] = React.useState<OrderPriority>('normal');
   const [internalNotes, setInternalNotes] = React.useState('');
 
   // Article Number Preview calculation
@@ -773,7 +773,7 @@ export default function OrderForm({
         polish_person_id: prod.polishPersonId || polishPersonId || undefined,
         polish_labour_rate: prod.polishLabourRate !== '' ? Number(prod.polishLabourRate) : undefined,
         polish_delivery_date: prod.polishPersonId ? (prod.polishDeliveryDate || polishDeliveryDate) : undefined,
-        current_status: 'Pending',
+        current_status: 'Designing',
         is_delayed: false,
         priority,
         order_date: orderDate,
@@ -1610,9 +1610,9 @@ export default function OrderForm({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setPriority('Medium')}
+                    onClick={() => setPriority('normal')}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${
-                      priority === 'Medium'
+                      priority === 'normal'
                         ? 'bg-stone-100 text-stone-800 border-stone-300'
                         : 'bg-stone-50 text-stone-500 border-stone-200'
                     }`}
@@ -1621,9 +1621,9 @@ export default function OrderForm({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPriority('Urgent')}
+                    onClick={() => setPriority('urgent')}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${
-                      priority === 'Urgent'
+                      priority === 'urgent'
                         ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-sm animate-pulse'
                         : 'bg-stone-50 text-stone-500 border-stone-200'
                     }`}

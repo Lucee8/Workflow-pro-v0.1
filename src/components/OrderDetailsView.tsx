@@ -211,7 +211,7 @@ export default function OrderDetailsView({
 
   // QC Failure Note State
   const [showQcFailModal, setShowQcFailModal] = React.useState(false);
-  const [qcFailLogStage, setQcFailLogStage] = React.useState<OrderStage>('Carpentry');
+  const [qcFailLogStage, setQcFailLogStage] = React.useState<OrderStage>('Making Started');
   const [qcFailNote, setQcFailNote] = React.useState('');
 
   // Tab Navigation State
@@ -238,11 +238,11 @@ export default function OrderDetailsView({
 
   React.useEffect(() => {
     if (existingPayment) {
-      setTotalAmount(existingPayment.total_amount ?? 0);
-      setAdvancePaid(existingPayment.advance_paid ?? 0);
-      setPaymentDate(existingPayment.dispatchDate ?? new Date().toISOString().split('T')[0]);
-      setPaymentMode('cash');
-      setPaymentNotes(existingPayment.dispatchNotes || '');
+      setTotalAmount(existingPayment.total_amount);
+      setAdvancePaid(existingPayment.advance_paid);
+      setPaymentDate(existingPayment.payment_date);
+      setPaymentMode(existingPayment.payment_mode);
+      setPaymentNotes(existingPayment.notes || '');
     } else {
       setTotalAmount(order.total_amount || 0);
       setAdvancePaid(order.advance_paid || 0);
@@ -268,9 +268,12 @@ export default function OrderDetailsView({
       order_id: order.id,
       total_amount: totalAmount,
       advance_paid: advancePaid,
-      dispatchDate: paymentDate,
-      dispatchNotes: paymentNotes,
-      dispatchedBy: currentUser.id,
+      balance_due: balanceDue,
+      payment_date: paymentDate,
+      payment_mode: paymentMode,
+      notes: paymentNotes,
+      created_by: currentUser.id,
+      created_at: existingPayment?.created_at || new Date().toISOString(),
     };
 
     onAddPayment(paymentRecord);
@@ -298,31 +301,17 @@ export default function OrderDetailsView({
     'Making Completed',
     'Polish',
     'QC 2',
-    'Ready to Dispatch',
+    'Ready To Dispatch',
     'Dispatched',
   ];
 
   const getStageIndex = (status: string) => {
     const norm = normalizeStage(status);
     const idx = stages.indexOf(norm);
-    if (idx !== -1) return idx;
-    if (status === 'Design') return 1;
-    if (status === 'Carpentry') return 3;
-    if (status === 'QC Check 1') return 4;
-    if (status === 'QC Check 2') return 7;
-    return 0;
+    return idx !== -1 ? idx : 0;
   };
 
   const currentStageIndex = getStageIndex(order.current_status);
-
-  // QC Checklists State
-  const [qc1Measurements, setQc1Measurements] = React.useState(false);
-  const [qc1Finish, setQc1Finish] = React.useState(false);
-  const [qc1Buffer, setQc1Buffer] = React.useState(false);
-
-  const [qc2PolishQuality, setQc2PolishQuality] = React.useState(false);
-  const [qc2SurfaceFinish, setQc2SurfaceFinish] = React.useState(false);
-  const [qc2FinalProduct, setQc2FinalProduct] = React.useState(false);
 
   // Debouncing lock to prevent accidental double-clicks from skipping stages
   const [isAdvancing, setIsAdvancing] = React.useState(false);
@@ -330,11 +319,11 @@ export default function OrderDetailsView({
   // Dispatch Modal state
   const [showDispatchModal, setShowDispatchModal] = React.useState(false);
   const [dispatchForm, setDispatchForm] = React.useState({
-    dispatchDate: order.delivery_date || new Date().toISOString().split('T')[0],
-    deliveryPersonName: '',
-    deliveryPersonContact: '',
-    vehicleNumber: '',
-    dispatchNotes: '',
+    dispatchDate: order.dispatchDate || order.delivery_date || new Date().toISOString().split('T')[0],
+    deliveryPersonName: order.deliveryPersonName || '',
+    deliveryPersonContact: order.deliveryPersonContact || '',
+    vehicleNumber: order.vehicleNumber || '',
+    dispatchNotes: order.dispatchNotes || '',
   });
 
   // Administrative transition actions
@@ -374,6 +363,13 @@ export default function OrderDetailsView({
     const updatedOrder: Order = {
       ...order,
       current_status: 'Dispatched',
+      dispatchDate: dispatchForm.dispatchDate || new Date().toISOString().split('T')[0],
+      dispatchedAt: new Date().toISOString(),
+      dispatchedBy: currentUser.name || currentUser.id,
+      dispatchNotes: dispatchForm.dispatchNotes,
+      deliveryPersonName: dispatchForm.deliveryPersonName,
+      deliveryPersonContact: dispatchForm.deliveryPersonContact,
+      vehicleNumber: dispatchForm.vehicleNumber,
       updated_at: new Date().toISOString(),
     };
 
@@ -393,13 +389,144 @@ export default function OrderDetailsView({
     setShowDispatchModal(false);
   };
 
+  // QC Checkbox States
+  const [qc1Measurements, setQc1Measurements] = React.useState(!!order.qc_1_measurements_verified);
+  const [qc1Finish, setQc1Finish] = React.useState(!!order.qc_1_finish_verified);
+  const [qc1Buffer, setQc1Buffer] = React.useState(!!order.qc_1_buffer_verified);
+
+  const [qc2Polish, setQc2Polish] = React.useState(!!order.qc_2_polish_quality_verified);
+  const [qc2Surface, setQc2Surface] = React.useState(!!order.qc_2_surface_finish_approved);
+  const [qc2Final, setQc2Final] = React.useState(!!order.qc_2_final_product_approved);
+
+  // Sync state when order prop changes
+  React.useEffect(() => {
+    setQc1Measurements(!!order.qc_1_measurements_verified);
+    setQc1Finish(!!order.qc_1_finish_verified);
+    setQc1Buffer(!!order.qc_1_buffer_verified);
+    setQc2Polish(!!order.qc_2_polish_quality_verified);
+    setQc2Surface(!!order.qc_2_surface_finish_approved);
+    setQc2Final(!!order.qc_2_final_product_approved);
+  }, [
+    order.qc_1_measurements_verified,
+    order.qc_1_finish_verified,
+    order.qc_1_buffer_verified,
+    order.qc_2_polish_quality_verified,
+    order.qc_2_surface_finish_approved,
+    order.qc_2_final_product_approved,
+  ]);
+
+  // Stage Specific Action Handlers
+  const handleMoveToDesigning = () => {
+    triggerTransition('Designing', 'Order moved from Pending to Designing.');
+  };
+
+  const handleFinalizeDesign = () => {
+    triggerTransition('Wood Procurement', 'Design specifications finalized. Order moved to Wood Procurement.');
+  };
+
+  const handleApproveWoodSchedule = () => {
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: 'Making Started',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: 'Admin approved Wood Schedule. Order automatically advanced to Making Started.',
+    };
+    const updatedOrder: Order = {
+      ...order,
+      wood_schedule_status: 'Approved',
+      current_status: 'Making Started',
+      updated_at: new Date().toISOString(),
+    };
+    onUpdateOrder(updatedOrder, log);
+  };
+
+  const handleRejectWoodSchedule = () => {
+    const note = prompt('Enter reason for rejecting Wood Sheet:', 'Wood schedule requires revision.');
+    if (note === null) return;
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: 'Wood Procurement',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: `Admin rejected Wood Schedule: ${note}`,
+    };
+    const updatedOrder: Order = {
+      ...order,
+      wood_schedule_status: 'Rejected',
+      wood_rejection_note: note,
+      updated_at: new Date().toISOString(),
+    };
+    onUpdateOrder(updatedOrder, log);
+  };
+
+  const handleCompleteCarpentry = () => {
+    triggerTransition('QC 1', 'Carpentry completed. Order moved to QC 1.');
+  };
+
+  const handlePassQC1 = () => {
+    const updatedOrder: Order = {
+      ...order,
+      qc_1_measurements_verified: true,
+      qc_1_finish_verified: true,
+      qc_1_buffer_verified: true,
+      current_status: 'Making Completed',
+      updated_at: new Date().toISOString(),
+    };
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: 'Making Completed',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: 'QC 1 passed: Measurements, Finish, and Buffer verified. Order moved to Making Completed.',
+      qc_passed: true,
+    };
+    onUpdateOrder(updatedOrder, log);
+  };
+
+  const handleMoveToPolish = () => {
+    triggerTransition('Polish', 'Carpentry completed and verified. Order moved to Polish stage.');
+  };
+
+  const handleCompletePolish = () => {
+    triggerTransition('QC 2', 'Polish completed. Order moved to QC 2.');
+  };
+
+  const handlePassQC2 = () => {
+    const updatedOrder: Order = {
+      ...order,
+      qc_2_polish_quality_verified: true,
+      qc_2_surface_finish_approved: true,
+      qc_2_final_product_approved: true,
+      current_status: 'Ready To Dispatch',
+      updated_at: new Date().toISOString(),
+    };
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: 'Ready To Dispatch',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: 'QC 2 passed: Polish Quality, Surface Finish, and Final Product approved. Order moved to Ready To Dispatch.',
+      qc_passed: true,
+    };
+    onUpdateOrder(updatedOrder, log);
+  };
+
   const handleAdminStepAction = (actionType: 'forward' | 'fail_qc_1' | 'fail_qc_2') => {
     if (isAdvancing) return;
     if (actionType === 'forward') {
-      if (order.current_status === 'Wood Procurement') {
-        alert('Advance Stage Forward is disabled during Wood Procurement. Please approve the wood calculation sheet in Wood Management tab to advance this order.');
-        return;
-      }
       const nextIdx = currentStageIndex + 1;
       if (nextIdx < stages.length) {
         const nextStage = stages[nextIdx];
@@ -504,14 +631,14 @@ export default function OrderDetailsView({
             <h1 className="text-xl md:text-2xl font-black font-display text-stone-900 tracking-tight">{order.article_no}</h1>
             <span
               className={`px-3 py-0.5 text-[10px] uppercase font-mono font-black border rounded-md ${
-                order.current_status === 'Ready to Dispatch'
+                order.current_status === 'Ready To Dispatch'
                   ? 'bg-green-150 text-green-800 border-green-300'
                   : order.current_status === 'Dispatched'
                   ? 'bg-emerald-100 text-emerald-850 border-emerald-300'
                   : 'bg-amber-100 text-[#593622] border-amber-300 animate-pulse'
               }`}
             >
-              {order.current_status === 'Ready to Dispatch' ? 'Ready' : order.current_status === 'Dispatched' ? 'Dispatched' : 'In Production'}
+              {order.current_status === 'Ready To Dispatch' ? 'Ready' : order.current_status === 'Dispatched' ? 'Dispatched' : 'In Production'}
             </span>
           </div>
           <p className="text-stone-500 text-xs">
@@ -535,7 +662,7 @@ export default function OrderDetailsView({
           </div>
           <div>
             <span className="text-[10px] text-stone-400 font-bold block uppercase">Priority</span>
-            <span className={`font-black text-[10px] block mt-0.5 uppercase ${order.priority === 'Urgent' ? 'text-rose-600 animate-pulse' : 'text-stone-600'}`}>
+            <span className={`font-black text-[10px] block mt-0.5 uppercase ${order.priority === 'urgent' ? 'text-rose-600 animate-pulse' : 'text-stone-600'}`}>
               {order.priority}
             </span>
           </div>
@@ -692,224 +819,285 @@ export default function OrderDetailsView({
                 </div>
               </div>
 
-              <p className="text-stone-600 text-[11px]">
-                {order.current_status === 'Pending' && 'Order registered. Design drawing specifications draft validation pending.'}
-                {(order.current_status === 'Designing' || order.current_status === 'Design') && 'Draft blueprint measurements and catalog reviews active under designers.'}
-                {order.current_status === 'Wood Procurement' && 'Raw timber sourcing, board selection, wood moisture inspection & schedule logging.'}
-                {(order.current_status === 'Making Started' || order.current_status === 'Carpentry') && 'Carpentry workshop underway. Assembly, edge-banding and framework cutting.'}
-                {(order.current_status === 'QC 1' || order.current_status === 'QC Check 1') && 'Administrator checking structural integrity, dimension margins and joints before routing to making completion.'}
-                {order.current_status === 'Making Completed' && 'Carpentry framework completed, sanded, and handed over to finishing department.'}
-                {order.current_status === 'Polish' && 'Polish department staining, sealing, high-gloss PU sealer coating.'}
-                {(order.current_status === 'QC 2' || order.current_status === 'QC Check 2') && 'Admin final review checking varnish thickness, lacquer evenness, hardware fittings & soft-closes.'}
-                {order.current_status === 'Ready to Dispatch' && 'Ready to Dispatch means production, finishing, inspection, and packing are completed, but the product has not left the workshop yet.'}
-                {order.current_status === 'Dispatched' && 'Dispatched means the product has physically left the workshop for customer delivery.'}
-              </p>
+              <div className="text-stone-600 text-[11px] space-y-2">
+                {order.current_status === 'Pending' && <p>Order has just been created. No department has received it yet.</p>}
+                {order.current_status === 'Designing' && <p>Drafting blueprints, measurements, reference drawings, and catalogue selections.</p>}
+                {order.current_status === 'Wood Procurement' && <p>Raw timber calculation and component wood schedule preparation.</p>}
+                {order.current_status === 'Making Started' && <p>Carpentry manufacturing and framework assembly in progress.</p>}
+                {order.current_status === 'QC 1' && <p>First Quality Check (Carpentry Audit) before polishing.</p>}
+                {order.current_status === 'Making Completed' && <p>Carpentry work fully finished, sanded, and ready for polishing.</p>}
+                {order.current_status === 'Polish' && <p>Surface polishing, staining, and protective lacquer coating in progress.</p>}
+                {order.current_status === 'QC 2' && <p>Final Quality Check (Polish & Finish Inspection) before dispatch.</p>}
+                {order.current_status === 'Ready To Dispatch' && <p>Product packaging complete and placed in dispatch bay.</p>}
+                {order.current_status === 'Dispatched' && <p>Product has been physically dispatched from workshop to customer.</p>}
+              </div>
 
-              {/* Administrative Transition triggers buttons */}
-              {isAdmin && order.current_status !== 'Dispatched' && (
-                <div className="pt-2 flex flex-col gap-3 border-t border-stone-150">
-                  <span className="text-[10px] font-bold text-stone-400 block uppercase tracking-wider">
-                    DEPARTMENT ACTION CONTROLLER:
-                  </span>
-                  
-                  {/* Stage 1: Pending */}
-                  {order.current_status === 'Pending' && (
-                    <div className="flex items-center gap-2">
+              {/* STAGE SPECIFIC ACTION CONTROLS */}
+              {order.current_status !== 'Dispatched' ? (
+                <div className="pt-3 border-t border-stone-200/80 space-y-3">
+                  {/* STAGE 1: PENDING */}
+                  {order.current_status === 'Pending' && isAdmin && (
+                    <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
+                      <span className="text-stone-700 font-semibold text-xs">Ready to begin design phase?</span>
                       <button
                         disabled={isAdvancing}
-                        onClick={() => triggerTransition('Designing', 'Order moved to Designing stage.')}
-                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
+                        onClick={handleMoveToDesigning}
+                        className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        <CheckCircle2 size={14} /> Move to Designing
+                        <CheckCircle2 size={13} /> Move to Designing
                       </button>
                     </div>
                   )}
 
-                  {/* Stage 2: Designing */}
-                  {(order.current_status === 'Designing' || order.current_status === 'Design') && (
-                    <div className="flex items-center gap-2">
+                  {/* STAGE 2: DESIGNING */}
+                  {order.current_status === 'Designing' && isAdmin && (
+                    <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
+                      <span className="text-stone-700 font-semibold text-xs">Finalize design blueprints & measurements</span>
                       <button
                         disabled={isAdvancing}
-                        onClick={() => triggerTransition('Wood Procurement', 'Design specifications finalized. Order moved to Wood Procurement.')}
-                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
+                        onClick={handleFinalizeDesign}
+                        className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        <CheckCircle2 size={14} /> Finalize Design
+                        <CheckCircle2 size={13} /> Finalize Design
                       </button>
                     </div>
                   )}
 
-                  {/* Stage 3: Wood Procurement */}
+                  {/* STAGE 3: WOOD PROCUREMENT */}
                   {order.current_status === 'Wood Procurement' && (
-                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-amber-900 text-xs font-medium space-y-1">
-                      <div className="font-bold flex items-center gap-1.5 text-amber-950">
-                        <span>🪵 Wood Procurement Active</span>
-                      </div>
-                      <p>
-                        Assigned Carpenter fills the Wood Schedule Calculation Table in Carpenter Workbench. Once submitted, Admin approves the sheet in the <strong>Wood Management</strong> tab, which automatically advances the order to <strong>Making Started</strong>.
-                      </p>
+                    <div className="space-y-2 bg-amber-50/60 p-3 rounded-xl border border-amber-200">
+                      {order.wood_schedule_status === 'Pending Review' ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                            <Clock size={15} className="text-amber-700" />
+                            <span>Wood Sheet Submitted - Awaiting Admin Approval</span>
+                          </div>
+                          {isAdmin && (
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                disabled={isAdvancing}
+                                onClick={handleApproveWoodSchedule}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                <CheckCircle2 size={13} /> Approve Wood Sheet
+                              </button>
+                              <button
+                                disabled={isAdvancing}
+                                onClick={handleRejectWoodSchedule}
+                                className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                Reject Wood Sheet
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : order.wood_schedule_status === 'Rejected' ? (
+                        <div className="text-rose-900 text-xs space-y-1">
+                          <strong className="block font-bold">⚠️ Wood Sheet Rejected: {order.wood_rejection_note}</strong>
+                          <p className="text-stone-600 text-[11px]">Please edit the Wood Schedule table below and resubmit.</p>
+                        </div>
+                      ) : (
+                        <div className="text-stone-700 text-xs">
+                          <span>Fill out the Wood Schedule calculation table below and click Submit Wood Schedule.</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Stage 4: Making Started (Carpentry) */}
-                  {(order.current_status === 'Making Started' || order.current_status === 'Carpentry') && (
-                    <div className="flex items-center gap-2">
+                  {/* STAGE 4: MAKING STARTED */}
+                  {order.current_status === 'Making Started' && (
+                    <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
+                      <span className="text-stone-700 font-semibold text-xs font-sans">Carpentry framework assembly underway</span>
                       <button
                         disabled={isAdvancing}
-                        onClick={() => triggerTransition('QC 1', 'Carpentry completed. Order moved to QC 1.')}
-                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
+                        onClick={handleCompleteCarpentry}
+                        className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        <CheckCircle2 size={14} /> Complete Carpentry (Move to QC 1)
+                        <CheckCircle2 size={13} /> Complete Carpentry
                       </button>
                     </div>
                   )}
 
-                  {/* Stage 5: QC 1 */}
-                  {(order.current_status === 'QC 1' || order.current_status === 'QC Check 1') && (
-                    <div className="space-y-3 bg-white p-3.5 rounded-xl border border-stone-200">
-                      <span className="text-xs font-bold text-stone-800 uppercase block">QC 1 Internal Check Required:</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc1Measurements ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
-                          <input type="checkbox" checked={qc1Measurements} onChange={(e) => setQc1Measurements(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
-                          <span>Measurements Verified</span>
+                  {/* STAGE 5: QC 1 */}
+                  {order.current_status === 'QC 1' && (
+                    <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-300 space-y-3">
+                      <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
+                        QC Check 1 (Carpentry Audit)
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-stone-800">
+                        <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={qc1Measurements}
+                            onChange={(e) => setQc1Measurements(e.target.checked)}
+                            className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="font-semibold">Measurements Verified</span>
                         </label>
-                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc1Finish ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
-                          <input type="checkbox" checked={qc1Finish} onChange={(e) => setQc1Finish(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
-                          <span>Finish Verified</span>
+                        <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={qc1Finish}
+                            onChange={(e) => setQc1Finish(e.target.checked)}
+                            className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="font-semibold">Finish Verified</span>
                         </label>
-                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc1Buffer ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
-                          <input type="checkbox" checked={qc1Buffer} onChange={(e) => setQc1Buffer(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
-                          <span>Buffer Verified</span>
+                        <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={qc1Buffer}
+                            onChange={(e) => setQc1Buffer(e.target.checked)}
+                            className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="font-semibold">Buffer Verified</span>
                         </label>
                       </div>
-
-                      <div className="flex items-center gap-2 pt-1">
+                      <div className="flex gap-2 pt-1">
                         <button
                           disabled={isAdvancing || !(qc1Measurements && qc1Finish && qc1Buffer)}
-                          onClick={() => triggerTransition('Making Completed', 'QC 1 verification passed successfully.', true)}
-                          className={`px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition flex items-center gap-1.5 ${
-                            qc1Measurements && qc1Finish && qc1Buffer && !isAdvancing
-                              ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer shadow-sm'
-                              : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                          onClick={handlePassQC1}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition flex items-center gap-1.5 ${
+                            qc1Measurements && qc1Finish && qc1Buffer
+                              ? 'bg-green-600 hover:bg-green-700 cursor-pointer shadow-xs'
+                              : 'bg-stone-300 cursor-not-allowed opacity-70'
                           }`}
                         >
-                          <CheckCircle2 size={14} /> Save QC 1
+                          <CheckCircle2 size={13} /> Save QC 1
                         </button>
-
-                        <button
-                          disabled={isAdvancing}
-                          onClick={() => handleAdminStepAction('fail_qc_1')}
-                          className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition cursor-pointer"
-                        >
-                          Fail (Send back to Making Started)
-                        </button>
+                        {isAdmin && (
+                          <button
+                            disabled={isAdvancing}
+                            onClick={() => handleAdminStepAction('fail_qc_1')}
+                            className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                          >
+                            Fail QC 1 (Revert)
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Stage 6: Making Completed */}
+                  {/* STAGE 6: MAKING COMPLETED */}
                   {order.current_status === 'Making Completed' && (
-                    <div className="space-y-3">
-                      <div className="bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex items-center gap-2 text-emerald-900 font-bold text-xs">
-                        <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                    <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
+                      <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                        <CheckCircle2 size={16} className="text-emerald-600" />
                         <span>✔ Carpentry Completed Successfully</span>
                       </div>
                       <button
                         disabled={isAdvancing}
-                        onClick={() => triggerTransition('Polish', 'Carpentry completed. Order moved to Polish stage.')}
-                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
+                        onClick={handleMoveToPolish}
+                        className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer mt-1"
                       >
-                        <CheckCircle2 size={14} /> Carpentry Done - Move to Polish
-                      </button>
-                    </div>
-                  )}
-                  {/* Stage 7: Polish */}
-                  {order.current_status === 'Polish' && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        disabled={isAdvancing}
-                        onClick={() => triggerTransition('QC 2', 'Polishing completed. Order moved to QC 2 stage.')}
-                        className={`bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                      >
-                        <CheckCircle2 size={14} /> Complete Polish (Move to QC 2)
+                        <CheckCircle2 size={13} /> Carpentry Done - Move to Polish
                       </button>
                     </div>
                   )}
 
-                  {/* Stage 8: QC 2 */}
-                  {(order.current_status === 'QC 2' || order.current_status === 'QC Check 2') && (
-                    <div className="space-y-3 bg-white p-3.5 rounded-xl border border-stone-200">
-                      <span className="text-xs font-bold text-stone-800 uppercase block">QC 2 Final Inspection Required:</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc2PolishQuality ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
-                          <input type="checkbox" checked={qc2PolishQuality} onChange={(e) => setQc2PolishQuality(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
-                          <span>Polish Quality Verified</span>
+                  {/* STAGE 7: POLISH */}
+                  {order.current_status === 'Polish' && (
+                    <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
+                      <span className="text-stone-700 font-semibold text-xs">Polishing, staining & protective sealer coat</span>
+                      <button
+                        disabled={isAdvancing}
+                        onClick={handleCompletePolish}
+                        className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle2 size={13} /> Complete Polish
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STAGE 8: QC 2 */}
+                  {order.current_status === 'QC 2' && (
+                    <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-300 space-y-3">
+                      <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
+                        QC Check 2 (Polish & Final Product Inspection)
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-stone-800">
+                        <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={qc2Polish}
+                            onChange={(e) => setQc2Polish(e.target.checked)}
+                            className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="font-semibold">Polish Quality Verified</span>
                         </label>
-                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc2SurfaceFinish ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
-                          <input type="checkbox" checked={qc2SurfaceFinish} onChange={(e) => setQc2SurfaceFinish(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
-                          <span>Surface Finish Approved</span>
+                        <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={qc2Surface}
+                            onChange={(e) => setQc2Surface(e.target.checked)}
+                            className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="font-semibold">Surface Finish Approved</span>
                         </label>
-                        <label className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${qc2FinalProduct ? 'bg-green-50 border-green-400 font-bold text-green-950' : 'bg-stone-50 border-stone-200 text-stone-700'}`}>
-                          <input type="checkbox" checked={qc2FinalProduct} onChange={(e) => setQc2FinalProduct(e.target.checked)} className="h-4 w-4 rounded text-green-700 focus:ring-green-500 cursor-pointer" />
-                          <span>Final Product Approved</span>
+                        <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={qc2Final}
+                            onChange={(e) => setQc2Final(e.target.checked)}
+                            className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="font-semibold">Final Product Approved</span>
                         </label>
                       </div>
-                      <div className="flex items-center gap-2 pt-1">
+                      <div className="flex gap-2 pt-1">
                         <button
-                          disabled={isAdvancing || !(qc2PolishQuality && qc2SurfaceFinish && qc2FinalProduct)}
-                          onClick={() => triggerTransition('Ready to Dispatch', 'Final QC 2 inspection passed successfully.', true)}
-                          className={`px-4 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition flex items-center gap-1.5 ${
-                            qc2PolishQuality && qc2SurfaceFinish && qc2FinalProduct && !isAdvancing
-                              ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer shadow-sm'
-                              : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                          disabled={isAdvancing || !(qc2Polish && qc2Surface && qc2Final)}
+                          onClick={handlePassQC2}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition flex items-center gap-1.5 ${
+                            qc2Polish && qc2Surface && qc2Final
+                              ? 'bg-green-600 hover:bg-green-700 cursor-pointer shadow-xs'
+                              : 'bg-stone-300 cursor-not-allowed opacity-70'
                           }`}
                         >
-                          <CheckCircle2 size={14} /> Approve Final QC
+                          <CheckCircle2 size={13} /> Approve Final QC
                         </button>
-
-                        <button
-                          disabled={isAdvancing}
-                          onClick={() => handleAdminStepAction('fail_qc_2')}
-                          className="bg-[#be123c] hover:bg-[#9f1239] text-white px-3 py-2 font-bold rounded-lg text-xs uppercase tracking-wider transition cursor-pointer"
-                        >
-                          Fail (Send back to Polish)
-                        </button>
+                        {isAdmin && (
+                          <button
+                            disabled={isAdvancing}
+                            onClick={() => handleAdminStepAction('fail_qc_2')}
+                            className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                          >
+                            Fail QC 2 (Revert)
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
-                  {/* Stage 9: Ready to Dispatch */}
-                  {order.current_status === 'Ready to Dispatch' && (
-                    <div className="space-y-2">
-                      <div className="bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex items-center gap-2 text-emerald-900 font-bold text-xs">
-                        <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+
+                  {/* STAGE 9: READY TO DISPATCH */}
+                  {order.current_status === 'Ready To Dispatch' && (
+                    <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
+                      <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                        <CheckCircle2 size={16} className="text-emerald-600" />
                         <span>✔ Product Ready for Dispatch</span>
                       </div>
-                      <button
-                        disabled={isAdvancing}
-                        onClick={() => setShowDispatchModal(true)}
-                        className={`bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 font-bold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                          isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                      >
-                        <CheckCircle2 size={14} /> Dispatch Order
-                      </button>
+                      {isAdmin && (
+                        <button
+                          disabled={isAdvancing}
+                          onClick={() => setShowDispatchModal(true)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer mt-1"
+                        >
+                          <CheckCircle2 size={13} /> Dispatch Order
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
+              ) : (
+                <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 text-xs text-emerald-900 font-bold flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-emerald-600" />
+                  <span>✔ Order Dispatched & Complete — Read Only Mode</span>
+                </div>
               )}
-              </motion.div>
+            </motion.div>
 
             {/* Dispatch details card if order is Dispatched */}
-            {(order.current_status === 'Dispatched' || existingPayment?.dispatchDate || existingPayment?.vehicleNumber) && (
+            {(order.current_status === 'Dispatched' || order.dispatchDate || order.vehicleNumber) && (
               <div className="bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl space-y-3 text-xs text-stone-800">
                 <div className="flex items-center gap-2 border-b border-emerald-200/80 pb-2 text-emerald-800 font-bold">
                   <CheckCircle2 size={16} className="text-emerald-600" />
@@ -918,43 +1106,43 @@ export default function OrderDetailsView({
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
                     <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatch Date</span>
-                      <strong className="text-stone-900 text-xs">
-                      {existingPayment?.dispatchDate ? formatToDDMMYYYY(existingPayment.dispatchDate) : (order.delivery_date ? formatToDDMMYYYY(order.delivery_date) : 'Dispatched')}
+                    <strong className="text-stone-900 text-xs">
+                      {order.dispatchDate ? formatToDDMMYYYY(order.dispatchDate) : (order.delivery_date ? formatToDDMMYYYY(order.delivery_date) : 'Dispatched')}
                     </strong>
                   </div>
-                  {existingPayment?.deliveryPersonName && (
+                  {order.deliveryPersonName && (
                     <div>
                       <span className="text-[10px] font-bold text-stone-500 uppercase block">Delivery Agent / Driver</span>
                       <strong className="text-stone-900 text-xs">
-                      {existingPayment?.deliveryPersonName} {existingPayment?.deliveryPersonContact ? `(${existingPayment.deliveryPersonContact})` : ''}
+                        {order.deliveryPersonName} {order.deliveryPersonContact ? `(${order.deliveryPersonContact})` : ''}
                       </strong>
                     </div>
                   )}
-                    {existingPayment?.vehicleNumber && (
+                  {order.vehicleNumber && (
                     <div>
                       <span className="text-[10px] font-bold text-stone-500 uppercase block">Vehicle NO</span>
-                      <strong className="text-stone-900 text-xs">{existingPayment?.vehicleNumber}</strong>
+                      <strong className="text-stone-900 text-xs">{order.vehicleNumber}</strong>
                     </div>
                   )}
-                    {existingPayment?.dispatchedBy && (
+                  {order.dispatchedBy && (
                     <div>
                       <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatched By</span>
-                      <strong className="text-stone-900 text-xs">{existingPayment?.dispatchedBy}</strong>
+                      <strong className="text-stone-900 text-xs">{order.dispatchedBy}</strong>
                     </div>
                   )}
-                  {existingPayment?.dispatchedAt && (
+                  {order.dispatchedAt && (
                     <div>
                       <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatched Timestamp</span>
                       <strong className="text-stone-900 text-xs">
-                      {new Date(existingPayment.dispatchedAt as string).toLocaleString()}
+                        {new Date(order.dispatchedAt).toLocaleString()}
                       </strong>
                     </div>
                   )}
                 </div>
-                {existingPayment?.dispatchNotes && (
+                {order.dispatchNotes && (
                   <div className="pt-2 border-t border-emerald-200/60">
                     <span className="text-[10px] font-bold text-stone-500 uppercase block">Dispatch Notes</span>
-                    <p className="text-stone-700 text-xs mt-0.5">{existingPayment.dispatchNotes}</p>
+                    <p className="text-stone-700 text-xs mt-0.5">{order.dispatchNotes}</p>
                   </div>
                 )}
               </div>
@@ -1495,13 +1683,9 @@ export default function OrderDetailsView({
                 </div>
                 <div className="space-y-1 text-[11px] leading-relaxed text-stone-605 text-stone-650">
                   <p>• Receipt Reference ID: <strong className="font-mono text-stone-900">{existingPayment.id}</strong></p>
-                  <p>
-                    • Transacted Mode: <strong className="capitalize text-stone-900">{((existingPayment as any).payment_mode as string) ?? 'N/A'}</strong> on <strong className="font-mono">{formatToDDMMYYYY(((existingPayment as any).payment_date as string) ?? existingPayment.dispatchDate ?? new Date().toISOString())}</strong>
-                  </p>
-                  {(((existingPayment as any).notes as string) || existingPayment.dispatchNotes) && <p>• Audited Notes: <span className="italic">"{((existingPayment as any).notes as string) ?? existingPayment.dispatchNotes}"</span></p>}
-                  <p className="text-[9px] text-stone-400 font-mono text-right mt-1.5">
-                    Last verified on {formatToDDMMYYYY(((existingPayment as any).created_at as string) ?? existingPayment.dispatchedAt ?? existingPayment.dispatchDate ?? new Date().toISOString())} {new Date(((existingPayment as any).created_at as string) ?? existingPayment.dispatchedAt ?? existingPayment.dispatchDate ?? new Date().toISOString()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <p>• Transacted Mode: <strong className="capitalize text-stone-900">{existingPayment.payment_mode}</strong> on <strong className="font-mono">{formatToDDMMYYYY(existingPayment.payment_date)}</strong></p>
+                  {existingPayment.notes && <p>• Audited Notes: <span className="italic">"{existingPayment.notes}"</span></p>}
+                  <p className="text-[9px] text-stone-400 font-mono text-right mt-1.5">Last verified on {formatToDDMMYYYY(existingPayment.created_at)} {new Date(existingPayment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             ) : (

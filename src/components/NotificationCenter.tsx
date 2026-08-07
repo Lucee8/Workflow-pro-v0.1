@@ -39,9 +39,10 @@ const STAGES: OrderStage[] = [
   'Making Completed',
   'Polish',
   'QC 2',
-  'Ready to Dispatch',
+  'Ready To Dispatch',
   'Dispatched',
 ];
+
 interface ToastAlert {
   id: string;
   title: string;

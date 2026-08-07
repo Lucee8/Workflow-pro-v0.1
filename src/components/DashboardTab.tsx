@@ -38,6 +38,9 @@ export default function DashboardTab({
   const getOrderBalanceDue = (o: Order) => {
     const p = payments.find((pay) => pay.order_id === o.id);
     if (p) {
+      if (typeof p.balance_due === 'number' && !isNaN(p.balance_due)) {
+        return Math.max(0, p.balance_due);
+      }
       const total = typeof p.total_amount === 'number' ? p.total_amount : (o.total_amount || 0);
       const adv = typeof p.advance_paid === 'number' ? p.advance_paid : (o.advance_paid || 0);
       return Math.max(0, total - adv);
@@ -56,9 +59,7 @@ export default function DashboardTab({
     if (orders.length === 0) return false;
     const p = payments.find((pay) => pay.order_id === o.id);
     if (p) {
-      const total = Number(p.total_amount) || 0;
-      const adv = Number(p.advance_paid) || 0;
-      return total - adv <= 0;
+      return (p.balance_due ?? (p.total_amount - p.advance_paid)) <= 0;
     }
     if (o.total_amount !== undefined && o.total_amount !== null && o.total_amount > 0) {
       return (o.total_amount - (o.advance_paid || 0)) <= 0;
@@ -80,7 +81,7 @@ export default function DashboardTab({
     { name: 'Making Completed', count: getStageCount('Making Completed'), color: '#6366f1', percent: 0 },
     { name: 'Polish', count: getStageCount('Polish'), color: '#0d9488', percent: 0 },
     { name: 'QC 2', count: getStageCount('QC 2'), color: '#818cf8', percent: 0 },
-    { name: 'Ready to Dispatch', count: getStageCount('Ready to Dispatch'), color: '#16a34a', percent: 0 },
+    { name: 'Ready To Dispatch', count: getStageCount('Ready To Dispatch'), color: '#16a34a', percent: 0 },
     { name: 'Dispatched', count: getStageCount('Dispatched'), color: '#059669', percent: 0 },
   ];
 
@@ -91,7 +92,7 @@ export default function DashboardTab({
 
   // Upcoming Deliveries schedule list (sorted by soonest date)
   const sortedUpcoming = [...orders]
-    .filter((o) => !['Ready to Dispatch', 'Dispatched'].includes(o.current_status))
+    .filter((o) => !['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)))
     .sort((a, b) => new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime())
     .slice(0, 4);
 
@@ -110,16 +111,20 @@ export default function DashboardTab({
   };
 
   // Helper for status classes
-  const getStatusClass = (stage: OrderStage) => {
+  const getStatusClass = (rawStage: string) => {
+    const stage = normalizeStage(rawStage);
     switch (stage) {
       case 'Pending': return 'bg-stone-100 text-stone-700 border-stone-200';
-      case 'Design': return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Carpentry': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'QC Check 1': return 'bg-purple-50 text-purple-700 border-purple-200';
-      case 'Polish': return 'bg-teal-50 text-teal-700 border-teal-200';
-      case 'QC Check 2': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-      case 'Ready to Dispatch': return 'bg-green-50 text-green-700 border-green-200';
+      case 'Designing': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Wood Procurement': return 'bg-amber-50 text-amber-800 border-amber-200';
+      case 'Making Started': return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'QC 1': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Making Completed': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      case 'Polish': return 'bg-pink-50 text-pink-700 border-pink-200';
+      case 'QC 2': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Ready To Dispatch': return 'bg-green-50 text-green-700 border-green-200';
       case 'Dispatched': return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      default: return 'bg-stone-100 text-stone-700 border-stone-200';
     }
   };
 

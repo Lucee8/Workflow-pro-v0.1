@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person';
+export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person' | 'qc_staff';
 
 export interface User {
   id: string; // Firebase Auth UID equivalent
@@ -41,30 +41,36 @@ export type OrderStage =
   | 'Polish'
   | 'QC 2'
   | 'Ready to Dispatch'
+  | 'Ready To Dispatch'
   | 'Dispatched'
-  // Legacy aliases
+  // Legacy aliases still used by older UI flows
   | 'Design'
   | 'Carpentry'
   | 'QC Check 1'
   | 'QC Check 2';
 
-export type OrderPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
-
 export function normalizeStage(stage: string): OrderStage {
-  if (stage === 'Design') return 'Designing';
-  if (stage === 'Carpentry') return 'Making Started';
-  if (stage === 'QC Check 1') return 'QC 1';
-  if (stage === 'QC Check 2') return 'QC 2';
+  if (stage === 'Design' || stage === 'Designing') return 'Designing';
+  if (stage === 'Carpentry' || stage === 'Making Started') return 'Making Started';
+  if (stage === 'QC Check 1' || stage === 'QC 1') return 'QC 1';
+  if (stage === 'QC Check 2' || stage === 'QC 2') return 'QC 2';
+  if (stage === 'Ready to Dispatch' || stage === 'Ready To Dispatch') return 'Ready to Dispatch';
   if (stage === 'Dispatched') return 'Dispatched';
-  return stage as OrderStage;
+  if (stage === 'Wood Procurement') return 'Wood Procurement';
+  if (stage === 'Making Completed') return 'Making Completed';
+  if (stage === 'Polish') return 'Polish';
+  return 'Pending';
 }
 
+export type OrderPriority = 'normal' | 'urgent' | 'Low' | 'Medium' | 'High' | 'Urgent';
+
 export interface WoodPart {
+  id: string;
   part_name: string;
+  width: number; // in inches
+  breadth: number; // in inches (thickness)
+  length: number; // in feet
   quantity: number;
-  dimensions?: string;
-  material?: string;
-  notes?: string;
 }
 
 export interface WoodSchedule {
@@ -124,8 +130,30 @@ export interface Order {
   }>;
   wood_schedule?: WoodSchedule;
   carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
+  wood_schedule_status?: 'Pending Review' | 'Approved' | 'Rejected';
+  wood_rejection_note?: string;
+  carpentry_notes?: string;
+  carpentry_progress?: string;
+  carpentry_completion_notes?: string;
+  qc_1_measurements_verified?: boolean;
+  qc_1_finish_verified?: boolean;
+  qc_1_buffer_verified?: boolean;
+  polishing_notes?: string;
+  polish_completion_notes?: string;
+  qc_2_polish_quality_verified?: boolean;
+  qc_2_surface_finish_approved?: boolean;
+  qc_2_final_product_approved?: boolean;
   total_amount?: number;
   advance_paid?: number;
+  dispatchDate?: string;
+  dispatchedAt?: string;
+  dispatchedBy?: string;
+  dispatchNotes?: string;
+  deliveryPersonName?: string;
+  deliveryPersonContact?: string;
+  vehicleNumber?: string;
+  transportDetails?: string;
+  trackingNumber?: string;
 }
 
 export interface StatusLog {
@@ -145,7 +173,11 @@ export interface Payment {
   id: string;
   order_id: string;
   total_amount: number;
-  advance_paid?: number;
+  advance_paid: number;
+  balance_due: number; // total - advance
+  payment_date: string;
+  payment_mode: 'cash' | 'upi' | 'transfer';
+  notes?: string;
   dispatchDate?: string;
   dispatchedAt?: string;
   dispatchedBy?: string;
@@ -153,6 +185,10 @@ export interface Payment {
   deliveryPersonName?: string;
   deliveryPersonContact?: string;
   vehicleNumber?: string;
+  transportDetails?: string;
+  trackingNumber?: string;
+  created_by: string;
+  created_at: string;
 }
 
 export interface Material {
@@ -223,7 +259,14 @@ export type CRMCustomerStatus =
   | 'Order Confirmed'
   | 'In Production'
   | 'Delivered'
-  | 'Disqualified';
+  | 'Disqualified'
+  | 'New Lead'
+  | 'Contacted'
+  | 'Qualified'
+  | 'Quote Sent'
+  | 'Closed Won'
+  | 'Deal Lost'
+  | string;
 
 export type CRMCustomerSource = 'IndiaMART' | 'Walkin' | 'Manual' | 'Website' | 'TradeIndia' | 'Social Media' | 'Email' | 'Youtube' | 'Reference' | string;
 
@@ -340,5 +383,4 @@ export interface CRMTimelineEvent {
   timestamp: string;
   operator: string;
 }
-
 

@@ -143,6 +143,19 @@ const SEED_USERS: User[] = [
     password: 'polish123',
     google_linked: false,
     phone: '9876543228',
+  },
+  {
+    id: 'user_qc_inspector',
+    name: 'QC Inspector',
+    email: 'qc@bhisesworkshop.com',
+    role: 'qc_staff',
+    initials: 'QC',
+    is_active: true,
+    last_seen: 'Just now',
+    created_at: '2026-07-04T02:00:00Z',
+    password: 'qc123',
+    google_linked: false,
+    phone: '9876543229',
   }
 ];
 
@@ -205,13 +218,9 @@ export function loadState(): AppState {
             const seen = new Set<string>();
             let maxSerialSeen = 0;
             let hasOutlier = false;
+
             parsed.orders.forEach((o: any) => {
               if (o.article_no) {
-                if (seen.has(o.article_no)) {
-                  // Track duplicates for later re-sequencing
-                  return;
-                }
-                seen.add(o.article_no);
                 const parts = o.article_no.split('/');
                 const num = parseInt(parts[parts.length - 1], 10);
                 if (!isNaN(num)) {
@@ -220,6 +229,7 @@ export function loadState(): AppState {
                 }
               }
             });
+
             // If there are duplicate article numbers, missing numbers, or outlier jump numbers (> count + 5), re-sequence chronologically
             if (hasOutlier || parsed.orders.some((o: any) => !o.article_no || seen.has(o.article_no))) {
               // Sort orders by created_at / order_date ascending to preserve historical sequence

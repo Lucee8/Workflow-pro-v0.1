@@ -5,7 +5,6 @@
 
 import React from 'react';
 import { Order, Customer, OrderStage, normalizeStage } from '../types';
-import { Order, Customer, OrderStage } from '../types';
 import { ChevronLeft, ChevronRight, Filter, PlusSquare, Info } from 'lucide-react';
 
 interface CalendarTabProps {
@@ -75,7 +74,7 @@ export default function CalendarTab({
       case 'Making Completed': return 'bg-indigo-500 text-white';
       case 'Polish': return 'bg-[#ec4899] text-white';
       case 'QC 2': return 'bg-orange-500 text-white';
-      case 'Ready to Dispatch': return 'bg-green-600 text-white';
+      case 'Ready To Dispatch': return 'bg-green-600 text-white';
       case 'Dispatched': return 'bg-emerald-600 text-white';
       default: return 'bg-stone-500 text-white';
     }
@@ -92,7 +91,7 @@ export default function CalendarTab({
       case 'Making Completed': return 'bg-indigo-500';
       case 'Polish': return 'bg-[#ec4899]';
       case 'QC 2': return 'bg-orange-500';
-      case 'Ready to Dispatch': return 'bg-green-600';
+      case 'Ready To Dispatch': return 'bg-green-600';
       case 'Dispatched': return 'bg-emerald-600';
       default: return 'bg-stone-500';
     }
