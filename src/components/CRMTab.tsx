@@ -559,7 +559,7 @@ export default function CRMTab({
 
   // CRM Dashboard Compact Date Range Filter State
   type DateRangePreset = 'today' | 'all' | '7days' | '30days' | '4months' | 'custom';
-  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('today');
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('all');
   const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -638,8 +638,13 @@ export default function CRMTab({
     let time: number | null = null;
     const str = dateStr.trim();
 
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-      time = new Date(str + 'T12:00:00').getTime();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const datePart = str.split('T')[0];
+      const parts = datePart.split('-');
+      time = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0).getTime();
+    } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(str)) {
+      const parts = str.split(/[\/\-]/);
+      time = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0).getTime();
     } else {
       const parsed = new Date(str).getTime();
       if (!isNaN(parsed)) time = parsed;
@@ -814,7 +819,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
           carpenter_id: defaultCarp,
           current_status: 'Pending',
           is_delayed: false,
-          priority: 'Medium',
+          priority: 'normal',
           order_date: new Date().toISOString().split('T')[0],
           delivery_date: latestQuote.validUntil,
           portal_token: Math.random().toString(36).substring(2, 10),
@@ -875,7 +880,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Designing',
         is_delayed: false,
-        priority: 'Medium',
+        priority: 'normal',
         order_date: new Date().toISOString().split('T')[0],
         delivery_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         portal_token: Math.random().toString(36).substring(2, 10),
@@ -914,10 +919,36 @@ if (typeof endMs === 'number' && time > endMs) return false;
     }
   };
 
+    // Unify all customers across crmCustomers and workshop customers
+  const allUnifiedCustomers = React.useMemo(() => {
+    const map = new Map<string, CRMCustomer>();
+    (db.crmCustomers || []).forEach(c => {
+      if (c && c.id) map.set(c.id, c);
+    });
+    (db.customers || []).forEach(c => {
+      if (c && c.id && !map.has(c.id)) {
+        const workshopCustomer = c as typeof c & { city?: string; state?: string };
+        map.set(c.id, {
+          id: c.id,
+          name: c.name,
+          phone: c.phone || '',
+          address: c.address || '',
+          city: workshopCustomer.city || '',
+          state: workshopCustomer.state || '',
+          source: 'Walkin',
+          status: 'Order Confirmed',
+          created_at: c.created_at || new Date().toISOString(),
+          created_by: 'admin',
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [db.crmCustomers, db.customers]);
+
   // 1. STATS CALCULATIONS WITH DATE RANGE FILTERING
   const { startMs, endMs } = getDateFilterBounds(datePreset, customStartDate, customEndDate);
 
-  const filteredCrmCustomers = (db.crmCustomers || []).filter(c =>
+  const filteredCrmCustomers = allUnifiedCustomers.filter(c =>
     isDateInBounds(c.created_at, startMs, endMs)
   );
 
@@ -938,10 +969,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
   
   // Filter valid payments linked to existing orders and customers within date bounds
   const validOrderIds = new Set((db.orders || []).map(o => o.id));
-  const validCustomerIds = new Set([
-    ...(db.customers || []).map(c => c.id),
-    ...(db.crmCustomers || []).map(c => c.id)
-  ]);
+  const validCustomerIds = new Set(allUnifiedCustomers.map(c => c.id));
+
 
   const validPayments = (db.payments || []).filter(p =>
     (!p.order_id || validOrderIds.has(p.order_id)) &&
@@ -955,10 +984,19 @@ if (typeof endMs === 'number' && time > endMs) return false;
     return isDateInBounds(cp.payment_date, startMs, endMs);
   });
 
+    // Calculate advance paid directly on filtered orders if not present in payments array
+  const orderDirectAdvances = filteredOrders.reduce((sum, o) => {
+    const hasPaymentRecord = validPayments.some(p => p.order_id === o.id);
+    if (!hasPaymentRecord && o.advance_paid) {
+      return sum + (Number(o.advance_paid) || 0);
+    }
+    return sum;
+  }, 0);
+
   // Total Revenue Calculation (summing valid payments within selected date bounds)
   const totalRevenue = (validPayments.reduce((acc, p) => acc + (p.advance_paid || 0), 0)) +
-                       (validCrmPayments.reduce((acc, cp) => acc + (cp.advance_paid || 0), 0));
-  
+                       (validCrmPayments.reduce((acc, cp) => acc + (cp.advance_paid || 0), 0)) +
+                       orderDirectAdvances;  
   // Repeat Customers (Customers with > 1 order)
   const customerOrderCounts = (db.orders || []).reduce((acc: Record<string, number>, o) => {
     acc[o.customer_id] = (acc[o.customer_id] || 0) + 1;
@@ -981,7 +1019,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
     if (yyyyMmMatch) {
       return `${yyyyMmMatch[1]}-${yyyyMmMatch[2]}`;
     }
-    const ddMmYyyyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    const ddMmYyyyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if (ddMmYyyyMatch) {
       const month = ddMmYyyyMatch[2].padStart(2, '0');
       const year = ddMmYyyyMatch[3];
@@ -1004,29 +1042,44 @@ if (typeof endMs === 'number' && time > endMs) return false;
     last6Months.push({ key, name });
   }
 
+  // All valid payments without date filtering (for 6-month historical trend charts)
+  const allValidPayments = (db.payments || []).filter(p => !p.order_id || validOrderIds.has(p.order_id));
+  const allValidCrmPayments = (db.crmPayments || []).filter(cp => {
+    if (cp.customer_id && !validCustomerIds.has(cp.customer_id)) return false;
+    if (cp.order_id && !validOrderIds.has(cp.order_id)) return false;
+    return true;
+  });
+
   // 2. DYNAMIC CHART DATA CONSTRUCTIONS
-  // (a) Monthly Orders Volume (computed from filteredOrders)
+  // (a) Monthly Orders Volume (computed across all historical orders over 6 months)
   const monthlyOrdersData = last6Months.map(({ key, name }) => {
-    const count = filteredOrders.filter(o => {
+    const count = (db.orders || []).filter(o => {
       const k = getYearMonthKey(o.order_date || o.created_at);
       return k === key;
     }).length;
     return { name, orders: count };
   });
 
-  // (b) Revenue Trend (computed from validPayments & validCrmPayments)
+  // (b) Revenue Trend (computed across all historical payments over 6 months)
   const revenueTrendData = last6Months.map(({ key, name }) => {
-    const paymentSum = validPayments.filter(p => {
+    const paymentSum = allValidPayments.filter(p => {
       const k = getYearMonthKey((p as any).payment_date || (p as any).created_at);
       return k === key;
     }).reduce((acc, p) => acc + (p.advance_paid || 0), 0);
 
-    const crmPaymentSum = validCrmPayments.filter(cp => {
+    const crmPaymentSum = allValidCrmPayments.filter(cp => {
       const k = getYearMonthKey(cp.payment_date);
       return k === key;
     }).reduce((acc, cp) => acc + (cp.advance_paid || 0), 0);
 
-    return { name, revenue: paymentSum + crmPaymentSum };
+    const directOrderSum = (db.orders || []).filter(o => {
+      const k = getYearMonthKey(o.order_date || o.created_at);
+      if (k !== key) return false;
+      const hasPaymentRecord = allValidPayments.some(p => p.order_id === o.id);
+      return !hasPaymentRecord && o.advance_paid;
+    }).reduce((acc, o) => acc + (Number(o.advance_paid) || 0), 0);
+
+    return { name, revenue: paymentSum + crmPaymentSum + directOrderSum };
   });
 
   // (c) Source Performance (calculated from filteredCrmCustomers)
