@@ -880,7 +880,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Designing',
         is_delayed: false,
-        priority: 'normal',
+        priority: 'Medium',
         order_date: new Date().toISOString().split('T')[0],
         delivery_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         portal_token: Math.random().toString(36).substring(2, 10),
@@ -1411,7 +1411,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
   };
 
   // 4. SEARCHES & FILTERING LOGIC
-  const filteredCustomersList = allUnifiedCustomers
+  const filteredCustomersList = (db.crmCustomers || [])
     .filter(c => {
       if (!c || (!c.name?.trim() && !c.phone?.trim() && !c.id?.trim())) return false;
       const nameStr = c.name || '';
@@ -1469,7 +1469,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
       return (b.id || '').localeCompare(a.id || '');
     });
 
-  const selectedCustomer = allUnifiedCustomers.find(c => c.id === selectedCustomerId);
+  const selectedCustomer = db.crmCustomers?.find(c => c.id === selectedCustomerId);
   const selectedCustOrders = selectedCustomer ? (db.orders?.filter(o => o.customer_id === selectedCustomer.id) || []).sort(compareOrdersByArticleSerialDesc) : [];
   const selectedCustQuotes = selectedCustomer 
     ? (db.crmQuotations?.filter(q => q.customer_id === selectedCustomer.id) || []).sort((a, b) => {
@@ -1539,16 +1539,11 @@ if (typeof endMs === 'number' && time > endMs) return false;
             </button>
             <button
               onClick={() => setSubTab('customers')}
-              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 subTab === 'customers' ? 'bg-[#593622] text-white shadow' : 'text-stone-600 hover:text-[#593622]'
               }`}
             >
-              <span>Customers Directory</span>
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                subTab === 'customers' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
-              }`}>
-                {allUnifiedCustomers.length}
-              </span>
+              Customers Directory
             </button>
             <button
               onClick={() => { setSubTab('quotations'); setSelectedCustomerId(null); }}
@@ -2036,14 +2031,6 @@ if (typeof endMs === 'number' && time > endMs) return false;
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className="flex items-center gap-1.5 bg-amber-50 text-amber-900 px-3 py-1.5 rounded-xl border border-amber-200 text-xs font-bold shadow-2xs">
-                      <Users size={14} className="text-[#593622]" />
-                      <span>Total Customers:</span>
-                      <span className="font-black text-[#593622] font-mono text-sm">{allUnifiedCustomers.length}</span>
-                      {filteredCustomersList.length !== allUnifiedCustomers.length && (
-                        <span className="text-amber-700 font-medium text-[11px] font-mono">({filteredCustomersList.length} shown)</span>
-                      )}
-                    </div>
                     <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200">
                       <button
                         onClick={() => setCustViewMode('grid')}
