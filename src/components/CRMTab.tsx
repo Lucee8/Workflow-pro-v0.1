@@ -880,7 +880,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Designing',
         is_delayed: false,
-        priority: 'Medium',
+        priority: 'normal',
         order_date: new Date().toISOString().split('T')[0],
         delivery_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         portal_token: Math.random().toString(36).substring(2, 10),
