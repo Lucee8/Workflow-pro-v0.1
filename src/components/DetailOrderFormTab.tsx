@@ -675,6 +675,15 @@ export default function DetailOrderFormTab({
       }, 50);
     }
 
+     // Prefill advance payment from quotation's recorded received_amount if available
+    const totalQuoteAdvance = selectedItems.reduce((sum, s) => {
+      const quote = s.quoteObj || crmQuotations?.find((q) => q.id === s.quoteId);
+      return sum + (quote?.received_amount || quote?.receivedAmount || 0);
+    }, 0);
+    if (totalQuoteAdvance > 0) {
+      setAdvance(totalQuoteAdvance);
+    }
+
     setSelectedOrderId('');
   };
 

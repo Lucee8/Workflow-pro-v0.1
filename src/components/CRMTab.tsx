@@ -229,6 +229,7 @@ export default function CRMTab({
   const [quotePaymentTerms, setQuotePaymentTerms] = React.useState<string>('');
   const [quoteDeliveryTerms, setQuoteDeliveryTerms] = React.useState<string>('');
   const [quoteNotes, setQuoteNotes] = React.useState<string>('');
+  const [quoteReceivedAmount, setQuoteReceivedAmount] = React.useState<number>(0);
 
   React.useEffect(() => {
     if (showAddQuoteModal) {
@@ -266,6 +267,7 @@ export default function CRMTab({
         setQuotePaymentTerms(editingQuotation.paymentTerms || '40% Advance on order confirmation, 60% before dispatch post-QC inspection.');
         setQuoteDeliveryTerms(editingQuotation.deliveryTerms || 'Ex-workshop dispatch / Transport charges extra at actuals.');
         setQuoteNotes(editingQuotation.notes || '');
+        setQuoteReceivedAmount(editingQuotation.received_amount || 0);
       } else {
         const initialCustId = selectedCustomerId || '';
         setQuoteCustomerId(initialCustId);
@@ -288,6 +290,7 @@ export default function CRMTab({
         setQuotePaymentTerms('40% Advance on order confirmation, 60% before dispatch post-QC inspection.');
         setQuoteDeliveryTerms('Ex-workshop dispatch / Transport charges extra at actuals.');
         setQuoteNotes('');
+        setQuoteReceivedAmount(0);
       }
     } else {
       setQuoteCustomerId('');
@@ -298,6 +301,7 @@ export default function CRMTab({
       setQuotePaymentTerms('');
       setQuoteDeliveryTerms('');
       setQuoteNotes('');
+      setQuoteReceivedAmount(0);
     }
   }, [showAddQuoteModal, editingQuotation, selectedCustomerId, db.crmCustomers]);
 
@@ -933,8 +937,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
           name: c.name,
           phone: c.phone || '',
           address: c.address || '',
-          city: workshopCustomer.city || '',
-          state: workshopCustomer.state || '',
+          city: (c as any).city || '',
+          state: (c as any).state || '',
           source: 'Walkin',
           status: 'Order Confirmed',
           created_at: c.created_at || new Date().toISOString(),
@@ -1321,6 +1325,10 @@ if (typeof endMs === 'number' && time > endMs) return false;
       alert('Please fill in the Item Name for all products.');
       return;
     }
+    if (quoteReceivedAmount > quoteGrandTotal) {
+      alert(`Received Amount (₹${quoteReceivedAmount.toLocaleString('en-IN')}) cannot be greater than the Grand Total Amount (₹${quoteGrandTotal.toLocaleString('en-IN')}).`);
+      return;
+    }
 
     const customer = db.crmCustomers?.find(c => c.id === quoteCustomerId);
     const quoteId = editingQuotation ? editingQuotation.id : generateCRMQuotationId(db.crmQuotations || []);
@@ -1364,7 +1372,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
       created_by: editingQuotation ? editingQuotation.created_by : currentUser.name,
       estimateNo: editingQuotation ? editingQuotation.estimateNo : nextEstimateNo,
       description: quoteNotes,
-      termsAndConditions: `${quotePaymentTerms ? 'Payment Terms: ' + quotePaymentTerms + '\n' : ''}${quoteDeliveryTerms ? 'Delivery Terms: ' + quoteDeliveryTerms : ''}`
+      termsAndConditions: `${quotePaymentTerms ? 'Payment Terms: ' + quotePaymentTerms + '\n' : ''}${quoteDeliveryTerms ? 'Delivery Terms: ' + quoteDeliveryTerms : ''}`,
+      received_amount: Math.max(0, quoteReceivedAmount)
     };
 
     onSaveCRMQuotation(newQuote);
@@ -3773,6 +3782,57 @@ if (typeof endMs === 'number' && time > endMs) return false;
                       {getAmountInWords(quoteGrandTotal)}
                     </div>
                   </div>
+
+                  {/* Received Amount Input */}
+                  <div className="space-y-1.5 pt-3 border-t border-stone-800">
+                    <div className="flex justify-between items-center">
+                      <label className="text-stone-300 font-bold text-xs">Received Amount (INR)</label>
+                      <span className="text-emerald-400 font-mono text-xs font-bold">
+                        ₹{(quoteReceivedAmount || 0).toLocaleString('en-IN')}
+                      </span>
+                </div>
+                <div className="relative">
+                      <span className="absolute left-3.5 top-2.5 text-stone-400 font-bold text-xs">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={quoteGrandTotal}
+                        value={quoteReceivedAmount === 0 ? '' : quoteReceivedAmount}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          if (val > quoteGrandTotal) {
+                            alert(`Received Amount (₹${val.toLocaleString('en-IN')}) cannot be greater than Grand Total Amount (₹${quoteGrandTotal.toLocaleString('en-IN')}).`);
+                            setQuoteReceivedAmount(quoteGrandTotal);
+                          } else {
+                            setQuoteReceivedAmount(val);
+                          }
+                        }}
+                        placeholder="Enter received/advance amount"
+                        className="w-full bg-stone-800/90 border border-stone-700 focus:border-amber-400 rounded-xl pl-8 pr-3.5 py-2 font-mono text-stone-100 text-xs font-bold placeholder:text-stone-500 outline-none transition"
+                      />
+                    </div>
+                    <div className="flex justify-between items-center pt-1 font-mono text-[11px]">
+                      <span className="text-stone-400">Generated Document Type:</span>
+                      {quoteReceivedAmount > 0 ? (
+                        <span className="bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-black flex items-center gap-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          INVOICE
+                        </span>
+                      ) : (
+                        <span className="bg-stone-800 border border-stone-700 text-stone-300 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-extrabold">
+                          ESTIMATE
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Balance Amount Row if Received Amount > 0 */}
+                  {quoteReceivedAmount > 0 && (
+                    <div className="flex justify-between items-center text-rose-300 text-xs pt-2.5 border-t border-stone-800/80 font-mono font-bold">
+                      <span>Balance Amount</span>
+                      <span>₹{Math.max(0, quoteGrandTotal - quoteReceivedAmount).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -4156,8 +4216,12 @@ if (typeof endMs === 'number' && time > endMs) return false;
         };
 
         const quoteDisplayId = viewingEstimateQuote.id.startsWith('QT-') ? viewingEstimateQuote.id : `QT-${viewingEstimateQuote.id}`;
+        const isInvoice = (viewingEstimateQuote.received_amount || 0) > 0;
+        const docTitle = isInvoice ? 'Invoice' : 'Estimate';
+        const receivedAmt = Math.max(0, viewingEstimateQuote.received_amount || 0);
+        const balanceAmt = Math.max(0, viewingEstimateQuote.totalAmount - receivedAmt);
 
-        const shareText = `Hello ${customer?.name || viewingEstimateQuote.customer_name},\n\nPlease find the custom price Estimate from *Bhisez Furniture*:\n\n*Estimate No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(viewingEstimateQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Price/Unit:* ₹${(firstItem?.unitPrice || 0).toLocaleString('en-IN')}\n*Discount:* ₹${itemDiscount.toLocaleString('en-IN')}\n*GST (${itemGstPercent}%):* ₹${itemGstAmount.toLocaleString('en-IN')}\n*Net Total:* ₹${viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}\n\nThank you for choosing Bhisez Furniture!`;
+        const shareText = `Hello ${customer?.name || viewingEstimateQuote.customer_name},\n\nPlease find the custom price ${docTitle} from *Bhisez Furniture*:\n\n*${docTitle} No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(viewingEstimateQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Grand Total:* ₹${viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}${receivedAmt > 0 ? `\n*Received Amount:* ₹${receivedAmt.toLocaleString('en-IN')}\n*Balance Amount:* ₹${balanceAmt.toLocaleString('en-IN')}` : ''}\n\nThank you for choosing Bhisez Furniture!`;
         const phoneForWa = customer?.phone ? customer.phone.replace(/\D/g, '') : '';
         const whatsappUrl = phoneForWa
           ? `https://api.whatsapp.com/send?phone=${phoneForWa}&text=${encodeURIComponent(shareText)}`
@@ -4168,7 +4232,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
           if (!printContent) return;
           const printWindow = window.open('', '_blank');
           if (printWindow) {
-            const htmlString = '<html><head><title>Estimate_' + quoteDisplayId + '</title>' +
+            const htmlString = '<html><head><title>' + docTitle + '_' + quoteDisplayId + '</title>' +
               '<script src="https://cdn.tailwindcss.com"></script>' +
               '<style>' +
               // '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
@@ -4202,9 +4266,9 @@ if (typeof endMs === 'number' && time > endMs) return false;
                 <div>
                   <h3 className="text-sm font-black text-stone-900 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Estimate Document Engine (Active)
+                    {docTitle} Document Engine ({isInvoice ? 'Invoice Active' : 'Estimate Active'})
                   </h3>
-                  <p className="text-[11px] text-stone-500 mt-0.5 font-medium">Generate, share on WhatsApp, or download standard high-fidelity A4 Estimate PDFs.</p>
+                  <p className="text-[11px] text-stone-500 mt-0.5 font-medium">Generate, share on WhatsApp, or download standard high-fidelity A4 {docTitle} PDFs.</p>
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
@@ -4241,7 +4305,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                   
                   {/* Title centered above the main box */}
                   <div className="text-center mb-3 print:mb-2">
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-wide">Estimate</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-wide uppercase">{docTitle}</h1>
                   </div>
 
                   {/* Unified Main Box with Slate Border */}
@@ -4271,15 +4335,21 @@ if (typeof endMs === 'number' && time > endMs) return false;
                       </div>
                     </div>
 
-                    {/* Section 2: Customer & Estimate Details Grid */}
+                    {/* Section 2: Customer & Details Grid */}
                     <div className="grid grid-cols-2 border-t border-slate-400 divide-x divide-slate-400">
-                      {/* Left Column: Estimate For */}
+                      {/* Left Column: Customer Details */}
                       <div className="flex flex-col">
-                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400">
-                          Estimate For:
+                        <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 flex justify-between items-center">
+                          <span>{docTitle} For:</span>
+                          <span className="text-[10px] font-bold text-slate-800">
+                            {docTitle} Ref: <span className="text-[#593622] font-black">{quoteDisplayId}</span>
+                          </span>
                         </div>
                         <div className="p-2.5 print:p-2 space-y-0.5 min-h-[55px] text-xs text-slate-700">
                           <h3 className="font-bold text-slate-900 text-sm">{customer?.name || viewingEstimateQuote.customer_name}</h3>
+                          <p className="text-[11px] font-bold text-slate-700">
+                            {docTitle} Ref: <span className="text-[#593622] font-extrabold">{quoteDisplayId}</span>
+                          </p>
                           {customer && (
                             <div className="space-y-0.5 text-slate-600 text-[11px]">
                               <p>Contact: <span className="font-semibold text-slate-800">{customer.phone}</span></p>
@@ -4291,10 +4361,10 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         </div>
                       </div>
 
-                      {/* Right Column: Estimate Details */}
+                      {/* Right Column: Document Details */}
                       <div className="flex flex-col">
                         <div className="bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700 border-b border-slate-400 uppercase tracking-wide flex justify-between items-center">
-                          <span>Estimate Details:</span>
+                          <span>{docTitle} Details:</span>
                           <span className="text-[9px] text-[#593622] font-normal normal-case print:hidden italic">(Click values to edit inline)</span>
                         </div>
                         <div className="p-2.5 print:p-2 text-[11px] text-slate-700 space-y-1 min-h-[55px]">
@@ -4402,12 +4472,23 @@ if (typeof endMs === 'number' && time > endMs) return false;
                     <div className="grid grid-cols-12 border-t border-slate-400">
                       <div className="col-span-8 border-r border-slate-400 bg-white min-h-[30px] print:min-h-0"></div>
                       <div className="col-span-4 flex flex-col font-medium text-xs divide-y divide-slate-400">
+                        <div className="grid grid-cols-2 p-1.5 print:p-1 text-slate-700">
+                          <span className="font-semibold text-slate-800">Subtotal</span>
+                          <span className="text-right font-bold pr-1">: ₹{itemSubtotal.toLocaleString('en-IN')}.00</span>
+                        </div>
+                        {totalDiscount > 0 && (
                         <div className="grid grid-cols-2 p-1.5 print:p-1 text-rose-800 bg-rose-50/20">
                           <span className="font-semibold text-rose-950">Discount</span>
-                          <span className="text-right font-bold pr-1">
-                            : {totalDiscount > 0 ? `-₹${totalDiscount.toLocaleString('en-IN')}.00` : `₹0.00`}
-                          </span>
-                        </div>
+                            <span className="text-right font-bold pr-1">: -₹{totalDiscount.toLocaleString('en-IN')}.00</span>
+                          </div>
+                        )}
+
+                        {(totalDiscount > 0 || totalGstAmount > 0) && (
+                          <div className="grid grid-cols-2 p-1.5 print:p-1 text-slate-600">
+                            <span>Taxable Value</span>
+                            <span className="text-right font-bold text-slate-800 pr-1">: ₹{taxableAmount.toLocaleString('en-IN')}.00</span>
+                          </div>
+                        )}
                         
                         {totalGstAmount > 0 && (
                           <div className="grid grid-cols-2 p-1.5 print:p-1">
@@ -4417,13 +4498,26 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         )}
 
                         <div className="grid grid-cols-2 p-1.5 print:p-1 font-bold text-slate-950 bg-slate-50/50">
-                          <span>Total</span>
+                          <span>Grand Total</span>
                           <span className="text-right font-extrabold text-slate-950 pr-1">: ₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</span>
                         </div>
 
-                        {/* Estimate Amount In Words Sub-Header */}
+                        {receivedAmt > 0 && (
+                          <>
+                            <div className="grid grid-cols-2 p-1.5 print:p-1 font-bold text-emerald-900 bg-emerald-50/40">
+                              <span className="text-emerald-950 font-bold">Received Amount</span>
+                              <span className="text-right font-extrabold text-emerald-900 pr-1">: ₹{receivedAmt.toLocaleString('en-IN')}.00</span>
+                            </div>
+                            <div className="grid grid-cols-2 p-1.5 print:p-1 font-bold text-rose-900 bg-rose-50/30">
+                              <span className="text-rose-950 font-bold">Balance Amount</span>
+                              <span className="text-right font-extrabold text-rose-900 pr-1">: ₹{balanceAmt.toLocaleString('en-IN')}.00</span>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Amount In Words Sub-Header */}
                         <div className="bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 border-t border-b border-slate-400 uppercase">
-                          Estimate Amount In Words :
+                          {docTitle} Amount In Words :
                         </div>
                         
                         {/* Amount text */}

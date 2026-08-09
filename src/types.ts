@@ -300,6 +300,7 @@ export interface CRMQuotation {
   estimateNo?: number;
   description?: string;
   termsAndConditions?: string;
+  received_amount?: number;
 }
 
 export interface CRMFollowUp {
