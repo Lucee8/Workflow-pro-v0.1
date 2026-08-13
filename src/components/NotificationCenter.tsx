@@ -39,7 +39,7 @@ const STAGES: OrderStage[] = [
   'Making Completed',
   'Polish',
   'QC 2',
-  'Ready To Dispatch',
+  'Ready to Dispatch',
   'Dispatched',
 ];
 

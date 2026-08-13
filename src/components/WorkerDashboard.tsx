@@ -379,7 +379,7 @@ export default function WorkerDashboard({
       setProgressStatus(ord.current_status === myStage ? 'in_progress' : 'completed');
     }
     setUpdateNotes('');
-    setInProgressFiles(ord.images.filter(img => img.type === 'In-Progress').map(img => img.url));
+    setInProgressFiles((ord.images || []).filter(img => img.type === 'In-Progress').map(img => img.url));
   };
 
   const handleAddPhotos = () => {
@@ -405,15 +405,32 @@ export default function WorkerDashboard({
 
     if (isCarpenter) {
       if (progressStatus === 'wood_procurement') {
-        nextSubStatus = 'under_carpentry';
-        nextStage = 'Making Started';
+        if (!isWoodScheduleApproved) {
+          nextSubStatus = 'wood_procurement';
+          nextStage = 'Wood Procurement';
+        } else {
+          nextSubStatus = 'under_carpentry';
+          nextStage = 'Making Started';
+        }
       } else if (progressStatus === 'under_carpentry') {
+        if (!isWoodScheduleApproved) {
+          alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
+          return;
+        }
         nextSubStatus = 'qc_check_1';
         nextStage = 'Making Started';
       } else if (progressStatus === 'qc_check_1') {
+        if (!isWoodScheduleApproved) {
+          alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
+          return;
+        }
         nextSubStatus = 'completed';
         nextStage = 'Making Started';
       } else if (progressStatus === 'completed') {
+        if (!isWoodScheduleApproved) {
+          alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before completing carpentry work.');
+          return;
+        }
         nextSubStatus = 'completed';
         nextStage = 'QC 1';
       }
@@ -447,7 +464,7 @@ export default function WorkerDashboard({
     };
 
     // Reconstruct order images with newly uploaded list
-    const existingOtherImages = activeOrder.images.filter(img => img.type !== 'In-Progress');
+    const existingOtherImages = (activeOrder.images || []).filter(img => img.type !== 'In-Progress');
     const newInProgressImages = inProgressFiles.map(url => ({
       id: 'img_' + generateUUID().split('-')[0],
       url,
@@ -482,6 +499,17 @@ export default function WorkerDashboard({
       wood_schedule: isCarpenter ? woodScheduleData : activeOrder.wood_schedule,
     };
 
+    if (isCarpenter && progressStatus === 'wood_procurement' && !isWoodScheduleApproved) {
+      try {
+        const savedMap = localStorage.getItem('bhisez_wood_request_statuses');
+        const woodStatusMap = savedMap ? JSON.parse(savedMap) : {};
+        woodStatusMap[activeOrder.id] = 'Pending';
+        localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(woodStatusMap));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     onUpdateOrder(updatedOrder, log);
 
     if (isCarpenter && ['Making Started', 'Wood Procurement', 'Carpentry', 'QC 1', 'QC Check 1'].includes(nextStage)) {
@@ -489,7 +517,11 @@ export default function WorkerDashboard({
       setProgressStatus(nextSubStatus || 'wood_procurement');
       setUpdateNotes('');
       if (progressStatus === 'wood_procurement') {
-        alert('Success: Wood procurement completed! Sub-status has auto-advanced to "Under Carpentry".');
+        if (!isWoodScheduleApproved) {
+          alert('Success: Wood Schedule saved & submitted! Status set to "Pending" for Admin review in Wood Management. "Making Started" will remain locked until Admin approves.');
+        } else {
+          alert('Success: Wood procurement completed! Sub-status has auto-advanced to "Under Carpentry".');
+        }
       } else if (progressStatus === 'under_carpentry') {
         alert('Success: Under Carpentry completed! Sub-status has auto-advanced to "QC Check 1".');
       } else if (progressStatus === 'qc_check_1') {
@@ -617,7 +649,7 @@ export default function WorkerDashboard({
                 {galleryImages.slice(0, 4).map((img, idx) => (
                   <div
                     key={img.id || idx}
-                      onClick={() => img.url && setLightboxImg(img.url)}
+                    onClick={() => setLightboxImg(img.url ?? null)}
                     className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
                   >
                     <img referrerPolicy="no-referrer" src={img.url} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
@@ -870,7 +902,7 @@ export default function WorkerDashboard({
                   {galleryImages.map((img, idx) => (
                     <div
                       key={img.id || idx}
-                      onClick={() => img.url && setLightboxImg(img.url)}
+                      onClick={() => setLightboxImg(img.url ?? null)}
                       className="relative group rounded-xl border border-stone-200 overflow-hidden bg-stone-100 h-28 cursor-pointer hover:border-[#593622] hover:shadow-md transition"
                     >
                       <img referrerPolicy="no-referrer" src={img.url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />

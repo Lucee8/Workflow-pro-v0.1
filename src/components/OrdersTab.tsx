@@ -62,8 +62,8 @@ export default function OrdersTab({
     let matchesStatus = true;
     if (statusFilter !== 'All Status') {
       if (statusFilter === 'Delayed') matchesStatus = order.is_delayed;
-      else if (statusFilter === 'Ready') matchesStatus = ['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(order.current_status));
-      else if (statusFilter === 'In Progress') matchesStatus = !['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(order.current_status));
+      else if (statusFilter === 'Ready') matchesStatus = ['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(order.current_status));
+      else if (statusFilter === 'In Progress') matchesStatus = !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(order.current_status));
     }
 
     const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();
@@ -87,7 +87,7 @@ export default function OrdersTab({
       case 'Making Completed': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
       case 'Polish': return 'bg-teal-100 text-teal-800 border-teal-200';
       case 'QC 2': return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200';
-      case 'Ready To Dispatch': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Ready to Dispatch': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'Dispatched': return 'bg-green-100 text-green-850 border-green-300 font-bold';
       default: return 'bg-stone-100 text-stone-700 border-stone-200';
     }
@@ -250,7 +250,7 @@ export default function OrdersTab({
                           <span className="inline-flex items-center gap-1.5 text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
                             <AlertCircle size={10} /> Delayed
                           </span>
-                        ) : normalizeStage(order.current_status) === 'Ready To Dispatch' ? (
+                        ) : normalizeStage(order.current_status) === 'Ready to Dispatch' ? (
                           <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
                             Ready
                           </span>

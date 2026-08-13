@@ -7,7 +7,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Order, User, Customer, OrderStage, StatusLog, Payment, normalizeStage } from '../types';
 import { generateUUID } from '../db/store';
-import { formatToDDMMYYYY, parseToInputDate } from '../utils';
+import { formatToDDMMYYYY } from '../utils';
 import { 
   ChevronLeft, 
   Edit, 
@@ -132,7 +132,7 @@ export default function OrderDetailsView({
         const updatedOrder: Order = {
           ...order,
           images: [
-            ...order.images,
+            ...(order.images || []),
             {
               id: 'img_' + generateUUID().split('-')[0],
               url: dataUrl,
@@ -168,7 +168,7 @@ export default function OrderDetailsView({
           const updatedOrder: Order = {
             ...order,
             images: [
-              ...order.images,
+              ...(order.images || []),
               {
                 id: 'img_' + generateUUID().split('-')[0],
                 url: base64Url,
@@ -211,7 +211,7 @@ export default function OrderDetailsView({
 
   // QC Failure Note State
   const [showQcFailModal, setShowQcFailModal] = React.useState(false);
-  const [qcFailLogStage, setQcFailLogStage] = React.useState<OrderStage>('Making Started');
+  const [qcFailLogStage, setQcFailLogStage] = React.useState<OrderStage>('Carpentry');
   const [qcFailNote, setQcFailNote] = React.useState('');
 
   // Tab Navigation State
@@ -311,7 +311,8 @@ export default function OrderDetailsView({
     return idx !== -1 ? idx : 0;
   };
 
-  const currentStageIndex = getStageIndex(order.current_status);
+  const currentStatus = normalizeStage(order.current_status);
+  const currentStageIndex = getStageIndex(currentStatus);
 
   // Debouncing lock to prevent accidental double-clicks from skipping stages
   const [isAdvancing, setIsAdvancing] = React.useState(false);
@@ -329,6 +330,15 @@ export default function OrderDetailsView({
   // Administrative transition actions
   const triggerTransition = (nextStage: OrderStage, notesText = '', qcPassedValue: boolean | null = null) => {
     if (isAdvancing) return;
+
+    if (nextStage === 'Making Started') {
+      const isApproved = order.wood_schedule_status === 'Approved' || order.wood_schedule?.status === 'Approved';
+      if (!isApproved) {
+        alert('Cannot move order to "Making Started". Admin approval for the Wood Schedule is required first.');
+        return;
+      }
+    }
+
     setIsAdvancing(true);
     setTimeout(() => setIsAdvancing(false), 1000);
 
@@ -390,29 +400,29 @@ export default function OrderDetailsView({
   };
 
   // QC Checkbox States
-  const [qc1Measurements, setQc1Measurements] = React.useState(!!(order as any).qc_1_measurements_verified);
-  const [qc1Finish, setQc1Finish] = React.useState(!!(order as any).qc_1_finish_verified);
-  const [qc1Buffer, setQc1Buffer] = React.useState(!!(order as any).qc_1_buffer_verified);
+  const [qc1Measurements, setQc1Measurements] = React.useState(!!order.qc_1_measurements_verified);
+  const [qc1Finish, setQc1Finish] = React.useState(!!order.qc_1_finish_verified);
+  const [qc1Buffer, setQc1Buffer] = React.useState(!!order.qc_1_buffer_verified);
 
-  const [qc2Polish, setQc2Polish] = React.useState(!!(order as any).qc_2_polish_quality_verified);
-  const [qc2Surface, setQc2Surface] = React.useState(!!(order as any).qc_2_surface_finish_approved);
-  const [qc2Final, setQc2Final] = React.useState(!!(order as any).qc_2_final_product_approved);
+  const [qc2Polish, setQc2Polish] = React.useState(!!order.qc_2_polish_quality_verified);
+  const [qc2Surface, setQc2Surface] = React.useState(!!order.qc_2_surface_finish_approved);
+  const [qc2Final, setQc2Final] = React.useState(!!order.qc_2_final_product_approved);
 
   // Sync state when order prop changes
   React.useEffect(() => {
-    setQc1Measurements(!!(order as any).qc_1_measurements_verified);
-    setQc1Finish(!!(order as any).qc_1_finish_verified);
-    setQc1Buffer(!!(order as any).qc_1_buffer_verified);
-    setQc2Polish(!!(order as any).qc_2_polish_quality_verified);
-    setQc2Surface(!!(order as any).qc_2_surface_finish_approved);
-    setQc2Final(!!(order as any).qc_2_final_product_approved);
+    setQc1Measurements(!!order.qc_1_measurements_verified);
+    setQc1Finish(!!order.qc_1_finish_verified);
+    setQc1Buffer(!!order.qc_1_buffer_verified);
+    setQc2Polish(!!order.qc_2_polish_quality_verified);
+    setQc2Surface(!!order.qc_2_surface_finish_approved);
+    setQc2Final(!!order.qc_2_final_product_approved);
   }, [
-    (order as any).qc_1_measurements_verified,
-    (order as any).qc_1_finish_verified,
-    (order as any).qc_1_buffer_verified,
-    (order as any).qc_2_polish_quality_verified,
-    (order as any).qc_2_surface_finish_approved,
-    (order as any).qc_2_final_product_approved,
+    order.qc_1_measurements_verified,
+    order.qc_1_finish_verified,
+    order.qc_1_buffer_verified,
+    order.qc_2_polish_quality_verified,
+    order.qc_2_surface_finish_approved,
+    order.qc_2_final_product_approved,
   ]);
 
   // Stage Specific Action Handlers
@@ -421,7 +431,26 @@ export default function OrderDetailsView({
   };
 
   const handleFinalizeDesign = () => {
-    triggerTransition('Wood Procurement', 'Design specifications finalized. Order moved to Wood Procurement.');
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: 'Wood Procurement',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: 'Design specifications finalized. Order moved to Wood Procurement. Wood Schedule status set to Pending.',
+    };
+    const updatedOrder: Order = {
+      ...order,
+      current_status: 'Wood Procurement',
+      wood_schedule_status: 'Pending',
+      wood_schedule: order.wood_schedule
+        ? { ...order.wood_schedule, status: 'Pending' }
+        : undefined,
+      updated_at: new Date().toISOString(),
+    };
+    onUpdateOrder(updatedOrder, log);
   };
 
   const handleApproveWoodSchedule = () => {
@@ -433,12 +462,16 @@ export default function OrderDetailsView({
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: 'Admin approved Wood Schedule. Order automatically advanced to Making Started.',
+      note: 'Admin approved Wood Schedule. Wood Procurement completed. Order automatically advanced to Making Started.',
     };
     const updatedOrder: Order = {
       ...order,
       wood_schedule_status: 'Approved',
+      wood_schedule: order.wood_schedule
+        ? { ...order.wood_schedule, status: 'Approved' }
+        : undefined,
       current_status: 'Making Started',
+      carpenter_sub_status: 'under_carpentry',
       updated_at: new Date().toISOString(),
     };
     onUpdateOrder(updatedOrder, log);
@@ -460,6 +493,11 @@ export default function OrderDetailsView({
     const updatedOrder: Order = {
       ...order,
       wood_schedule_status: 'Rejected',
+      wood_schedule: order.wood_schedule
+        ? { ...order.wood_schedule, status: 'Rejected' }
+        : undefined,
+      wood_rejection_note: note,
+      current_status: 'Wood Procurement',
       updated_at: new Date().toISOString(),
     };
     onUpdateOrder(updatedOrder, log);
@@ -472,6 +510,9 @@ export default function OrderDetailsView({
   const handlePassQC1 = () => {
     const updatedOrder: Order = {
       ...order,
+      qc_1_measurements_verified: true,
+      qc_1_finish_verified: true,
+      qc_1_buffer_verified: true,
       current_status: 'Making Completed',
       updated_at: new Date().toISOString(),
     };
@@ -500,12 +541,12 @@ export default function OrderDetailsView({
   const handlePassQC2 = () => {
     const updatedOrder: Order = {
       ...order,
+      qc_2_polish_quality_verified: true,
+      qc_2_surface_finish_approved: true,
+      qc_2_final_product_approved: true,
       current_status: 'Ready to Dispatch',
       updated_at: new Date().toISOString(),
-    } as any;
-    (updatedOrder as any).qc_2_polish_quality_verified = true;
-    (updatedOrder as any).qc_2_surface_finish_approved = true;
-    (updatedOrder as any).qc_2_final_product_approved = true;
+    };
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: order.id,
@@ -559,7 +600,7 @@ export default function OrderDetailsView({
     const updatedOrder: Order = {
       ...order,
       images: [
-        ...order.images,
+        ...(order.images || []),
         {
           id: 'img_' + generateUUID().split('-')[0],
           url: newImgUrl,
@@ -627,14 +668,14 @@ export default function OrderDetailsView({
             <h1 className="text-xl md:text-2xl font-black font-display text-stone-900 tracking-tight">{order.article_no}</h1>
             <span
               className={`px-3 py-0.5 text-[10px] uppercase font-mono font-black border rounded-md ${
-                  normalizeStage(order.current_status) === 'Ready to Dispatch'
-                    ? 'bg-green-150 text-green-800 border-green-300'
-                    : normalizeStage(order.current_status) === 'Dispatched'
-                    ? 'bg-emerald-100 text-emerald-850 border-emerald-300'
-                    : 'bg-amber-100 text-[#593622] border-amber-300 animate-pulse'
-                }`}
-              >
-                {normalizeStage(order.current_status) === 'Ready to Dispatch' ? 'Ready' : normalizeStage(order.current_status) === 'Dispatched' ? 'Dispatched' : 'In Production'}
+                currentStatus === 'Ready to Dispatch'
+                  ? 'bg-green-150 text-green-800 border-green-300'
+                  : currentStatus === 'Dispatched'
+                  ? 'bg-emerald-100 text-emerald-850 border-emerald-300'
+                  : 'bg-amber-100 text-[#593622] border-amber-300 animate-pulse'
+              }`}
+            >
+              {currentStatus === 'Ready to Dispatch' ? 'Ready' : currentStatus === 'Dispatched' ? 'Dispatched' : 'In Production'}
             </span>
           </div>
           <p className="text-stone-500 text-xs">
@@ -714,7 +755,7 @@ export default function OrderDetailsView({
               {/* Mobile View: Vertical Timeline */}
               <div className="md:hidden space-y-3.5 relative pl-1.5 py-1">
                 {stages.map((stg, i) => {
-                  const isDispatched = order.current_status === 'Dispatched';
+                  const isDispatched = currentStatus === 'Dispatched';
                   const passed = isDispatched || i < currentStageIndex;
                   const active = !isDispatched && i === currentStageIndex;
                   return (
@@ -762,7 +803,7 @@ export default function OrderDetailsView({
                 <div className="relative flex justify-between min-w-[920px] font-mono text-[10px] font-bold text-stone-400 py-2 px-3">
                   <div className="absolute top-6 left-6 right-6 h-0.5 bg-stone-100 -translate-y-1/2" />
                   {stages.map((stg, i) => {
-                    const isDispatched = order.current_status === 'Dispatched';
+                    const isDispatched = currentStatus === 'Dispatched';
                     const passed = isDispatched || i < currentStageIndex;
                     const active = !isDispatched && i === currentStageIndex;
                     return (
@@ -797,7 +838,7 @@ export default function OrderDetailsView({
 
             {/* Stage description + admin control layout */}
             <motion.div
-              key={order.current_status}
+              key={currentStatus}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
@@ -807,32 +848,32 @@ export default function OrderDetailsView({
                 <div>
                   <span className="text-[10px] font-bold text-[#593622] uppercase tracking-wider">Current Active Gate</span>
                   <p className="text-stone-850 font-bold font-sans text-sm mt-0.5">
-                    {order.current_status}
+                    {currentStatus}
                   </p>
                 </div>
                 <div className="font-mono text-stone-500 text-[11px] font-bold bg-stone-100 px-2.5 py-1 rounded-lg border border-stone-200">
-                  Stage tracking: {order.current_status === 'Dispatched' ? 10 : currentStageIndex} of 10 stages completed
+                  Stage tracking: {currentStatus === 'Dispatched' ? 10 : currentStageIndex} of 10 stages completed
                 </div>
               </div>
 
               <div className="text-stone-600 text-[11px] space-y-2">
-                {order.current_status === 'Pending' && <p>Order has just been created. No department has received it yet.</p>}
-                {order.current_status === 'Designing' && <p>Drafting blueprints, measurements, reference drawings, and catalogue selections.</p>}
-                {order.current_status === 'Wood Procurement' && <p>Raw timber calculation and component wood schedule preparation.</p>}
-                {order.current_status === 'Making Started' && <p>Carpentry manufacturing and framework assembly in progress.</p>}
-                {order.current_status === 'QC 1' && <p>First Quality Check (Carpentry Audit) before polishing.</p>}
-                {order.current_status === 'Making Completed' && <p>Carpentry work fully finished, sanded, and ready for polishing.</p>}
-                {order.current_status === 'Polish' && <p>Surface polishing, staining, and protective lacquer coating in progress.</p>}
-                {order.current_status === 'QC 2' && <p>Final Quality Check (Polish & Finish Inspection) before dispatch.</p>}
-                {order.current_status === 'Ready to Dispatch' && <p>Product packaging complete and placed in dispatch bay.</p>}
-                {order.current_status === 'Dispatched' && <p>Product has been physically dispatched from workshop to customer.</p>}
+                {currentStatus === 'Pending' && <p>Order has just been created. No department has received it yet.</p>}
+                {currentStatus === 'Designing' && <p>Drafting blueprints, measurements, reference drawings, and catalogue selections.</p>}
+                {currentStatus === 'Wood Procurement' && <p>Raw timber calculation and component wood schedule preparation.</p>}
+                {currentStatus === 'Making Started' && <p>Carpentry manufacturing and framework assembly in progress.</p>}
+                {currentStatus === 'QC 1' && <p>First Quality Check (Carpentry Audit) before polishing.</p>}
+                {currentStatus === 'Making Completed' && <p>Carpentry work fully finished, sanded, and ready for polishing.</p>}
+                {currentStatus === 'Polish' && <p>Surface polishing, staining, and protective lacquer coating in progress.</p>}
+                {currentStatus === 'QC 2' && <p>Final Quality Check (Polish & Finish Inspection) before dispatch.</p>}
+                {currentStatus === 'Ready to Dispatch' && <p>Product packaging complete and placed in dispatch bay.</p>}
+                {currentStatus === 'Dispatched' && <p>Product has been physically dispatched from workshop to customer.</p>}
               </div>
 
               {/* STAGE SPECIFIC ACTION CONTROLS */}
-              {order.current_status !== 'Dispatched' ? (
+              {currentStatus !== 'Dispatched' ? (
                 <div className="pt-3 border-t border-stone-200/80 space-y-3">
                   {/* STAGE 1: PENDING */}
-                  {order.current_status === 'Pending' && isAdmin && (
+                  {currentStatus === 'Pending' && isAdmin && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs">Ready to begin design phase?</span>
                       <button
@@ -846,7 +887,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 2: DESIGNING */}
-                  {order.current_status === 'Designing' && isAdmin && (
+                  {currentStatus === 'Designing' && isAdmin && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs">Finalize design blueprints & measurements</span>
                       <button
@@ -860,9 +901,9 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 3: WOOD PROCUREMENT */}
-                  {order.current_status === 'Wood Procurement' && (
+                  {currentStatus === 'Wood Procurement' && (
                     <div className="space-y-2 bg-amber-50/60 p-3 rounded-xl border border-amber-200">
-                      {order.wood_schedule_status === 'Pending' ? (
+                      {order.wood_schedule_status === 'Pending' || order.wood_schedule_status === 'Pending Review' || (!order.wood_schedule_status && order.wood_schedule) ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
                             <Clock size={15} className="text-amber-700" />
@@ -889,7 +930,7 @@ export default function OrderDetailsView({
                         </div>
                       ) : order.wood_schedule_status === 'Rejected' ? (
                         <div className="text-rose-900 text-xs space-y-1">
-                          <strong className="block font-bold">⚠️ Wood Sheet Rejected</strong>
+                          <strong className="block font-bold">⚠️ Wood Sheet Rejected: {order.wood_rejection_note}</strong>
                           <p className="text-stone-600 text-[11px]">Please edit the Wood Schedule table below and resubmit.</p>
                         </div>
                       ) : (
@@ -901,7 +942,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 4: MAKING STARTED */}
-                  {order.current_status === 'Making Started' && (
+                  {currentStatus === 'Making Started' && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs font-sans">Carpentry framework assembly underway</span>
                       <button
@@ -915,7 +956,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 5: QC 1 */}
-                  {order.current_status === 'QC 1' && (
+                  {currentStatus === 'QC 1' && (
                     <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-300 space-y-3">
                       <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
                         QC Check 1 (Carpentry Audit)
@@ -975,7 +1016,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 6: MAKING COMPLETED */}
-                  {order.current_status === 'Making Completed' && (
+                  {currentStatus === 'Making Completed' && (
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
                       <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
                         <CheckCircle2 size={16} className="text-emerald-600" />
@@ -992,7 +1033,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 7: POLISH */}
-                  {order.current_status === 'Polish' && (
+                  {currentStatus === 'Polish' && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs">Polishing, staining & protective sealer coat</span>
                       <button
@@ -1006,7 +1047,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 8: QC 2 */}
-                  {order.current_status === 'QC 2' && (
+                  {currentStatus === 'QC 2' && (
                     <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-300 space-y-3">
                       <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
                         QC Check 2 (Polish & Final Product Inspection)
@@ -1066,7 +1107,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 9: READY TO DISPATCH */}
-                  {order.current_status === 'Ready to Dispatch' && (
+                  {currentStatus === 'Ready to Dispatch' && (
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
                       <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
                         <CheckCircle2 size={16} className="text-emerald-600" />
@@ -1093,7 +1134,7 @@ export default function OrderDetailsView({
             </motion.div>
 
             {/* Dispatch details card if order is Dispatched */}
-            {(order.current_status === 'Dispatched' || order.dispatchDate || order.vehicleNumber) && (
+            {(currentStatus === 'Dispatched' || order.dispatchDate || order.vehicleNumber) && (
               <div className="bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl space-y-3 text-xs text-stone-800">
                 <div className="flex items-center gap-2 border-b border-emerald-200/80 pb-2 text-emerald-800 font-bold">
                   <CheckCircle2 size={16} className="text-emerald-600" />
@@ -1474,7 +1515,7 @@ export default function OrderDetailsView({
 
             {order.images && order.images.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {order.images.map((img) => (
+                {(order.images || []).map((img) => (
                   <div key={img.id} className="relative group overflow-hidden border rounded-lg aspect-square bg-stone-50">
                     <img referrerPolicy="no-referrer" src={img.url} alt="Spec" className="object-cover w-full h-full" />
                     <span className="absolute bottom-1 left-1 bg-black/75 text-stone-300 px-1 py-0.5 text-[8px] font-bold rounded uppercase">
@@ -1718,7 +1759,7 @@ export default function OrderDetailsView({
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-stone-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-stone-100 pb-2">
-              <strong className="text-stone-900 text-sm capitalize">Log QC Fail: {order.current_status}</strong>
+              <strong className="text-stone-900 text-sm capitalize">Log QC Fail: {currentStatus}</strong>
               <button onClick={() => setShowQcFailModal(false)} className="text-stone-400 hover:text-stone-600">
                 <X size={15} />
               </button>

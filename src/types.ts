@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person';
+export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person' | 'qc_staff';
 
 export interface User {
   id: string; // Firebase Auth UID equivalent
@@ -46,13 +46,15 @@ export type OrderStage =
   | 'Design'
   | 'Carpentry'
   | 'QC Check 1'
-  | 'QC Check 2';
+  | 'QC Check 2'
+  | 'Ready To Dispatch';
 
 export function normalizeStage(stage: string): OrderStage {
   if (stage === 'Design') return 'Designing';
   if (stage === 'Carpentry') return 'Making Started';
   if (stage === 'QC Check 1') return 'QC 1';
   if (stage === 'QC Check 2') return 'QC 2';
+  if (stage === 'Ready To Dispatch') return 'Ready to Dispatch';
   if (stage === 'Dispatched') return 'Dispatched';
   return stage as OrderStage;
 }
@@ -75,13 +77,15 @@ export interface WoodSchedule {
   sqft: number;
   image_link?: string;
   parts: WoodPart[];
-  status?: 'Pending' | 'Approved' | 'Rejected';
+  status?: WoodScheduleStatus;
   qc_check_1_details?: {
     measurement: boolean;
     finishing: boolean;
     buffer: boolean;
   };
 }
+
+export type WoodScheduleStatus = 'Pending' | 'Pending Review' | 'Approved' | 'Rejected';
 
 export interface Order {
   id: string; // UUID
@@ -125,8 +129,15 @@ export interface Order {
     uploaded_by: string;
   }>;
   wood_schedule?: WoodSchedule;
-  wood_schedule_status?: 'Pending' | 'Approved' | 'Rejected';
+  wood_schedule_status?: WoodScheduleStatus;
+  wood_rejection_note?: string;
   carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
+  qc_1_measurements_verified?: boolean;
+  qc_1_finish_verified?: boolean;
+  qc_1_buffer_verified?: boolean;
+  qc_2_polish_quality_verified?: boolean;
+  qc_2_surface_finish_approved?: boolean;
+  qc_2_final_product_approved?: boolean;
   total_amount?: number;
   advance_paid?: number;
   dispatchDate?: string;
@@ -357,5 +368,4 @@ export interface CRMTimelineEvent {
   timestamp: string;
   operator: string;
 }
-
 

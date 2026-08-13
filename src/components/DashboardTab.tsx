@@ -81,7 +81,7 @@ export default function DashboardTab({
     { name: 'Making Completed', count: getStageCount('Making Completed'), color: '#6366f1', percent: 0 },
     { name: 'Polish', count: getStageCount('Polish'), color: '#0d9488', percent: 0 },
     { name: 'QC 2', count: getStageCount('QC 2'), color: '#818cf8', percent: 0 },
-    { name: 'Ready To Dispatch', count: getStageCount('Ready To Dispatch'), color: '#16a34a', percent: 0 },
+    { name: 'Ready to Dispatch', count: getStageCount('Ready to Dispatch'), color: '#16a34a', percent: 0 },
     { name: 'Dispatched', count: getStageCount('Dispatched'), color: '#059669', percent: 0 },
   ];
 
@@ -92,7 +92,7 @@ export default function DashboardTab({
 
   // Upcoming Deliveries schedule list (sorted by soonest date)
   const sortedUpcoming = [...orders]
-    .filter((o) => !['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)))
+    .filter((o) => !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)))
     .sort((a, b) => new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime())
     .slice(0, 4);
 
@@ -122,7 +122,7 @@ export default function DashboardTab({
       case 'Making Completed': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'Polish': return 'bg-pink-50 text-pink-700 border-pink-200';
       case 'QC 2': return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'Ready To Dispatch': return 'bg-green-50 text-green-700 border-green-200';
+      case 'Ready to Dispatch': return 'bg-green-50 text-green-700 border-green-200';
       case 'Dispatched': return 'bg-emerald-50 text-emerald-800 border-emerald-200';
       default: return 'bg-stone-100 text-stone-700 border-stone-200';
     }
