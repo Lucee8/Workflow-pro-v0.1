@@ -26,7 +26,7 @@ import {
   Save
 } from 'lucide-react';
 import { Order, Customer } from '../types';
-import { formatToDDMMYYYY } from '../utils';
+import { formatToDDMMYYYY, getArticleSerial } from '../utils';
 
 export interface WoodRequirementItem {
   id: string;
@@ -54,6 +54,8 @@ export interface WoodRequirementRequest {
   status: 'Pending' | 'Approved' | 'Rejected';
   notes?: string;
   woodSchedule: WoodRequirementItem[];
+  createdAt?: string;
+  timestamp?: number;
 }
 
 export interface WoodManagementTabProps {
@@ -153,6 +155,8 @@ export default function WoodManagementTab({
       const totalCFT = woodScheduleItems.reduce((sum, item) => sum + (item.calculatedCFT || 0), 0);
       const currentStatus = statusMap[ord.id] || 'Pending';
       const catalogueName = ord.wood_schedule?.catalogue_name || ord.material || (ord.category ? `${ord.category} Catalogue` : 'Timber Catalogue');
+      const rawDateStr = ord.created_at || ord.order_date || ord.updated_at || '';
+      const orderTs = rawDateStr ? new Date(rawDateStr).getTime() : 0;
 
       list.push({
         id: ord.id,
@@ -168,7 +172,9 @@ export default function WoodManagementTab({
         totalVolumeCFT: Number(totalCFT.toFixed(2)),
         status: currentStatus,
         notes: ord.wood_schedule?.model_name ? `Model: ${ord.wood_schedule.model_name} | Size: ${ord.wood_schedule.size_of_product || 'Standard'}` : undefined,
-        woodSchedule: woodScheduleItems
+        woodSchedule: woodScheduleItems,
+        createdAt: rawDateStr,
+        timestamp: isNaN(orderTs) ? 0 : orderTs,
       });
     });
 
@@ -178,12 +184,37 @@ export default function WoodManagementTab({
       if (req.orderId && seenOrderIds.has(req.orderId)) return;
 
       const currentStatus = statusMap[req.id] || req.status || 'Pending';
+      const rawDateStr = req.createdAt || req.submissionDate || '';
+      const reqTs = req.timestamp || (rawDateStr ? new Date(rawDateStr).getTime() : 0);
+
       list.push({
         ...req,
-        status: currentStatus
+        status: currentStatus,
+        createdAt: rawDateStr,
+        timestamp: isNaN(reqTs) ? 0 : reqTs,
       });
     });
 
+    // Sort list in descending chronological order (newest/latest order at top)
+    list.sort((a, b) => {
+      const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+      const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+
+      if (timeB !== timeA) {
+        return timeB - timeA; // Descending: newest -> oldest
+      }
+
+      // Fallback 1: compare article serial number descending (e.g. 0008 -> 0007 -> 0001)
+      const serialA = getArticleSerial(a.articleNo || a.workOrderNo || '');
+      const serialB = getArticleSerial(b.articleNo || b.workOrderNo || '');
+      if (serialB !== serialA) {
+        return serialB - serialA;
+      }
+
+      // Fallback 2: compare IDs
+      return (b.id || '').localeCompare(a.id || '');
+    });
+    
     return list;
   }, [orders, customers, statusMap, deletedIds, manualRequests]);
 
