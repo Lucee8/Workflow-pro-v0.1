@@ -74,7 +74,7 @@ export default function CalendarTab({
       case 'Making Completed': return 'bg-indigo-500 text-white';
       case 'Polish': return 'bg-[#ec4899] text-white';
       case 'QC 2': return 'bg-orange-500 text-white';
-      case 'Ready To Dispatch': return 'bg-green-600 text-white';
+      case 'Ready to Dispatch': return 'bg-green-600 text-white';
       case 'Dispatched': return 'bg-emerald-600 text-white';
       default: return 'bg-stone-500 text-white';
     }
@@ -91,7 +91,7 @@ export default function CalendarTab({
       case 'Making Completed': return 'bg-indigo-500';
       case 'Polish': return 'bg-[#ec4899]';
       case 'QC 2': return 'bg-orange-500';
-      case 'Ready To Dispatch': return 'bg-green-600';
+      case 'Ready to Dispatch': return 'bg-green-600';
       case 'Dispatched': return 'bg-emerald-600';
       default: return 'bg-stone-500';
     }

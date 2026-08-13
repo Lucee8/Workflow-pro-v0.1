@@ -301,7 +301,7 @@ export default function OrderDetailsView({
     'Making Completed',
     'Polish',
     'QC 2',
-    'Ready To Dispatch',
+    'Ready to Dispatch',
     'Dispatched',
   ];
 
@@ -390,29 +390,29 @@ export default function OrderDetailsView({
   };
 
   // QC Checkbox States
-  const [qc1Measurements, setQc1Measurements] = React.useState(!!order.qc_1_measurements_verified);
-  const [qc1Finish, setQc1Finish] = React.useState(!!order.qc_1_finish_verified);
-  const [qc1Buffer, setQc1Buffer] = React.useState(!!order.qc_1_buffer_verified);
+  const [qc1Measurements, setQc1Measurements] = React.useState(!!(order as any).qc_1_measurements_verified);
+  const [qc1Finish, setQc1Finish] = React.useState(!!(order as any).qc_1_finish_verified);
+  const [qc1Buffer, setQc1Buffer] = React.useState(!!(order as any).qc_1_buffer_verified);
 
-  const [qc2Polish, setQc2Polish] = React.useState(!!order.qc_2_polish_quality_verified);
-  const [qc2Surface, setQc2Surface] = React.useState(!!order.qc_2_surface_finish_approved);
-  const [qc2Final, setQc2Final] = React.useState(!!order.qc_2_final_product_approved);
+  const [qc2Polish, setQc2Polish] = React.useState(!!(order as any).qc_2_polish_quality_verified);
+  const [qc2Surface, setQc2Surface] = React.useState(!!(order as any).qc_2_surface_finish_approved);
+  const [qc2Final, setQc2Final] = React.useState(!!(order as any).qc_2_final_product_approved);
 
   // Sync state when order prop changes
   React.useEffect(() => {
-    setQc1Measurements(!!order.qc_1_measurements_verified);
-    setQc1Finish(!!order.qc_1_finish_verified);
-    setQc1Buffer(!!order.qc_1_buffer_verified);
-    setQc2Polish(!!order.qc_2_polish_quality_verified);
-    setQc2Surface(!!order.qc_2_surface_finish_approved);
-    setQc2Final(!!order.qc_2_final_product_approved);
+    setQc1Measurements(!!(order as any).qc_1_measurements_verified);
+    setQc1Finish(!!(order as any).qc_1_finish_verified);
+    setQc1Buffer(!!(order as any).qc_1_buffer_verified);
+    setQc2Polish(!!(order as any).qc_2_polish_quality_verified);
+    setQc2Surface(!!(order as any).qc_2_surface_finish_approved);
+    setQc2Final(!!(order as any).qc_2_final_product_approved);
   }, [
-    order.qc_1_measurements_verified,
-    order.qc_1_finish_verified,
-    order.qc_1_buffer_verified,
-    order.qc_2_polish_quality_verified,
-    order.qc_2_surface_finish_approved,
-    order.qc_2_final_product_approved,
+    (order as any).qc_1_measurements_verified,
+    (order as any).qc_1_finish_verified,
+    (order as any).qc_1_buffer_verified,
+    (order as any).qc_2_polish_quality_verified,
+    (order as any).qc_2_surface_finish_approved,
+    (order as any).qc_2_final_product_approved,
   ]);
 
   // Stage Specific Action Handlers
@@ -460,7 +460,6 @@ export default function OrderDetailsView({
     const updatedOrder: Order = {
       ...order,
       wood_schedule_status: 'Rejected',
-      wood_rejection_note: note,
       updated_at: new Date().toISOString(),
     };
     onUpdateOrder(updatedOrder, log);
@@ -473,9 +472,6 @@ export default function OrderDetailsView({
   const handlePassQC1 = () => {
     const updatedOrder: Order = {
       ...order,
-      qc_1_measurements_verified: true,
-      qc_1_finish_verified: true,
-      qc_1_buffer_verified: true,
       current_status: 'Making Completed',
       updated_at: new Date().toISOString(),
     };
@@ -504,21 +500,21 @@ export default function OrderDetailsView({
   const handlePassQC2 = () => {
     const updatedOrder: Order = {
       ...order,
-      qc_2_polish_quality_verified: true,
-      qc_2_surface_finish_approved: true,
-      qc_2_final_product_approved: true,
-      current_status: 'Ready To Dispatch',
+      current_status: 'Ready to Dispatch',
       updated_at: new Date().toISOString(),
-    };
+    } as any;
+    (updatedOrder as any).qc_2_polish_quality_verified = true;
+    (updatedOrder as any).qc_2_surface_finish_approved = true;
+    (updatedOrder as any).qc_2_final_product_approved = true;
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: order.id,
-      stage: 'Ready To Dispatch',
+      stage: 'Ready to Dispatch',
       changed_by: currentUser.id,
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: 'QC 2 passed: Polish Quality, Surface Finish, and Final Product approved. Order moved to Ready To Dispatch.',
+      note: 'QC 2 passed: Polish Quality, Surface Finish, and Final Product approved. Order moved to Ready to Dispatch.',
       qc_passed: true,
     };
     onUpdateOrder(updatedOrder, log);
@@ -631,14 +627,14 @@ export default function OrderDetailsView({
             <h1 className="text-xl md:text-2xl font-black font-display text-stone-900 tracking-tight">{order.article_no}</h1>
             <span
               className={`px-3 py-0.5 text-[10px] uppercase font-mono font-black border rounded-md ${
-                order.current_status === 'Ready To Dispatch'
-                  ? 'bg-green-150 text-green-800 border-green-300'
-                  : order.current_status === 'Dispatched'
-                  ? 'bg-emerald-100 text-emerald-850 border-emerald-300'
-                  : 'bg-amber-100 text-[#593622] border-amber-300 animate-pulse'
-              }`}
-            >
-              {order.current_status === 'Ready To Dispatch' ? 'Ready' : order.current_status === 'Dispatched' ? 'Dispatched' : 'In Production'}
+                  normalizeStage(order.current_status) === 'Ready to Dispatch'
+                    ? 'bg-green-150 text-green-800 border-green-300'
+                    : normalizeStage(order.current_status) === 'Dispatched'
+                    ? 'bg-emerald-100 text-emerald-850 border-emerald-300'
+                    : 'bg-amber-100 text-[#593622] border-amber-300 animate-pulse'
+                }`}
+              >
+                {normalizeStage(order.current_status) === 'Ready to Dispatch' ? 'Ready' : normalizeStage(order.current_status) === 'Dispatched' ? 'Dispatched' : 'In Production'}
             </span>
           </div>
           <p className="text-stone-500 text-xs">
@@ -828,7 +824,7 @@ export default function OrderDetailsView({
                 {order.current_status === 'Making Completed' && <p>Carpentry work fully finished, sanded, and ready for polishing.</p>}
                 {order.current_status === 'Polish' && <p>Surface polishing, staining, and protective lacquer coating in progress.</p>}
                 {order.current_status === 'QC 2' && <p>Final Quality Check (Polish & Finish Inspection) before dispatch.</p>}
-                {order.current_status === 'Ready To Dispatch' && <p>Product packaging complete and placed in dispatch bay.</p>}
+                {order.current_status === 'Ready to Dispatch' && <p>Product packaging complete and placed in dispatch bay.</p>}
                 {order.current_status === 'Dispatched' && <p>Product has been physically dispatched from workshop to customer.</p>}
               </div>
 
@@ -866,7 +862,7 @@ export default function OrderDetailsView({
                   {/* STAGE 3: WOOD PROCUREMENT */}
                   {order.current_status === 'Wood Procurement' && (
                     <div className="space-y-2 bg-amber-50/60 p-3 rounded-xl border border-amber-200">
-                      {order.wood_schedule_status === 'Pending Review' ? (
+                      {order.wood_schedule_status === 'Pending' ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
                             <Clock size={15} className="text-amber-700" />
@@ -893,7 +889,7 @@ export default function OrderDetailsView({
                         </div>
                       ) : order.wood_schedule_status === 'Rejected' ? (
                         <div className="text-rose-900 text-xs space-y-1">
-                          <strong className="block font-bold">⚠️ Wood Sheet Rejected: {order.wood_rejection_note}</strong>
+                          <strong className="block font-bold">⚠️ Wood Sheet Rejected</strong>
                           <p className="text-stone-600 text-[11px]">Please edit the Wood Schedule table below and resubmit.</p>
                         </div>
                       ) : (
@@ -1070,7 +1066,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 9: READY TO DISPATCH */}
-                  {order.current_status === 'Ready To Dispatch' && (
+                  {order.current_status === 'Ready to Dispatch' && (
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
                       <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
                         <CheckCircle2 size={16} className="text-emerald-600" />

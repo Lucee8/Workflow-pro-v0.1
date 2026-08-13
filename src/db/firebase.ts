@@ -29,7 +29,7 @@ const databaseId = firebaseConfigWithDatabaseId.projectId === "adroit-acronym-78
       : undefined
   );
 
-export const db = getFirestore(app, databaseId);
+export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 
 // Safe Auth initialization avoiding IndexedDB issues in iframe environments
 function getOrInitAuth() {

@@ -148,7 +148,7 @@ const SEED_USERS: User[] = [
     id: 'user_qc_inspector',
     name: 'QC Inspector',
     email: 'qc@bhisesworkshop.com',
-    role: 'qc_staff',
+    role: 'manager',
     initials: 'QC',
     is_active: true,
     last_seen: 'Just now',

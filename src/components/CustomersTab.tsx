@@ -365,7 +365,7 @@ export default function CustomersTab({
                           const orderRef = customerOrders.find((ord) => ord.id === p.order_id);
                           return (
                             <tr key={p.id} className="hover:bg-stone-50/50 transition">
-                              <td className="py-3 font-mono font-semibold">{p.dispatchedAt || orderRef?.order_date || '—'}</td>
+                              <td className="py-3 font-mono font-semibold">{(p as any).dispatchedAt || orderRef?.order_date || '—'}</td>
                               <td className="py-3 font-mono font-bold text-stone-800">
                                 {orderRef ? (
                                   <button
@@ -383,11 +383,11 @@ export default function CustomersTab({
                               <td className="py-3 font-mono font-bold text-rose-600">₹ {Math.max(0, p.total_amount - (p.advance_paid || 0)).toLocaleString('en-IN')}</td>
                               <td className="py-3 capitalize">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-stone-50 text-stone-700 border-stone-200">
-                                  {p.dispatchedBy ? 'Dispatched' : 'Pending'}
+                                  {(p as any).dispatchedBy ? 'Dispatched' : 'Pending'}
                                 </span>
                               </td>
-                              <td className="py-3 text-right font-medium text-stone-550 max-w-[180px] truncate" title={p.dispatchNotes}>
-                                {p.dispatchNotes || '—'}
+                              <td className="py-3 text-right font-medium text-stone-550 max-w-[180px] truncate" title={(p as any).dispatchNotes}>
+                                {(p as any).dispatchNotes || '—'}
                               </td>
                             </tr>
                           );
