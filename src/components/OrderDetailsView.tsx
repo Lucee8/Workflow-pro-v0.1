@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { Order, User, Customer, OrderStage, StatusLog, Payment, normalizeStage } from '../types';
+import { Order, User, Customer, OrderStage, StatusLog, Payment, normalizeStage, QCFailureInfo } from '../types';
 import { generateUUID } from '../db/store';
 import { formatToDDMMYYYY } from '../utils';
 import { 
@@ -513,6 +513,9 @@ export default function OrderDetailsView({
       qc_1_measurements_verified: true,
       qc_1_finish_verified: true,
       qc_1_buffer_verified: true,
+      qc_1_status: 'passed',
+      last_qc_failure: order.last_qc_failure?.stage === 'QC 1' ? { ...order.last_qc_failure, resolved: true } : order.last_qc_failure,
+      
       current_status: 'Making Completed',
       updated_at: new Date().toISOString(),
     };
@@ -545,6 +548,8 @@ export default function OrderDetailsView({
       qc_2_surface_finish_approved: true,
       qc_2_final_product_approved: true,
       current_status: 'Ready to Dispatch',
+      qc_2_status: 'passed',
+      last_qc_failure: order.last_qc_failure?.stage === 'QC 2' ? { ...order.last_qc_failure, resolved: true } : order.last_qc_failure,
       updated_at: new Date().toISOString(),
     };
     const log: StatusLog = {
@@ -587,8 +592,63 @@ export default function OrderDetailsView({
       alert('Please fill out a specific note text detailing what failed during quality audits.');
       return;
     }
+
+    const isQc1 = order.current_status === 'QC 1' || order.current_status === 'QC Check 1' || qcFailLogStage === 'Making Started';
+    const failedStageName = isQc1 ? 'QC 1' : 'QC 2';
+    const revertTargetStage: OrderStage = isQc1 ? 'Making Started' : 'Polish';
+
+    const failTimestamp = new Date().toISOString();
+    const inspectorName = currentUser.name || 'Admin';
+
+    const failureInfo: QCFailureInfo = {
+      stage: failedStageName,
+      failed_by: inspectorName,
+      failed_at: failTimestamp,
+      notes: qcFailNote.trim(),
+      acknowledged: false,
+      resolved: false,
+    };
+
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: order.id,
+      stage: revertTargetStage,
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: failTimestamp,
+      note: `QC Audit Failed (${failedStageName}): ${qcFailNote.trim()}`,
+      qc_passed: false,
+    };
+
+    const updatedOrder: Order = {
+      ...order,
+      current_status: revertTargetStage,
+      is_delayed: true,
+      last_qc_failure: failureInfo,
+      ...(isQc1 ? {
+        qc_1_measurements_verified: false,
+        qc_1_finish_verified: false,
+        qc_1_buffer_verified: false,
+        qc_1_status: 'failed',
+        qc_1_fail_notes: qcFailNote.trim(),
+        qc_1_failed_at: failTimestamp,
+        qc_1_failed_by: inspectorName,
+        carpenter_sub_status: 'under_carpentry',
+      } : {
+        qc_2_polish_quality_verified: false,
+        qc_2_surface_finish_approved: false,
+        qc_2_final_product_approved: false,
+        qc_2_status: 'failed',
+        qc_2_fail_notes: qcFailNote.trim(),
+        qc_2_failed_at: failTimestamp,
+        qc_2_failed_by: inspectorName,
+      }),
+      updated_at: failTimestamp,
+    };
+
     setShowQcFailModal(false);
-    triggerTransition(qcFailLogStage, `QC audit failed: ${qcFailNote}`, false);
+    onUpdateOrder(updatedOrder, log);
     setQcFailNote('');
   };
 

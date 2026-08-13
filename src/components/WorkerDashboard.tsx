@@ -4,11 +4,42 @@
  */
 
 import React from 'react';
-import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage } from '../types';
+import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage, QCFailureInfo } from '../types';
 import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
 import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, ShieldCheck, CheckCircle2, Lock } from 'lucide-react';
 
+function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
+  if (!ord) return null;
+
+  if (ord.last_qc_failure && !ord.last_qc_failure.resolved) {
+    return ord.last_qc_failure;
+  }
+
+  if (ord.qc_1_status === 'failed' && ord.qc_1_fail_notes) {
+    return {
+      stage: 'QC 1',
+      failed_by: ord.qc_1_failed_by || 'Admin / Inspector',
+      failed_at: ord.qc_1_failed_at || ord.updated_at || '',
+      notes: ord.qc_1_fail_notes,
+      acknowledged: false,
+      resolved: false,
+    };
+  }
+
+  if (ord.qc_2_status === 'failed' && ord.qc_2_fail_notes) {
+    return {
+      stage: 'QC 2',
+      failed_by: ord.qc_2_failed_by || 'Admin / Inspector',
+      failed_at: ord.qc_2_failed_at || ord.updated_at || '',
+      notes: ord.qc_2_fail_notes,
+      acknowledged: false,
+      resolved: false,
+    };
+  }
+
+  return null;
+}
 function getDefaultWoodSchedule(order: Order): WoodSchedule {
   const sub = (order.sub_category || '').toLowerCase();
   const cat = (order.category || '').toLowerCase();
@@ -238,6 +269,8 @@ export default function WorkerDashboard({
 
   // Approval status sync from localStorage and Order object
   const [showApprovedModal, setShowApprovedModal] = React.useState(false);
+  const [showQcFailPopup, setShowQcFailPopup] = React.useState(false);
+  const [seenQcFailures, setSeenQcFailures] = React.useState<Record<string, boolean>>({});
 
   const woodStatusMap = React.useMemo(() => {
     try {
@@ -274,6 +307,19 @@ export default function WorkerDashboard({
       setShowApprovedModal(false);
     }
   }, [activeOrder?.id, isWoodScheduleApproved]);
+
+  React.useEffect(() => {
+    if (activeOrder) {
+      const failInfo = getQCFailureInfo(activeOrder);
+      if (failInfo && !failInfo.resolved && !seenQcFailures[activeOrder.id]) {
+        setShowQcFailPopup(true);
+      } else {
+        setShowQcFailPopup(false);
+      }
+    } else {
+      setShowQcFailPopup(false);
+    }
+  }, [activeOrder?.id, activeOrder?.last_qc_failure?.failed_at, activeOrder?.qc_1_failed_at, activeOrder?.qc_2_failed_at, seenQcFailures]);
 
   const handleUploadRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -342,6 +388,12 @@ export default function WorkerDashboard({
 
   const handleOpenUpdate = (ord: Order) => {
     setActiveOrder(ord);
+    const failInfo = getQCFailureInfo(ord);
+    if (failInfo && !failInfo.resolved && !seenQcFailures[ord.id]) {
+      setShowQcFailPopup(true);
+    } else {
+      setShowQcFailPopup(false);
+    }
     if (isCarpenter) {
       setProgressStatus(ord.carpenter_sub_status || 'wood_procurement');
       
@@ -578,6 +630,101 @@ export default function WorkerDashboard({
           </div>
         )}
 
+        {/* QC Failure Automatic Alert Popup for Worker */}
+        {showQcFailPopup && activeOrder && (() => {
+          const failInfo = getQCFailureInfo(activeOrder);
+          if (!failInfo) return null;
+
+          const formattedDate = failInfo.failed_at
+            ? new Date(failInfo.failed_at).toLocaleString()
+            : 'Recently';
+
+          return (
+            <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border-2 border-rose-300 space-y-5">
+                
+                {/* Header */}
+                <div className="flex items-start justify-between border-b border-stone-150 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-rose-100 rounded-xl text-rose-600">
+                      <AlertCircle size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-rose-950 font-display">
+                        {failInfo.stage} Failed – Action Required
+                      </h3>
+                      <p className="text-stone-500 text-xs font-medium">
+                        Article #{activeOrder.article_no}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQcFailPopup(false);
+                      if (activeOrder) {
+                        setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
+                      }
+                    }}
+                    className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Message */}
+                <p className="text-xs text-stone-700 bg-amber-50/80 p-3 rounded-xl border border-amber-200/80 font-medium leading-relaxed">
+                  This order did not pass <strong>{failInfo.stage}</strong>. Please review the audit notes below and correct the issues before continuing.
+                </p>
+
+                {/* Metadata Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200/80 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">Failed QC</span>
+                    <strong className="text-rose-900 font-extrabold">{failInfo.stage}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">Failed By</span>
+                    <strong className="text-stone-900 font-bold">{failInfo.failed_by || 'Admin / Inspector'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">Failure Date</span>
+                    <strong className="text-stone-800 font-medium">{formattedDate}</strong>
+                  </div>
+                </div>
+
+                {/* Fail Audit Notes Prominently Displayed */}
+                <div className="bg-rose-50/90 border-2 border-rose-200 rounded-xl p-4 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-rose-800 text-[11px] font-black uppercase tracking-wider">
+                    <AlertCircle size={14} className="text-rose-600" />
+                    <span>Fail Audit Notes:</span>
+                  </div>
+                  <p className="text-rose-950 font-bold text-sm leading-relaxed whitespace-pre-wrap bg-white/80 p-3 rounded-lg border border-rose-200/60">
+                    {failInfo.notes}
+                  </p>
+                </div>
+
+                {/* Close button */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQcFailPopup(false);
+                      if (activeOrder) {
+                        setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
+                      }
+                    }}
+                    className="w-full sm:w-auto bg-stone-900 hover:bg-stone-800 text-white font-extrabold px-6 py-2.5 rounded-xl shadow-md transition text-xs cursor-pointer"
+                  >
+                    I Understand / Close
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="space-y-6 animate-in fade-in duration-200">
         {/* Header navigation back */}
         <button
@@ -587,6 +734,52 @@ export default function WorkerDashboard({
           <ArrowLeft size={14} /> Back to workbench listings
         </button>
 
+        {/* Persistent Warning Banner for QC Failure */}
+        {(() => {
+          const failureInfo = getQCFailureInfo(activeOrder);
+          if (!failureInfo || failureInfo.resolved) return null;
+
+          const formattedDate = failureInfo.failed_at
+            ? new Date(failureInfo.failed_at).toLocaleString()
+            : 'Recently';
+
+          return (
+            <div className="bg-rose-50/90 border-2 border-rose-300 rounded-2xl p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-rose-200/80 pb-2">
+                <div className="flex items-center gap-2 text-rose-900 font-black text-sm">
+                  <AlertCircle size={18} className="text-rose-600 animate-bounce" />
+                  <span>⚠ QC Failure Notes – Action Required</span>
+                </div>
+                <span className="text-[10px] font-mono text-rose-800 font-bold bg-rose-100 px-2.5 py-0.5 rounded-md border border-rose-200 uppercase">
+                  {failureInfo.stage} Reverted
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-rose-900 font-medium">
+                <div>
+                  <span className="text-stone-500 uppercase tracking-wider font-bold text-[10px] block">Failed QC:</span>
+                  <strong className="text-rose-900 font-extrabold">{failureInfo.stage}</strong>
+                </div>
+                <div>
+                  <span className="text-stone-500 uppercase tracking-wider font-bold text-[10px] block">Failed By:</span>
+                  <strong className="text-stone-900 font-bold">{failureInfo.failed_by || 'Admin / Inspector'}</strong>
+                </div>
+                <div>
+                  <span className="text-stone-500 uppercase tracking-wider font-bold text-[10px] block">Failure Date:</span>
+                  <strong className="text-stone-850 font-semibold">{formattedDate}</strong>
+                </div>
+              </div>
+
+              <div className="bg-white border border-rose-200 rounded-xl p-3 text-xs space-y-1 shadow-2xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 block">Fail Audit Notes:</span>
+                <p className="font-bold text-stone-900 whitespace-pre-wrap leading-relaxed text-xs">
+                  {failureInfo.notes}
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+        
         <div className="pb-2 border-b border-stone-200">
           <h1 className="text-xl md:text-2xl font-black text-stone-900 tracking-tight font-display">Update Technical Status</h1>
           <p className="text-stone-500 text-xs">Verify measurements, log notes, and upload floor completion photographs</p>

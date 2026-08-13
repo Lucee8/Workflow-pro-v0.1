@@ -5,6 +5,14 @@
 
 export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person' | 'qc_staff';
 
+export interface QCFailureInfo {
+  stage: string;
+  failed_by: string;
+  failed_at: string;
+  notes: string;
+  acknowledged?: boolean;
+  resolved?: boolean;
+}
 export interface User {
   id: string; // Firebase Auth UID equivalent
   name: string;
@@ -129,15 +137,24 @@ export interface Order {
     uploaded_by: string;
   }>;
   wood_schedule?: WoodSchedule;
-  wood_schedule_status?: WoodScheduleStatus;
+  wood_schedule_status?: 'Pending' | 'Pending Review' | 'Approved' | 'Rejected';
   wood_rejection_note?: string;
-  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
   qc_1_measurements_verified?: boolean;
   qc_1_finish_verified?: boolean;
   qc_1_buffer_verified?: boolean;
   qc_2_polish_quality_verified?: boolean;
   qc_2_surface_finish_approved?: boolean;
   qc_2_final_product_approved?: boolean;
+  last_qc_failure?: QCFailureInfo;
+  qc_1_status?: 'passed' | 'failed' | 'pending';
+  qc_1_fail_notes?: string;
+  qc_1_failed_at?: string;
+  qc_1_failed_by?: string;
+  qc_2_status?: 'passed' | 'failed' | 'pending';
+  qc_2_fail_notes?: string;
+  qc_2_failed_at?: string;
+  qc_2_failed_by?: string;
+  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
   total_amount?: number;
   advance_paid?: number;
   dispatchDate?: string;
