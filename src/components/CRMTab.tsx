@@ -239,7 +239,7 @@ export default function CRMTab({
           ? editingQuotation.items.map(item => ({
               id: item.id || generateId('item'),
               furnitureItem: item.furnitureItem || '',
-              material: item.material || 'Solid Teak Wood',
+              material: item.material || 'Solid Teak Wood(Sagwan)',
               dimensions: item.dimensions || '',
               quantity: item.quantity || 1,
               unitPrice: item.unitPrice || 0,
@@ -251,7 +251,7 @@ export default function CRMTab({
           : [{
               id: generateId('item'),
               furnitureItem: '',
-              material: 'Solid Teak Wood',
+              material: 'Solid Teak Wood(Sagwan)',
               dimensions: '',
               quantity: 1,
               unitPrice: 0,
@@ -275,7 +275,7 @@ export default function CRMTab({
         setQuoteItems([{
           id: generateId('item'),
           furnitureItem: customer?.productRequirement || '',
-          material: 'Solid Teak Wood',
+          material: 'Solid Teak Wood(Sagwan)',
           dimensions: '',
           quantity: 1,
           unitPrice: 0,
@@ -311,7 +311,7 @@ export default function CRMTab({
       {
         id: generateId('item'),
         furnitureItem: '',
-        material: 'Solid Teak Wood',
+        material: 'Solid Teak Wood(Sagwan)',
         dimensions: '',
         quantity: 1,
         unitPrice: 0,
@@ -1348,7 +1348,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
         id: item.id || generateId('item'),
         furnitureItem: item.furnitureItem.trim(),
         quantity: q,
-        material: item.material || 'Solid Teak Wood',
+        material: item.material || 'Solid Teak Wood(Sagwan)',
         dimensions: item.dimensions || '',
         unitPrice: p,
         discount: 0,
@@ -3428,13 +3428,21 @@ if (typeof endMs === 'number' && time > endMs) return false;
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1">
                               <label className="font-bold text-stone-700 text-xs">Premium Wood / Material</label>
-                              <input
-                                type="text"
-                                value={item.material}
+                              <select
+                                value={item.material === 'Solid Teak Wood' ? 'Solid Teak Wood(Sagwan)' : (item.material || 'Solid Teak Wood(Sagwan)')}
                                 onChange={(e) => handleUpdateProductItem(idx, 'material', e.target.value)}
-                                placeholder="e.g. Solid Teak Wood & Matte Lacquer"
-                                className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs text-stone-800"
-                              />
+                                className="w-full bg-white border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2 text-xs font-semibold text-stone-900 cursor-pointer shadow-2xs"
+                              >
+                                <option value="Solid Teak Wood(Sagwan)">Solid Teak Wood(Sagwan)</option>
+                                <option value="Solid Shivan Wood">Solid Shivan Wood</option>
+                                <option value="Solid Aakashi Wood">Solid Aakashi Wood</option>
+                                <option value="Mix Wood">Mix Wood</option>
+                                <option value="Plywood">Plywood</option>
+                                {item.material &&
+                                  !['Solid Teak Wood(Sagwan)', 'Solid Shivan Wood', 'Solid Aakashi Wood', 'Mix Wood', 'Plywood', 'Solid Teak Wood'].includes(item.material) && (
+                                    <option value={item.material}>{item.material}</option>
+                                  )}
+                              </select>
                             </div>
 
                             <div className="space-y-1">
