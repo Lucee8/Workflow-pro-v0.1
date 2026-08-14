@@ -5,8 +5,18 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { Order, User, Customer, OrderStage, Payment, normalizeStage } from '../types';
-import { Eye, Clock, CheckCircle2, AlertTriangle, Briefcase, CalendarCheck, ArrowUpRight, PiggyBank, CreditCard, ShieldCheck, Boxes, Sparkles, UserPlus, Plus } from 'lucide-react';
+import { Order, User, Customer, OrderStage, Payment, CRMQuotation, CRMPayment, normalizeStage } from '../types';
+import { 
+  Eye, 
+  CheckCircle2, 
+  UserPlus, 
+  Plus, 
+  FileText, 
+  Boxes,
+  Calendar,
+  Layers,
+  Sparkles
+} from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 
 interface DashboardTabProps {
@@ -14,6 +24,8 @@ interface DashboardTabProps {
   users: User[];
   customers: Customer[];
   payments: Payment[];
+  crmQuotations?: CRMQuotation[];
+  crmPayments?: CRMPayment[];
   onViewOrder: (orderId: string) => void;
   onNavigateTab: (tabId: string) => void;
   onQuickCrmAction?: (action: 'add-customer' | 'new-quotation') => void;
@@ -24,129 +36,236 @@ export default function DashboardTab({
   users,
   customers,
   payments,
+  crmQuotations = [],
+  crmPayments = [],
   onViewOrder,
   onNavigateTab,
   onQuickCrmAction,
 }: DashboardTabProps) {
-  // Stats Calculation
-  const totalOrdersUrl = orders.length;
-  const inProgressCount = orders.filter((o) => !['Ready to Dispatch', 'Dispatched'].includes(o.current_status)).length;
-  const completedCount = orders.filter((o) => ['Ready to Dispatch', 'Dispatched'].includes(o.current_status)).length;
-  const delayedCount = orders.filter((o) => o.is_delayed).length;
 
-  // Payments calculations across all active orders
-  const getOrderBalanceDue = (o: Order) => {
-    const p = payments.find((pay) => pay.order_id === o.id);
-    if (p) {
-      if (typeof p.balance_due === 'number' && !isNaN(p.balance_due)) {
-        return Math.max(0, p.balance_due);
+  // 1. Group orders by Invoice / Parent Order key (to enforce order-level payment rule)
+  const invoiceGroups = React.useMemo<Record<string, Order[]>>(() => {
+    const groups: Record<string, Order[]> = {};
+    orders.forEach((o) => {
+      const groupKey = o.parent_order_id || o.id;
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
       }
-      const total = typeof p.total_amount === 'number' ? p.total_amount : (o.total_amount || 0);
-      const adv = typeof p.advance_paid === 'number' ? p.advance_paid : (o.advance_paid || 0);
-      return Math.max(0, total - adv);
-    }
-    if (o.total_amount !== undefined && o.total_amount !== null) {
-      const total = Number(o.total_amount) || 0;
-      const adv = Number(o.advance_paid) || 0;
-      return Math.max(0, total - adv);
-    }
-    return 0;
-  };
+      groups[groupKey].push(o);
+    });
+    return groups;
+  }, [orders]);
 
-  const totalOutstandingBalance = orders.reduce((sum, o) => sum + getOrderBalanceDue(o), 0);
+  // 2. Financial calculation strictly adhering to ORDER-LEVEL payments
+  const { totalFurnitureBusiness, moneyReceived, moneyDue, finalizedOrdersCount } = React.useMemo(() => {
+    let totalBusiness = 0;
+    let totalReceived = 0;
 
-  const fullyPaidCount = orders.filter((o) => {
-    if (orders.length === 0) return false;
-    const p = payments.find((pay) => pay.order_id === o.id);
-    if (p) {
-      return (p.balance_due ?? (p.total_amount - p.advance_paid)) <= 0;
-    }
-    if (o.total_amount !== undefined && o.total_amount !== null && o.total_amount > 0) {
-      return (o.total_amount - (o.advance_paid || 0)) <= 0;
-    }
-    return false;
-  }).length;
+    Object.entries(invoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
+      const relatedIds = new Set<string>([invoiceKey, ...groupOrders.map((o) => o.id)]);
 
-  const partialOrUnpaidCount = orders.length - fullyPaidCount;
+      const orderPayment = payments.find((p) => relatedIds.has(p.order_id));
+      const crmPayment = (crmPayments || []).find((p) => p.order_id && relatedIds.has(p.order_id));
 
-  // Pie chart calculation
+      // Calculate invoice grand total
+      let invoiceTotal = 0;
+      if (orderPayment && typeof orderPayment.total_amount === 'number' && orderPayment.total_amount > 0) {
+        invoiceTotal = orderPayment.total_amount;
+      } else if (crmPayment && typeof crmPayment.total_amount === 'number' && crmPayment.total_amount > 0) {
+        invoiceTotal = crmPayment.total_amount;
+      } else {
+        // Sum total_amount of each product in the invoice
+        invoiceTotal = groupOrders.reduce((sum, ord) => {
+          if (ord.total_amount !== undefined && ord.total_amount !== null && ord.total_amount > 0) {
+            return sum + Number(ord.total_amount);
+          }
+          const qty = ord.no_of_units || 1;
+          const fallbackFinalRate = 15000;
+          return sum + fallbackFinalRate * qty;
+        }, 0);
+      }
+
+      // Calculate invoice received amount (Stored only ONCE at order/invoice level)
+      let invoiceReceived = 0;
+      if (orderPayment && typeof orderPayment.advance_paid === 'number') {
+        invoiceReceived = orderPayment.advance_paid;
+      } else if (crmPayment && typeof crmPayment.advance_paid === 'number') {
+        invoiceReceived = crmPayment.advance_paid;
+      } else {
+        const orderAdvances = groupOrders.map((o) => Number(o.advance_paid) || 0);
+        invoiceReceived = orderAdvances.find((v) => v > 0) || 0;
+      }
+
+      invoiceReceived = Math.min(invoiceTotal, Math.max(0, invoiceReceived));
+
+      totalBusiness += invoiceTotal;
+      totalReceived += invoiceReceived;
+    });
+
+    const totalDue = Math.max(0, totalBusiness - totalReceived);
+    const finalizedCount = orders.length;
+
+    return {
+      totalFurnitureBusiness: totalBusiness,
+      moneyReceived: totalReceived,
+      moneyDue: totalDue,
+      finalizedOrdersCount: finalizedCount,
+    };
+  }, [invoiceGroups, orders, payments, crmPayments]);
+
+  // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
+  const ongoingInFactory = React.useMemo(() => {
+    return orders.filter((o) => {
+      const stage = normalizeStage(o.current_status);
+      return stage !== 'Pending';
+    }).length;
+  }, [orders]);
+
+  // 4. Quotation Pipeline breakdown & conversion rate
+  const quotationStats = React.useMemo(() => {
+    const quotes = crmQuotations || [];
+    const total = quotes.length;
+
+    let draft = 0;
+    let sent = 0;
+    let approved = 0;
+    let rejectedExpired = 0;
+
+    quotes.forEach((q) => {
+      const st = (q.status || '').toLowerCase().trim();
+      if (st === 'draft') {
+        draft++;
+      } else if (st === 'sent' || st === 'quote sent') {
+        sent++;
+      } else if (st === 'approved' || st === 'order confirmed' || st === 'closed won') {
+        approved++;
+      } else if (st === 'rejected' || st === 'expired' || st === 'deal lost' || st === 'disqualified') {
+        rejectedExpired++;
+      } else {
+        draft++;
+      }
+    });
+
+    const conversionRate = total > 0 ? Math.round((approved / total) * 100) : 0;
+
+    return {
+      total,
+      draft,
+      sent,
+      approved,
+      rejectedExpired,
+      conversionRate,
+    };
+  }, [crmQuotations]);
+
+  // 5. Production stages counts
   const getStageCount = (stage: OrderStage) =>
     orders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
-  const stages: { name: OrderStage; count: number; color: string; percent: number }[] = [
-    { name: 'Pending', count: getStageCount('Pending'), color: '#a8a29e', percent: 0 },
-    { name: 'Designing', count: getStageCount('Designing'), color: '#d97706', percent: 0 },
-    { name: 'Wood Procurement', count: getStageCount('Wood Procurement'), color: '#ea580c', percent: 0 },
-    { name: 'Making Started', count: getStageCount('Making Started'), color: '#3b82f6', percent: 0 },
-    { name: 'QC 1', count: getStageCount('QC 1'), color: '#c084fc', percent: 0 },
-    { name: 'Making Completed', count: getStageCount('Making Completed'), color: '#6366f1', percent: 0 },
-    { name: 'Polish', count: getStageCount('Polish'), color: '#0d9488', percent: 0 },
-    { name: 'QC 2', count: getStageCount('QC 2'), color: '#818cf8', percent: 0 },
-    { name: 'Ready to Dispatch', count: getStageCount('Ready to Dispatch'), color: '#16a34a', percent: 0 },
-    { name: 'Dispatched', count: getStageCount('Dispatched'), color: '#059669', percent: 0 },
+
+  const productionStages: {
+    name: OrderStage;
+    label: string;
+    count: number;
+    badgeBg: string;
+    activeText: string;
+  }[] = [
+    { name: 'Pending', label: 'PENDING', count: getStageCount('Pending'), badgeBg: 'bg-stone-400', activeText: 'text-stone-700' },
+    { name: 'Designing', label: 'DESIGNING', count: getStageCount('Designing'), badgeBg: 'bg-[#b45309]', activeText: 'text-amber-800' },
+    { name: 'Wood Procurement', label: 'WOOD PROCURE', count: getStageCount('Wood Procurement'), badgeBg: 'bg-[#78350f]', activeText: 'text-amber-900' },
+    { name: 'Making Started', label: 'MAKING STARTED', count: getStageCount('Making Started'), badgeBg: 'bg-[#2563eb]', activeText: 'text-blue-700' },
+    { name: 'QC 1', label: 'QC 1', count: getStageCount('QC 1'), badgeBg: 'bg-[#9333ea]', activeText: 'text-purple-700' },
+    { name: 'Making Completed', label: 'MAKING COMPLETED', count: getStageCount('Making Completed'), badgeBg: 'bg-[#0284c7]', activeText: 'text-sky-700' },
+    { name: 'Polish', label: 'POLISH', count: getStageCount('Polish'), badgeBg: 'bg-[#7e22ce]', activeText: 'text-purple-800' },
+    { name: 'QC 2', label: 'QC 2', count: getStageCount('QC 2'), badgeBg: 'bg-[#ea580c]', activeText: 'text-orange-700' },
+    { name: 'Ready to Dispatch', label: 'READY TO DISPATCH', count: getStageCount('Ready to Dispatch') + getStageCount('Ready To Dispatch'), badgeBg: 'bg-[#f59e0b]', activeText: 'text-amber-700' },
+    { name: 'Dispatched', label: 'DISPATCHED', count: getStageCount('Dispatched'), badgeBg: 'bg-[#059669]', activeText: 'text-emerald-700' },
   ];
 
-  const totalStagesSum = stages.reduce((s, x) => s + x.count, 0) || 1;
-  stages.forEach((s) => {
-    s.percent = Math.round((s.count / totalStagesSum) * 100);
-  });
+  // 6. Upcoming Deliveries (sorted by delivery date ascending)
+  const upcomingDeliveries = React.useMemo(() => {
+    return [...orders]
+      .filter((o) => !['Dispatched'].includes(normalizeStage(o.current_status)))
+      .sort((a, b) => new Date(a.delivery_date || '').getTime() - new Date(b.delivery_date || '').getTime())
+      .slice(0, 3);
+  }, [orders]);
 
-  // Upcoming Deliveries schedule list (sorted by soonest date)
-  const sortedUpcoming = [...orders]
-    .filter((o) => !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)))
-    .sort((a, b) => new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime())
-    .slice(0, 4);
-
-  // Helper to format date badges
-  const formatDateBadge = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      return {
-        month: months[date.getMonth()],
-        day: date.getDate(),
-      };
-    } catch {
-      return { month: 'MAY', day: 25 };
+  // Currency formatters
+  const formatINR = (val: number) => '₹' + val.toLocaleString('en-IN');
+  const formatLakhs = (val: number) => {
+    if (val >= 10000000) {
+      return `₹${(val / 10000000).toFixed(2)}Cr`;
     }
+    if (val >= 100000) {
+      return `₹${(val / 100000).toFixed(2)}L`;
+    }
+    return '₹' + val.toLocaleString('en-IN');
   };
 
-  // Helper for status classes
-  const getStatusClass = (rawStage: string) => {
+  // Helper for delivery date badge
+  const parseDateBadge = (dateStr?: string) => {
+    if (!dateStr) return { dayMonth: '--/--', year: '2026' };
+    const parts = formatToDDMMYYYY(dateStr).split('/');
+    if (parts.length === 3) {
+      return { dayMonth: `${parts[0]}/${parts[1]}`, year: parts[2] };
+    }
+    return { dayMonth: dateStr.slice(5, 10), year: dateStr.slice(0, 4) };
+  };
+
+  const isDateOverdue = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const dueTime = new Date(dateStr).setHours(0, 0, 0, 0);
+    const today = new Date().setHours(0, 0, 0, 0);
+    return dueTime < today;
+  };
+
+  // Status badge styling for Recent Orders
+  const getStageBadgeStyle = (rawStage: string) => {
     const stage = normalizeStage(rawStage);
     switch (stage) {
-      case 'Pending': return 'bg-stone-100 text-stone-700 border-stone-200';
-      case 'Designing': return 'bg-purple-50 text-purple-700 border-purple-200';
-      case 'Wood Procurement': return 'bg-amber-50 text-amber-800 border-amber-200';
-      case 'Making Started': return 'bg-amber-100 text-amber-900 border-amber-300';
-      case 'QC 1': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'Making Completed': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-      case 'Polish': return 'bg-pink-50 text-pink-700 border-pink-200';
-      case 'QC 2': return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'Ready to Dispatch': return 'bg-green-50 text-green-700 border-green-200';
-      case 'Dispatched': return 'bg-emerald-50 text-emerald-800 border-emerald-200';
-      default: return 'bg-stone-100 text-stone-700 border-stone-200';
+      case 'Making Completed':
+        return 'bg-[#e0f2fe] text-[#0284c7] border-[#bae6fd]';
+      case 'Designing':
+        return 'bg-[#ffedd5] text-[#b45309] border-[#fed7aa]';
+      case 'Pending':
+        return 'bg-[#f5f5f4] text-[#78716c] border-[#e7e5e4]';
+      case 'Wood Procurement':
+        return 'bg-[#fef3c7] text-[#92400e] border-[#fde68a]';
+      case 'Making Started':
+        return 'bg-[#dbeafe] text-[#1d4ed8] border-[#bfdbfe]';
+      case 'QC 1':
+        return 'bg-[#f3e8ff] text-[#7e22ce] border-[#e9d5ff]';
+      case 'Polish':
+        return 'bg-[#fae8ff] text-[#a21caf] border-[#f5d0fe]';
+      case 'QC 2':
+        return 'bg-[#ffedd5] text-[#c2410c] border-[#fed7aa]';
+      case 'Ready to Dispatch':
+        return 'bg-[#fef3c7] text-[#b45309] border-[#fde68a]';
+      case 'Dispatched':
+        return 'bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]';
+      default:
+        return 'bg-[#f5f5f4] text-[#78716c] border-[#e7e5e4]';
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header Title */}
+      {/* Top Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">Dashboard</h1>
-          <p className="text-stone-500 text-xs mt-1">Overview of all active orders, worker assignments and workshop activity</p>
+          <p className="text-stone-500 text-xs mt-0.5">Overview of all active orders, worker assignments and workshop activity</p>
         </div>
         {onQuickCrmAction && (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={() => onQuickCrmAction('add-customer')}
-              className="bg-[#593622] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-[#4a2e1d] active:scale-95 transition duration-150 cursor-pointer"
+              className="bg-white border border-stone-300 text-stone-700 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-stone-50 active:scale-95 transition cursor-pointer"
             >
-              <UserPlus size={14} /> Add Customer
+              <UserPlus size={14} className="text-stone-600" /> Add Customer
             </button>
             <button
               onClick={() => onQuickCrmAction('new-quotation')}
-              className="bg-amber-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-amber-700 active:scale-95 transition duration-150 cursor-pointer"
+              className="bg-[#ea580c] hover:bg-[#c2410c] text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
             >
               <Plus size={14} /> New Quotation
             </button>
@@ -154,412 +273,437 @@ export default function DashboardTab({
         )}
       </div>
 
-      {/* Top Metric Stats Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.05, type: 'spring', stiffness: 260, damping: 20 }}
-          whileHover={{ scale: 1.025, y: -3, borderColor: '#d97706' }}
-          className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-1.5 min-w-0 cursor-pointer"
-          onClick={() => onNavigateTab('orders')}
-        >
-          <div className="min-w-0 flex-1">
-            <span className="text-[9px] sm:text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold truncate">Total Orders</span>
-            <span className="text-xl sm:text-2xl font-black text-stone-800 font-display block mt-0.5">{totalOrdersUrl}</span>
-            <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-0.5 mt-1 sm:mt-2 truncate">
-              View all
-            </span>
-          </div>
-          <div className="bg-[#fcf8f2] text-amber-700 p-2 rounded-xl border border-amber-200/40 shrink-0 hidden xs:block">
-            <Briefcase size={16} className="sm:w-5 sm:h-5 text-[#593622]" />
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
-          whileHover={{ scale: 1.025, y: -3, borderColor: '#3b82f6' }}
-          className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-1.5 min-w-0 cursor-pointer"
-          onClick={() => onNavigateTab('orders')}
-        >
-          <div className="min-w-0 flex-1">
-            <span className="text-[9px] sm:text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold truncate">In Progress</span>
-            <span className="text-xl sm:text-2xl font-black text-stone-800 font-display block mt-0.5">{inProgressCount}</span>
-            <span className="text-[10px] text-blue-700 font-semibold mt-1 sm:mt-2 block truncate">
-              View all Active
-            </span>
-          </div>
-          <div className="bg-[#eff6ff] text-blue-700 p-2 rounded-xl border border-blue-200/40 shrink-0 hidden xs:block">
-            <Clock size={16} className="sm:w-5 sm:h-5 text-blue-600" />
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.15, type: 'spring', stiffness: 260, damping: 20 }}
-          whileHover={{ scale: 1.025, y: -3, borderColor: '#16a34a' }}
-          className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-1.5 min-w-0 cursor-pointer"
-          onClick={() => onNavigateTab('orders')}
-        >
-          <div className="min-w-0 flex-1">
-            <span className="text-[9px] sm:text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold truncate">Completed</span>
-            <span className="text-xl sm:text-2xl font-black text-stone-800 font-display block mt-0.5">{completedCount}</span>
-            <span className="text-[10px] text-green-700 font-semibold mt-1 sm:mt-2 block truncate">
-              View all Ready
-            </span>
-          </div>
-          <div className="bg-[#f0fdf4] text-green-700 p-2 rounded-xl border border-green-200/40 shrink-0 hidden xs:block">
-            <CheckCircle2 size={16} className="sm:w-5 sm:h-5 text-green-600" />
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.2, type: 'spring', stiffness: 260, damping: 20 }}
-          whileHover={{ scale: 1.025, y: -3, borderColor: '#e11d48' }}
-          className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-1.5 min-w-0 cursor-pointer"
-          onClick={() => onNavigateTab('orders')}
-        >
-          <div className="min-w-0 flex-1">
-            <span className="text-[9px] sm:text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold truncate">Delayed</span>
-            <span className="text-xl sm:text-2xl font-black text-stone-800 font-display block mt-0.5">{delayedCount}</span>
-            <span className="text-[10px] text-rose-650 font-bold block mt-1 sm:mt-2 truncate">
-              {delayedCount} items flagged
-            </span>
-          </div>
-          <div className="bg-[#fef2f2] text-rose-700 p-2 rounded-xl border border-rose-200/40 shrink-0 hidden xs:block">
-            <AlertTriangle size={16} className="sm:w-5 sm:h-5 text-rose-600" />
-          </div>
-        </motion.div>
-      </div>
-
-
-
-      {/* Financial & Payment Overview Row */}
-      <div className="space-y-3.5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 font-mono">Financial Ledger Overview</h2>
-          <span className="text-[10px] bg-[#593622]/5 text-[#593622] font-semibold border border-[#593622]/20 px-2.5 py-0.5 rounded-lg font-mono">ADMIN PRIVILEGED ACCESS</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          {/* Total Outstanding Balance Card */}
+      {/* TOP KPI SECTION - 6 Live Business Metric Cards */}
+      <div className="space-y-4">
+        {/* Row 1: Financial KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1: TOTAL FURNITURE BUSINESS */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.22, type: 'spring', stiffness: 260, damping: 20 }}
-            whileHover={{ scale: 1.025, y: -2, borderColor: '#593622' }}
-            className="bg-white p-4 rounded-xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-3 cursor-pointer"
-            onClick={() => onNavigateTab('orders')}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between"
           >
             <div>
-              <span className="text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold">Total Outstanding Balance</span>
-              <strong className="text-xl sm:text-2xl font-black text-rose-600 font-display block mt-1">₹ {totalOutstandingBalance.toLocaleString('en-IN')}</strong>
-              <span className="text-[10px] text-stone-550 block mt-1.5 font-medium leading-tight">Accumulated balance amounts across all orders</span>
+              <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-stone-400 block">
+                TOTAL AMOUNT OF MONEY
+              </span>
+              <strong className="text-2xl sm:text-3xl font-black font-display text-stone-900 block mt-2 tracking-tight">
+                {formatINR(totalFurnitureBusiness)}
+              </strong>
             </div>
-            <div className="bg-rose-50 text-rose-700 p-2.5 rounded-xl border border-rose-200/40 shrink-0">
-              <CreditCard size={18} />
-            </div>
+            <span className="text-xs text-stone-400 mt-2 block">
+              Total amount of money received
+            </span>
           </motion.div>
 
-          {/* Fully Paid Orders Card */}
+          {/* Card 2: MONEY RECEIVED */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.26, type: 'spring', stiffness: 260, damping: 20 }}
-            whileHover={{ scale: 1.025, y: -2, borderColor: '#16a34a' }}
-            className="bg-white p-4 rounded-xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-3 cursor-pointer"
-            onClick={() => onNavigateTab('orders')}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.05 }}
+            className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between"
           >
             <div>
-              <span className="text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold">Fully Paid Orders</span>
-              <strong className="text-xl sm:text-2xl font-black text-emerald-600 font-display block mt-1">{fullyPaidCount} <span className="text-stone-450 text-xs font-bold font-sans">/ {orders.length}</span></strong>
-              <span className="text-[10px] text-stone-550 block mt-1.5 font-medium leading-tight">Orders that are completely paid off</span>
+              <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-stone-400 block">
+                MONEY RECEIVED
+              </span>
+              <strong className="text-2xl sm:text-3xl font-black font-display text-[#16a34a] block mt-2 tracking-tight">
+                {formatINR(moneyReceived)}
+              </strong>
             </div>
-            <div className="bg-emerald-50 text-emerald-700 p-2.5 rounded-xl border border-emerald-200/40 shrink-0">
-              <CheckCircle2 size={18} />
-            </div>
+            <span className="text-xs text-stone-400 mt-2 block">
+              Total payments received
+            </span>
           </motion.div>
 
-          {/* Partial / Unpaid Orders Card */}
+          {/* Card 3: MONEY DUE */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.3, type: 'spring', stiffness: 260, damping: 20 }}
-            whileHover={{ scale: 1.025, y: -2, borderColor: '#d97706' }}
-            className="bg-white p-4 rounded-xl shadow-xs border border-stone-200/80 transition-all flex items-center justify-between gap-3 cursor-pointer"
-            onClick={() => onNavigateTab('orders')}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between relative"
           >
-            <div>
-              <span className="text-[10px] uppercase font-mono tracking-wider text-stone-400 block font-bold">Partial / Unpaid Orders</span>
-              <strong className="text-xl sm:text-2xl font-black text-amber-700 font-display block mt-1">{partialOrUnpaidCount} <span className="text-stone-450 text-xs font-bold font-sans">remaining</span></strong>
-              <span className="text-[10px] text-stone-550 block mt-1.5 font-medium leading-tight">Orders with outstanding balance dues</span>
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-stone-400 block">
+                  MONEY DUE
+                </span>
+                <strong className="text-2xl sm:text-3xl font-black font-display text-[#dc2626] block mt-2 tracking-tight">
+                  {formatINR(moneyDue)}
+                </strong>
+              </div>
+              <span className="w-2.5 h-2.5 rounded-full bg-[#dc2626] inline-block shrink-0 mt-1" />
             </div>
-            <div className="bg-amber-50 text-amber-700 p-2.5 rounded-xl border border-amber-200/40 shrink-0">
-              <Clock size={18} />
-            </div>
+            <span className="text-xs text-stone-400 mt-2 block">
+              Outstanding customer balance
+            </span>
           </motion.div>
         </div>
+
+        {/* Row 2: Operational Volume KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 4: TOTAL FINALIZED ORDERS */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15 }}
+            onClick={() => onNavigateTab('orders')}
+            className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs relative overflow-hidden flex flex-col justify-between cursor-pointer hover:border-amber-500 transition"
+          >
+            <div>
+              <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-stone-400 block">
+                TOTAL FINALIZED ORDERS
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-2">
+                <span className="text-2xl sm:text-3xl font-black font-display text-[#92400e]">
+                  {finalizedOrdersCount}
+                </span>
+                <span className="text-sm font-bold text-stone-800">Orders</span>
+              </div>
+            </div>
+            <span className="text-xs text-stone-400 mt-2 block">
+              Total volume of finalized/invoiced orders
+            </span>
+            <CheckCircle2
+              size={56}
+              strokeWidth={1.5}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-100 pointer-events-none"
+            />
+          </motion.div>
+
+          {/* Card 5: ONGOING IN FACTORY */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            onClick={() => onNavigateTab('orders')}
+            className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs relative overflow-hidden flex flex-col justify-between cursor-pointer hover:border-amber-500 transition"
+          >
+            <div>
+              <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-stone-400 block">
+                ONGOING IN FACTORY
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-2">
+                <span className="text-2xl sm:text-3xl font-black font-display text-[#92400e]">
+                  {ongoingInFactory}
+                </span>
+                <span className="text-sm font-bold text-stone-800">Orders</span>
+              </div>
+            </div>
+            <span className="text-xs text-stone-400 mt-2 block">
+              Orders currently in the factory pipeline
+            </span>
+            <Boxes
+              size={56}
+              strokeWidth={1.5}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-100 pointer-events-none"
+            />
+          </motion.div>
+
+          {/* Card 6: QUOTATION PIPELINE */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.25 }}
+            onClick={() => onNavigateTab('crm')}
+            className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs relative overflow-hidden flex flex-col justify-between cursor-pointer hover:border-amber-500 transition"
+          >
+            <div>
+              <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-stone-400 block">
+                QUOTATION PIPELINE
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-2">
+                <span className="text-2xl sm:text-3xl font-black font-display text-stone-900">
+                  {quotationStats.total}
+                </span>
+                <span className="text-sm font-bold text-stone-800">Quotations</span>
+              </div>
+            </div>
+            <span className="text-xs text-stone-400 mt-2 block">
+              Potential orders from quotations
+            </span>
+            <FileText
+              size={56}
+              strokeWidth={1.5}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-100 pointer-events-none"
+            />
+          </motion.div>
+        </div>
       </div>
 
-      {/* Main Charts area */}
+      {/* MIDDLE SECTION - Quotation Pipeline & Financial Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left Card: Orders by Status Donut */}
-        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-            <h3 className="font-display font-black text-stone-900 text-sm">Orders by Status</h3>
-            <button onClick={() => onNavigateTab('orders')} className="text-[10px] text-amber-700 font-semibold hover:underline">
-              View all
-            </button>
+        {/* Left Card: Quotation Pipeline Stepper */}
+        <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3">
+            <h2 className="font-display font-black text-stone-900 text-base">Quotation Pipeline</h2>
+            <span className="bg-[#fff7ed] text-[#ea580c] border border-[#ffedd5] font-bold text-xs px-3 py-1 rounded-full">
+              {quotationStats.conversionRate}% Conversion
+            </span>
           </div>
 
-          {/* Render SVG-based donut chart to keep output lightweight and compatible with React 19 */}
-          <div className="my-6 relative flex justify-center items-center">
-            <svg width="180" height="180" className="rotate-[-90deg]">
-              {/* Outer stroke container */}
-              <circle cx="90" cy="90" r="70" fill="transparent" stroke="#f5f5f4" strokeWidth="20" />
-              {(() => {
-                let accumulatedPercent = 0;
-                return stages.map((s, idx) => {
-                  if (s.count === 0) return null;
-                  const radius = 70;
-                  const circumference = 2 * Math.PI * radius;
-                  const strokeDasharray = `${(s.count / totalStagesSum) * circumference} ${circumference}`;
-                  const strokeDashoffset = -accumulatedPercent * circumference;
-                  accumulatedPercent += s.count / totalStagesSum;
+          <div className="py-8 px-4 relative flex items-center justify-between w-full">
+            {/* Connecting line */}
+            <div className="absolute top-[48px] left-10 right-10 h-0.5 bg-stone-200 -translate-y-1/2 z-0" />
+
+            {/* Step 1: Draft */}
+            <div className="relative z-10 flex flex-col items-center select-none">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-white border-2 border-stone-300 text-stone-700 shadow-xs">
+                {quotationStats.draft}
+              </div>
+              <span className="text-xs font-semibold text-stone-600 mt-3">Draft</span>
+            </div>
+
+            {/* Step 2: Sent */}
+            <div className="relative z-10 flex flex-col items-center select-none">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-[#f0f9ff] border-2 border-[#bae6fd] text-[#0284c7] shadow-xs">
+                {quotationStats.sent}
+              </div>
+              <span className="text-xs font-semibold text-stone-600 mt-3">Sent</span>
+            </div>
+
+            {/* Step 3: Approved */}
+            <div className="relative z-10 flex flex-col items-center select-none">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-[#f0fdf4] border-2 border-[#bbf7d0] text-[#16a34a] shadow-xs">
+                {quotationStats.approved}
+              </div>
+              <span className="text-xs font-semibold text-stone-600 mt-3">Approved</span>
+            </div>
+
+            {/* Step 4: Rejected / Expired */}
+            <div className="relative z-10 flex flex-col items-center select-none">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-[#fef2f2] border-2 border-[#fecaca] text-[#dc2626] shadow-xs">
+                {quotationStats.rejectedExpired}
+              </div>
+              <span className="text-xs font-semibold text-stone-600 mt-3">Rejected/Expired</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Card: Financial Overview Progress Bars */}
+        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between">
+          <div className="pb-2">
+            <h2 className="font-display font-black text-stone-900 text-base">Financial Overview</h2>
+          </div>
+
+          <div className="space-y-4 py-2">
+            {/* Total Business */}
+            <div>
+              <div className="flex items-center justify-between text-xs font-semibold text-stone-700 mb-1.5">
+                <span>Total Business</span>
+                <span className="font-mono font-bold text-stone-900">{formatLakhs(totalFurnitureBusiness)}</span>
+              </div>
+              <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
+                <div className="h-full bg-stone-900 rounded-full w-full" />
+              </div>
+            </div>
+
+            {/* Received */}
+            <div>
+              <div className="flex items-center justify-between text-xs font-semibold text-stone-700 mb-1.5">
+                <span>Received</span>
+                <span className="font-mono font-bold text-[#16a34a]">{formatLakhs(moneyReceived)}</span>
+              </div>
+              <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#16a34a] rounded-full transition-all duration-500"
+                  style={{
+                    width: `${totalFurnitureBusiness > 0 ? Math.min(100, Math.round((moneyReceived / totalFurnitureBusiness) * 100)) : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Due */}
+            <div>
+              <div className="flex items-center justify-between text-xs font-semibold text-stone-700 mb-1.5">
+                <span>Due</span>
+                <span className="font-mono font-bold text-[#dc2626]">{formatLakhs(moneyDue)}</span>
+              </div>
+              <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#dc2626] rounded-full transition-all duration-500"
+                  style={{
+                    width: `${totalFurnitureBusiness > 0 ? Math.min(100, Math.round((moneyDue / totalFurnitureBusiness) * 100)) : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* PRODUCTION PIPELINE SECTION (10 Stages Stepper) */}
+      <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+        <div className="pb-4">
+          <h2 className="font-display font-black text-stone-900 text-base">Production Pipeline</h2>
+          <p className="text-xs text-stone-400 mt-0.5">
+            Live tracking of {ongoingInFactory} active orders across workshop stages
+          </p>
+        </div>
+
+        <div className="overflow-x-auto no-scrollbar w-full py-4">
+          <div className="relative flex justify-between items-center min-w-[860px] px-4">
+            {/* Connecting Line */}
+            <div className="absolute top-[20px] left-6 right-6 h-0.5 bg-stone-200 -translate-y-1/2 z-0" />
+
+            {productionStages.map((stage) => {
+              const isActive = stage.count > 0;
+              return (
+                <div key={stage.name} className="relative z-10 flex flex-col items-center select-none w-20 shrink-0">
+                  <div
+                    className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shadow-xs transition-all ${
+                      isActive
+                        ? `${stage.badgeBg} text-white`
+                        : 'bg-stone-100 text-stone-400 border border-stone-200'
+                    }`}
+                  >
+                    {stage.count}
+                  </div>
+                  <span
+                    className={`text-[9.5px] font-black text-center mt-2.5 uppercase tracking-wider block truncate w-full ${
+                      isActive ? stage.activeText : 'text-stone-400'
+                    }`}
+                  >
+                    {stage.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* BOTTOM SECTION - Upcoming Deliveries & Recent Orders */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Left Card: Upcoming Deliveries */}
+        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 mb-2">
+              <h2 className="font-display font-black text-stone-900 text-base">Upcoming Deliveries</h2>
+              <button
+                onClick={() => onNavigateTab('calendar')}
+                className="border border-stone-900 text-stone-900 px-2 py-0.5 rounded text-[11px] font-bold hover:bg-stone-900 hover:text-white transition cursor-pointer"
+              >
+                View Calendar
+              </button>
+            </div>
+
+            <div className="space-y-3 mt-3">
+              {upcomingDeliveries.length === 0 ? (
+                <div className="text-center py-8 text-stone-400 text-xs">No pending upcoming deliveries</div>
+              ) : (
+                upcomingDeliveries.map((ord) => {
+                  const cust = customers.find((c) => c.id === ord.customer_id);
+                  const dateInfo = parseDateBadge(ord.delivery_date);
+                  const overdue = isDateOverdue(ord.delivery_date);
 
                   return (
-                    <motion.circle
-                      key={s.name}
-                      cx="90"
-                      cy="90"
-                      r={radius}
-                      fill="transparent"
-                      stroke={s.color}
-                      strokeWidth="20"
-                      strokeDashoffset={strokeDashoffset}
-                      initial={{ strokeDasharray: `0 ${circumference}` }}
-                      animate={{ strokeDasharray: strokeDasharray }}
-                      transition={{ duration: 1.2, ease: "easeOut", delay: 0.1 }}
-                      whileHover={{ strokeWidth: 24 }}
-                      style={{ originX: "90px", originY: "90px" }}
-                      className="cursor-pointer transition-all duration-150"
-                    />
-                  );
-                });
-              })()}
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="font-mono text-2xl font-black text-stone-800">{totalOrdersUrl}</span>
-              <span className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Total units</span>
-            </div>
-          </div>
+                    <div
+                      key={ord.id}
+                      onClick={() => onViewOrder(ord.id)}
+                      className={`flex items-center gap-3.5 p-3 rounded-xl border bg-stone-50/50 hover:bg-stone-50 transition cursor-pointer ${
+                        overdue ? 'border-l-4 border-l-rose-500 border-stone-200' : 'border-stone-200'
+                      }`}
+                    >
+                      {/* Date Badge */}
+                      <div className="bg-white border border-stone-200 rounded-lg w-12 h-12 flex flex-col items-center justify-center shrink-0">
+                        <span className="text-[11px] font-bold text-stone-900 leading-none">{dateInfo.dayMonth}</span>
+                        <span className="text-[9px] text-stone-400 leading-none mt-1">{dateInfo.year}</span>
+                      </div>
 
-          <div className="space-y-2 mt-2">
-            {stages.map((stg) => (
-              <div key={stg.name} className="flex items-center justify-between text-xs text-stone-600">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ backgroundColor: stg.color }} />
-                  <span className="font-semibold text-stone-700">{stg.name}</span>
-                </div>
-                <div className="font-mono font-bold text-stone-800">
-                  {stg.count} <span className="text-stone-400 text-[10px]">({stg.percent}%)</span>
-                </div>
-              </div>
-            ))}
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <h3 className="font-bold text-stone-900 text-xs truncate">
+                            {cust?.name || 'Walk-in Customer'}
+                          </h3>
+                          {overdue && (
+                            <span className="bg-rose-50 text-rose-600 border border-rose-200 text-[9.5px] font-bold px-1.5 py-0.5 rounded">
+                              Overdue
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-[10.5px] text-[#b45309] font-bold block mt-0.5">
+                          {ord.article_no}
+                        </span>
+                        <p className="text-[11px] text-stone-500 truncate mt-0.5">
+                          {ord.category || 'Custom Furniture'} {ord.sub_category ? `> ${ord.sub_category}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Right Card: Recent Orders list */}
-        <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 flex flex-col justify-between">
+        {/* Right Card: Recent Orders */}
+        <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-              <h3 className="font-display font-black text-stone-900 text-sm">Recent Orders</h3>
-              <button onClick={() => onNavigateTab('orders')} className="text-[10px] text-amber-700 font-semibold hover:underline">
-                View all
+            <div className="flex items-center justify-between pb-3 mb-2">
+              <h2 className="font-display font-black text-stone-900 text-base">Recent Orders</h2>
+              <button
+                onClick={() => onNavigateTab('orders')}
+                className="text-xs text-stone-600 font-semibold hover:text-stone-900 hover:underline cursor-pointer"
+              >
+                View All
               </button>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-stone-600 border-collapse mt-3" style={{ contentVisibility: 'auto' }}>
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-stone-100 font-mono text-[10px] uppercase text-stone-400 font-bold">
-                    <th className="py-2.5">Article No.</th>
-                    <th className="py-2.5">Customer</th>
-                    <th className="py-2.5">Stage</th>
-                    <th className="py-2.5">Assigned To</th>
-                    <th className="py-2.5">Delivery</th>
-                    <th className="py-2.5">Status</th>
-                    <th className="py-2.5 text-right">Action</th>
+                  <tr className="font-mono text-[10px] uppercase text-stone-500 font-bold border-b border-stone-100">
+                    <th className="py-2.5">ARTICLE NO.</th>
+                    <th className="py-2.5">CUSTOMER</th>
+                    <th className="py-2.5">STAGE</th>
+                    <th className="py-2.5 text-right">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
                   {[...orders]
                     .sort(compareOrdersByArticleSerialDesc)
-                    .slice(0, 5)
-                    .map((order, i) => {
-                    const cust = customers.find((c) => c.id === order.customer_id);
-                    const carpenter = users.find((u) => u.id === order.carpenter_id);
-                    return (
-                      <tr 
-                        key={order.id} 
-                        className="hover:bg-stone-50/50 transition duration-150 cursor-pointer"
-                        onClick={() => onViewOrder(order.id)}
-                      >
-                        <td className="py-3 font-mono font-bold text-stone-900">{order.article_no}</td>
-                        <td className="py-3 font-semibold text-stone-800">{cust?.name || 'Unknown'}</td>
-                        <td className="py-3 font-medium text-stone-400">
-                          <span className="font-bold text-stone-700 bg-stone-100 px-1.5 py-0.5 rounded text-[10px]">
-                            {order.current_status}
-                          </span>
-                        </td>
-                        <td className="py-3 font-medium text-stone-700">
-                          {carpenter ? `${carpenter.name} (${carpenter.initials})` : '—'}
-                        </td>
-                        <td className="py-3 font-medium text-stone-500">
-                          {formatToDDMMYYYY(order.delivery_date)}
-                        </td>
-                        <td className="py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${getStatusClass(order.current_status)}`}>
-                            {order.is_delayed ? 'Delayed' : 'In Progress'}
-                          </span>
-                        </td>
-                        <td className="py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => onViewOrder(order.id)}
-                            className="bg-stone-100 hover:bg-[#593622] hover:text-white text-stone-600 p-1.5 rounded-lg transition"
-                            title="View Details"
-                          >
-                            <Eye size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                    .slice(0, 4)
+                    .map((ord) => {
+                      const cust = customers.find((c) => c.id === ord.customer_id);
+                      return (
+                        <tr
+                          key={ord.id}
+                          className="hover:bg-stone-50/70 transition cursor-pointer"
+                          onClick={() => onViewOrder(ord.id)}
+                        >
+                          <td className="py-3 font-mono font-bold text-[#b45309]">
+                            {ord.article_no}
+                          </td>
+                          <td className="py-3 font-semibold text-stone-800">
+                            {cust?.name || 'Walk-in Customer'}
+                          </td>
+                          <td className="py-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getStageBadgeStyle(
+                                ord.current_status
+                              )}`}
+                            >
+                              {ord.current_status}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => onViewOrder(ord.id)}
+                              className="text-stone-500 hover:text-stone-900 p-1 hover:bg-stone-100 rounded transition cursor-pointer"
+                              title="View Details"
+                            >
+                              <Eye size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Schedule Deliveries & Stepper Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5" style={{ contentVisibility: 'auto' }}>
-        {/* Left Column: Upcoming Deliveries Cards */}
-        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80">
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
-            <h3 className="font-display font-black text-stone-900 text-sm">Upcoming Deliveries</h3>
-            <button onClick={() => onNavigateTab('calendar')} className="text-[10px] text-amber-700 font-semibold hover:underline">
-              View Calendar
-            </button>
-          </div>
-
-          <div className="space-y-3.5">
-            {sortedUpcoming.map((order) => {
-              const cust = customers.find((c) => c.id === order.customer_id);
-              const badge = formatDateBadge(order.delivery_date);
-              return (
-                <motion.div 
-                  key={order.id} 
-                  whileHover={{ scale: 1.015, x: 2 }}
-                  className="flex gap-3 hover:bg-stone-50 p-2 rounded-xl transition cursor-pointer" 
-                  onClick={() => onViewOrder(order.id)}
-                >
-                  <div className="bg-stone-100 text-stone-700 font-mono flex flex-col items-center justify-center p-1.5 rounded-xl border border-stone-200 shrink-0 w-12 h-12">
-                    <span className="text-[10px] font-black text-stone-800 leading-none">{formatToDDMMYYYY(order.delivery_date).split('/').slice(0, 2).join('/')}</span>
-                    <span className="text-[9px] font-bold text-stone-400 leading-none mt-1">{formatToDDMMYYYY(order.delivery_date).split('/')[2]}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold text-stone-900 text-xs block">{cust?.name || 'Walk-in Customer'}</span>
-                    <span className="font-mono text-[10px] text-amber-700 font-semibold block uppercase mt-0.5">{order.article_no}</span>
-                    <span className="text-[10px] text-stone-500 block truncate mt-1">
-                      {order.category} &rsaquo; {order.sub_category} ({order.size})
-                    </span>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Column: Stage Overview progress stepper */}
-        <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 flex flex-col">
-          <div className="pb-3 border-b border-stone-100 mb-6 font-sans">
-            <h3 className="font-display font-black text-stone-900 text-sm">Stage Overview (Live)</h3>
-            <p className="text-[11px] text-stone-400 mt-0.5">Distribution of unit volume across workspace active processes</p>
-          </div>
-
-          <div className="flex-1 flex flex-col justify-center overflow-x-hidden w-full">
-            {/* Mobile View: Vertical Stages Overview */}
-            <div className="md:hidden space-y-3.5 relative pl-1.5 py-1">
-              {stages.map((s, idx) => {
-                const isActive = s.count > 0;
-                return (
-                  <div key={s.name} className="flex items-center gap-4 relative">
-                    {idx < stages.length - 1 && (
-                      <div className={`absolute left-[18px] top-[36px] w-0.5 h-[18px] ${isActive ? 'bg-[#593622]' : 'bg-stone-200'}`} />
-                    )}
-                    {/* Circle Node wrapper */}
-                    <motion.div
-                      animate={isActive ? { scale: [1, 1.08, 1], rotate: [0, 3, 0] } : { scale: 1, rotate: 0 }}
-                      transition={isActive ? { type: "tween", repeat: Infinity, duration: 3, ease: "easeInOut" } : { type: "tween", duration: 0.25 }}
-                      className={`h-9 w-9 rounded-full flex items-center justify-center border font-mono font-black text-xs shrink-0 z-10 transition duration-200 ${
-                        isActive
-                          ? 'bg-[#593622] text-amber-300 border-amber-500 shadow-md ring-4 ring-amber-500/10'
-                          : 'bg-white text-stone-400 border-stone-300 hover:border-stone-400'
-                      }`}
-                      title={`${s.name}: ${s.count} items`}
-                    >
-                      {s.count}
-                    </motion.div>
-                    <div className="flex-1">
-                      <span className={`text-[12px] font-bold ${isActive ? 'text-stone-900 font-extrabold' : 'text-stone-500'}`}>
-                        {s.name}
-                      </span>
-                      {isActive && (
-                        <span className="text-[10px] text-amber-800 font-bold block leading-none mt-1">
-                          {s.count} {s.count === 1 ? 'order' : 'orders'} active here
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Desktop View: Horizontal Stepper Diagram scroll container */}
-            <div className="hidden md:block overflow-x-auto no-scrollbar w-full py-1">
-              <div className="relative flex justify-between items-center min-w-[920px] px-4 py-3">
-                {/* Connected Line Background */}
-                <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-stone-200 -translate-y-1/2 z-0" />
-
-                {stages.map((s, idx) => {
-                  const isActive = s.count > 0;
-                  return (
-                    <div key={s.name} className="relative z-10 flex flex-col items-center select-none shrink-0 w-[80px]">
-                      {/* Circle Node wrapper */}
-                      <motion.div
-                        animate={isActive ? { scale: [1, 1.1, 1], y: [0, -2, 0] } : { scale: 1, y: 0 }}
-                        transition={isActive ? { type: "tween", repeat: Infinity, duration: 4, ease: "easeInOut" } : { type: "tween", duration: 0.25 }}
-                        className={`h-9 w-9 rounded-full flex items-center justify-center border font-mono font-black text-xs transition duration-200 ${
-                          isActive
-                            ? 'bg-[#593622] text-amber-300 border-amber-500 shadow-md ring-4 ring-amber-500/10'
-                            : 'bg-white text-stone-400 border-stone-300 hover:border-stone-400'
-                        }`}
-                        title={`${s.name}: ${s.count} items`}
-                      >
-                        {s.count}
-                      </motion.div>
-                      <span className={`text-[10px] font-bold text-center mt-2.5 block truncate w-full ${isActive ? 'text-stone-900 font-extrabold' : 'text-stone-400'}`}>
-                        {s.name}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         </div>

@@ -695,6 +695,8 @@ export default function App() {
                 users={db.users}
                 customers={db.customers}
                 payments={db.payments}
+                crmQuotations={db.crmQuotations}
+                crmPayments={db.crmPayments}
                 onNavigateTab={(tab) => setCurrentTab(tab)}
                 onViewOrder={handleViewOrder}
                 onQuickCrmAction={(action) => {
