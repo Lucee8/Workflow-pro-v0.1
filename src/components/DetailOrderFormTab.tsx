@@ -675,14 +675,14 @@ export default function DetailOrderFormTab({
       }, 50);
     }
 
-     // Prefill advance payment from quotation's recorded received_amount if available
-    const totalQuoteAdvance = selectedItems.reduce((sum, s) => {
-      const quote = s.quoteObj || crmQuotations?.find((q) => q.id === s.quoteId);
-      return sum + (quote?.received_amount || quote?.receivedAmount || 0);
+    // Prefill advance payment from unique quotation(s) recorded received_amount at ORDER-LEVEL
+    const totalQuoteAdvance = uniqueQuoteIds.reduce((sum, qId) => {
+      const itemWithQuote = selectedItems.find((s) => s.quoteId === qId);
+      const quote = itemWithQuote?.quoteObj || crmQuotations?.find((q) => q.id === qId);
+      const recAmt = quote?.received_amount !== undefined ? quote.received_amount : (quote?.receivedAmount || 0);
+      return sum + Math.max(0, Number(recAmt) || 0);
     }, 0);
-    if (totalQuoteAdvance > 0) {
-      setAdvance(totalQuoteAdvance);
-    }
+    setAdvance(totalQuoteAdvance);
 
     setSelectedOrderId('');
   };
@@ -735,8 +735,24 @@ export default function DetailOrderFormTab({
       setSelectedQuoteItems([]); // reset multi-quote selection
 
       const cust = customers.find((c) => c.id === order.customer_id);
-      const orderPayment = payments ? payments.find((p) => p.order_id === order.id) : null;
-      const orderAdvance = orderPayment ? orderPayment.advance_paid : 0;
+      
+      // Look for payments for this order or related parent order group
+      const relatedOrders = order.parent_order_id
+        ? orders.filter((o) => o.parent_order_id === order.parent_order_id || o.id === order.parent_order_id)
+        : [order];
+      const relatedOrderIds = new Set(relatedOrders.map((o) => o.id));
+
+      let orderAdvance = 0;
+      if (payments && payments.length > 0) {
+        const orderPayments = payments.filter((p) => relatedOrderIds.has(p.order_id));
+        if (orderPayments.length > 0) {
+          orderAdvance = orderPayments.reduce((sum, p) => sum + (Number(p.advance_paid) || 0), 0);
+        } else {
+          orderAdvance = Number(order.advance_paid) || 0;
+        }
+      } else {
+        orderAdvance = Number(order.advance_paid) || 0;
+      }
 
       setOrderDate(formatToDDMMYYYY(order.order_date || new Date().toISOString().split('T')[0]));
       setDeliveryDate(formatToDDMMYYYY(order.delivery_date || ''));

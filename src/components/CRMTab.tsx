@@ -840,16 +840,21 @@ if (typeof endMs === 'number' && time > endMs) return false;
       const orderId = baseOrderId;
       const articleNo = primaryArticleNo;
 
+      const receivedAdvance = (latestQuote.received_amount !== undefined && latestQuote.received_amount !== null && Number(latestQuote.received_amount) > 0)
+        ? Number(latestQuote.received_amount)
+        : Math.round(latestQuote.totalAmount * 0.4);
+      const remainingBalance = Math.max(0, latestQuote.totalAmount - receivedAdvance);
+
       const crmPay: CRMPayment = {
         id: generateId('pay'),
         customer_id: latestQuote.customer_id,
         order_id: orderId,
         total_amount: latestQuote.totalAmount,
-        advance_paid: Math.round(latestQuote.totalAmount * 0.4),
-        balance_due: Math.round(latestQuote.totalAmount * 0.6),
+        advance_paid: receivedAdvance,
+        balance_due: remainingBalance,
         payment_method: 'UPI',
         payment_date: new Date().toISOString().split('T')[0],
-        pending_amount: Math.round(latestQuote.totalAmount * 0.6)
+        pending_amount: remainingBalance
       };
       onSaveCRMPayment(crmPay);
 
