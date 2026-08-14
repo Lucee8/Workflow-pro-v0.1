@@ -56,27 +56,75 @@ export default function DashboardTab({
     return groups;
   }, [orders]);
 
-  // 2. Financial calculation strictly adhering to ORDER-LEVEL payments
+  // 2. Financial calculation strictly adhering to ORDER-LEVEL payments & comprehensive payment resolution
   const { totalFurnitureBusiness, moneyReceived, moneyDue, finalizedOrdersCount } = React.useMemo(() => {
     let totalBusiness = 0;
     let totalReceived = 0;
 
-    Object.entries(invoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
-      const relatedIds = new Set<string>([invoiceKey, ...groupOrders.map((o) => o.id)]);
+    const matchedPaymentIds = new Set<string>();
+    const matchedCrmPaymentIds = new Set<string>();
 
-      const orderPayment = payments.find((p) => relatedIds.has(p.order_id));
-      const crmPayment = (crmPayments || []).find((p) => p.order_id && relatedIds.has(p.order_id));
+    // Helper to normalize strings for comparison
+    const norm = (s?: string) => (s ? String(s).trim().toLowerCase() : '');
+
+    // Process all invoice order groups
+    Object.entries(invoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
+      // Build lookup identifiers: IDs, parent IDs, article numbers, and customer IDs
+      const relatedIds = new Set<string>();
+      relatedIds.add(invoiceKey);
+      relatedIds.add(norm(invoiceKey));
+
+      groupOrders.forEach((o) => {
+        if (o.id) {
+          relatedIds.add(o.id);
+          relatedIds.add(norm(o.id));
+        }
+        if (o.parent_order_id) {
+          relatedIds.add(o.parent_order_id);
+          relatedIds.add(norm(o.parent_order_id));
+        }
+        if (o.article_no) {
+          relatedIds.add(o.article_no);
+          relatedIds.add(norm(o.article_no));
+        }
+      });
+
+      // Find all matching workshop payment records
+      const matchingPayments = (payments || []).filter((p) => {
+        if (!p || !p.order_id) return false;
+        return relatedIds.has(p.order_id) || relatedIds.has(norm(p.order_id));
+      });
+
+      matchingPayments.forEach((p) => {
+        if (p.id) matchedPaymentIds.add(p.id);
+      });
+
+      // Find all matching CRM payment records
+      const matchingCrmPayments = (crmPayments || []).filter((cp) => {
+        if (!cp) return false;
+        if (cp.order_id && (relatedIds.has(cp.order_id) || relatedIds.has(norm(cp.order_id)))) {
+          return true;
+        }
+        return false;
+      });
+
+      matchingCrmPayments.forEach((cp) => {
+        if (cp.id) matchedCrmPaymentIds.add(cp.id);
+      });
 
       // Calculate invoice grand total
       let invoiceTotal = 0;
-      if (orderPayment && typeof orderPayment.total_amount === 'number' && orderPayment.total_amount > 0) {
-        invoiceTotal = orderPayment.total_amount;
-      } else if (crmPayment && typeof crmPayment.total_amount === 'number' && crmPayment.total_amount > 0) {
-        invoiceTotal = crmPayment.total_amount;
+      const explicitTotalFromPayment = matchingPayments.find((p) => typeof p.total_amount === 'number' && p.total_amount > 0)?.total_amount;
+      const explicitTotalFromCrm = matchingCrmPayments.find((cp) => typeof cp.total_amount === 'number' && cp.total_amount > 0)?.total_amount;
+
+      if (explicitTotalFromPayment) {
+        invoiceTotal = explicitTotalFromPayment;
+      } else if (explicitTotalFromCrm) {
+        invoiceTotal = explicitTotalFromCrm;
       } else {
         // Sum total_amount of each product in the invoice
         invoiceTotal = groupOrders.reduce((sum, ord) => {
-          if (ord.total_amount !== undefined && ord.total_amount !== null && ord.total_amount > 0) {
+          if (ord.total_amount !== undefined && ord.total_amount !== null && Number(ord.total_amount) > 0) {
             return sum + Number(ord.total_amount);
           }
           const qty = ord.no_of_units || 1;
@@ -85,21 +133,84 @@ export default function DashboardTab({
         }, 0);
       }
 
-      // Calculate invoice received amount (Stored only ONCE at order/invoice level)
+      // Calculate invoice received amount across all payment sources for this order
       let invoiceReceived = 0;
-      if (orderPayment && typeof orderPayment.advance_paid === 'number') {
-        invoiceReceived = orderPayment.advance_paid;
-      } else if (crmPayment && typeof crmPayment.advance_paid === 'number') {
-        invoiceReceived = crmPayment.advance_paid;
-      } else {
-        const orderAdvances = groupOrders.map((o) => Number(o.advance_paid) || 0);
-        invoiceReceived = orderAdvances.find((v) => v > 0) || 0;
+
+      const paymentSum = matchingPayments.reduce((acc, p) => {
+        const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
+        return acc + Math.max(0, val);
+      }, 0);
+
+      const crmPaymentSum = matchingCrmPayments.reduce((acc, cp) => {
+        const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
+        return acc + Math.max(0, val);
+      }, 0);
+
+      const directOrderAdvanceSum = groupOrders.reduce((acc, o) => {
+        const adv = Number(o.advance_paid) || Number((o as any).advance) || Number((o as any).received_amount) || Number((o as any).advancePaid) || 0;
+        return acc + Math.max(0, adv);
+      }, 0);
+
+      if (paymentSum > 0 || crmPaymentSum > 0) {
+        // Use highest or sum of formal payment records
+        invoiceReceived = Math.max(paymentSum, crmPaymentSum);
+      } else if (directOrderAdvanceSum > 0) {
+        invoiceReceived = directOrderAdvanceSum;
       }
 
-      invoiceReceived = Math.min(invoiceTotal, Math.max(0, invoiceReceived));
+      // Cap received amount at invoice total unless overpaid
+      invoiceReceived = Math.max(0, invoiceReceived);
 
       totalBusiness += invoiceTotal;
       totalReceived += invoiceReceived;
+    });
+
+    // Check for any standalone workshop payments not tied to the 9 order IDs
+    (payments || []).forEach((p) => {
+      if (p && p.id && !matchedPaymentIds.has(p.id)) {
+        const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
+        if (val > 0) {
+          totalReceived += val;
+          const pTotal = Number(p.total_amount) || 0;
+          if (pTotal > val) {
+            totalBusiness += pTotal;
+          } else {
+            totalBusiness += val;
+          }
+        }
+      }
+    });
+
+    // Check for any standalone CRM payments not tied to the 9 order IDs
+    (crmPayments || []).forEach((cp) => {
+      if (cp && cp.id && !matchedCrmPaymentIds.has(cp.id)) {
+        const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
+        if (val > 0) {
+          totalReceived += val;
+          const cpTotal = Number(cp.total_amount) || 0;
+          if (cpTotal > val) {
+            totalBusiness += cpTotal;
+          } else {
+            totalBusiness += val;
+          }
+        }
+      }
+    });
+
+    // Include any approved CRM quotations that have advance received
+    (crmQuotations || []).forEach((q) => {
+      const qReceived = Number(q.received_amount) || Number((q as any).receivedAmount) || 0;
+      if (qReceived > 0) {
+        // Check if this quotation was already converted to an order or tracked
+        const isMatchedToOrder = orders.some(
+          (o) => o.id === q.id || (o.special_notes && o.special_notes.includes(q.id))
+        );
+        if (!isMatchedToOrder) {
+          totalReceived += qReceived;
+          const qTotal = Number(q.totalAmount) || qReceived;
+          totalBusiness += Math.max(qTotal, qReceived);
+        }
+      }
     });
 
     const totalDue = Math.max(0, totalBusiness - totalReceived);
@@ -111,7 +222,7 @@ export default function DashboardTab({
       moneyDue: totalDue,
       finalizedOrdersCount: finalizedCount,
     };
-  }, [invoiceGroups, orders, payments, crmPayments]);
+  }, [invoiceGroups, orders, payments, crmPayments, crmQuotations]);
 
   // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
