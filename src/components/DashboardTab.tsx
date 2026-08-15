@@ -42,11 +42,137 @@ export default function DashboardTab({
   onNavigateTab,
   onQuickCrmAction,
 }: DashboardTabProps) {
+  // Date Range Filter State
+  type DateRangePreset = 'today' | '7days' | '30days' | '4months' | 'currentmonth' | 'all' | 'custom';
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('currentmonth');
+  const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [customEndDate, setCustomEndDate] = React.useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [isFilterLoading, setIsFilterLoading] = React.useState<boolean>(false);
+
+  const handlePresetChange = (preset: DateRangePreset) => {
+    if (preset === datePreset) return;
+    setIsFilterLoading(true);
+    setDatePreset(preset);
+    setTimeout(() => {
+      setIsFilterLoading(false);
+    }, 200);
+  };
+
+  const getDateFilterBounds = (
+    preset: DateRangePreset,
+    customStart?: string,
+    customEnd?: string
+  ): { startMs: number | null; endMs: number | null } => {
+    if (preset === 'all') return { startMs: null, endMs: null };
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    if (preset === 'today') {
+      return { startMs: todayStart.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === '7days') {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 6);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === '30days') {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 29);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === '4months') {
+      const start = new Date(todayStart);
+      start.setMonth(start.getMonth() - 4);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === 'currentmonth') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
+    }
+
+    if (preset === 'custom') {
+      let startMs: number | null = null;
+      let endMs: number | null = null;
+      if (customStart) {
+        const s = new Date(customStart + 'T00:00:00');
+        if (!isNaN(s.getTime())) startMs = s.getTime();
+      }
+      if (customEnd) {
+        const e = new Date(customEnd + 'T23:59:59.999');
+        if (!isNaN(e.getTime())) endMs = e.getTime();
+      }
+      return { startMs, endMs };
+    }
+
+    return { startMs: null, endMs: null };
+  };
+
+  const isDateInBounds = (
+    dateStr?: string,
+    startMs?: number | null,
+    endMs?: number | null
+  ): boolean => {
+    if (startMs == null && endMs == null) return true;
+    if (!dateStr) return false;
+
+    let time: number | null = null;
+    const str = String(dateStr).trim();
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const datePart = str.split('T')[0];
+      const parts = datePart.split('-');
+      time = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0).getTime();
+    } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(str)) {
+      const parts = str.split(/[\/\-]/);
+      time = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0).getTime();
+    } else {
+      const parsed = new Date(str).getTime();
+      if (!isNaN(parsed)) time = parsed;
+    }
+
+    if (time === null || isNaN(time)) return false;
+
+    if (startMs != null && time < startMs) return false;
+    if (endMs != null && time > endMs) return false;
+    return true;
+  };
+
+  // Filter collections based on active date filter bounds
+  const { startMs, endMs } = React.useMemo(
+    () => getDateFilterBounds(datePreset, customStartDate, customEndDate),
+    [datePreset, customStartDate, customEndDate]
+  );
+
+  const filteredOrders = React.useMemo(() => {
+    return orders.filter((o) => isDateInBounds(o.created_at || (o as any).date, startMs, endMs));
+  }, [orders, startMs, endMs]);
+
+  const filteredPayments = React.useMemo(() => {
+    return payments.filter((p) => isDateInBounds(p.payment_date || p.created_at, startMs, endMs));
+  }, [payments, startMs, endMs]);
+
+  const filteredCrmQuotations = React.useMemo(() => {
+    return (crmQuotations || []).filter((q) => isDateInBounds(q.created_at || (q as any).date, startMs, endMs));
+  }, [crmQuotations, startMs, endMs]);
+
+  const filteredCrmPayments = React.useMemo(() => {
+    return (crmPayments || []).filter((cp) => isDateInBounds(cp.payment_date || (cp as any).date || (cp as any).created_at, startMs, endMs));
+  }, [crmPayments, startMs, endMs]);
 
   // 1. Group orders by Invoice / Parent Order key (to enforce order-level payment rule)
   const invoiceGroups = React.useMemo<Record<string, Order[]>>(() => {
     const groups: Record<string, Order[]> = {};
-    orders.forEach((o) => {
+    filteredOrders.forEach((o) => {
       const groupKey = o.parent_order_id || o.id;
       if (!groups[groupKey]) {
         groups[groupKey] = [];
@@ -54,7 +180,7 @@ export default function DashboardTab({
       groups[groupKey].push(o);
     });
     return groups;
-  }, [orders]);
+  }, [filteredOrders]);
 
   // 2. Financial calculation strictly adhering to ORDER-LEVEL payments & comprehensive payment resolution
   const { totalFurnitureBusiness, moneyReceived, moneyDue, finalizedOrdersCount } = React.useMemo(() => {
@@ -90,7 +216,7 @@ export default function DashboardTab({
       });
 
       // Find all matching workshop payment records
-      const matchingPayments = (payments || []).filter((p) => {
+      const matchingPayments = (filteredPayments || []).filter((p) => {
         if (!p || !p.order_id) return false;
         return relatedIds.has(p.order_id) || relatedIds.has(norm(p.order_id));
       });
@@ -100,7 +226,7 @@ export default function DashboardTab({
       });
 
       // Find all matching CRM payment records
-      const matchingCrmPayments = (crmPayments || []).filter((cp) => {
+      const matchingCrmPayments = (filteredCrmPayments || []).filter((cp) => {
         if (!cp) return false;
         if (cp.order_id && (relatedIds.has(cp.order_id) || relatedIds.has(norm(cp.order_id)))) {
           return true;
@@ -165,8 +291,8 @@ export default function DashboardTab({
       totalReceived += invoiceReceived;
     });
 
-    // Check for any standalone workshop payments not tied to the 9 order IDs
-    (payments || []).forEach((p) => {
+    // Check for any standalone workshop payments not tied to the order IDs
+    (filteredPayments || []).forEach((p) => {
       if (p && p.id && !matchedPaymentIds.has(p.id)) {
         const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
         if (val > 0) {
@@ -181,8 +307,8 @@ export default function DashboardTab({
       }
     });
 
-    // Check for any standalone CRM payments not tied to the 9 order IDs
-    (crmPayments || []).forEach((cp) => {
+    // Check for any standalone CRM payments not tied to the order IDs
+    (filteredCrmPayments || []).forEach((cp) => {
       if (cp && cp.id && !matchedCrmPaymentIds.has(cp.id)) {
         const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
         if (val > 0) {
@@ -198,11 +324,11 @@ export default function DashboardTab({
     });
 
     // Include any approved CRM quotations that have advance received
-    (crmQuotations || []).forEach((q) => {
+    (filteredCrmQuotations || []).forEach((q) => {
       const qReceived = Number(q.received_amount) || Number((q as any).receivedAmount) || 0;
       if (qReceived > 0) {
         // Check if this quotation was already converted to an order or tracked
-        const isMatchedToOrder = orders.some(
+        const isMatchedToOrder = filteredOrders.some(
           (o) => o.id === q.id || (o.special_notes && o.special_notes.includes(q.id))
         );
         if (!isMatchedToOrder) {
@@ -214,7 +340,7 @@ export default function DashboardTab({
     });
 
     const totalDue = Math.max(0, totalBusiness - totalReceived);
-    const finalizedCount = orders.length;
+    const finalizedCount = filteredOrders.length;
 
     return {
       totalFurnitureBusiness: totalBusiness,
@@ -222,19 +348,19 @@ export default function DashboardTab({
       moneyDue: totalDue,
       finalizedOrdersCount: finalizedCount,
     };
-  }, [invoiceGroups, orders, payments, crmPayments, crmQuotations]);
+  }, [invoiceGroups, filteredOrders, filteredPayments, filteredCrmPayments, filteredCrmQuotations]);
 
   // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
-    return orders.filter((o) => {
+    return filteredOrders.filter((o) => {
       const stage = normalizeStage(o.current_status);
       return stage !== 'Pending';
     }).length;
-  }, [orders]);
+  }, [filteredOrders]);
 
   // 4. Quotation Pipeline breakdown & conversion rate
   const quotationStats = React.useMemo(() => {
-    const quotes = crmQuotations || [];
+    const quotes = filteredCrmQuotations || [];
     const total = quotes.length;
 
     let draft = 0;
@@ -267,11 +393,11 @@ export default function DashboardTab({
       rejectedExpired,
       conversionRate,
     };
-  }, [crmQuotations]);
+  }, [filteredCrmQuotations]);
 
   // 5. Production stages counts
   const getStageCount = (stage: OrderStage) =>
-    orders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
+    filteredOrders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
 
   const productionStages: {
     name: OrderStage;
@@ -294,11 +420,12 @@ export default function DashboardTab({
 
   // 6. Upcoming Deliveries (sorted by delivery date ascending)
   const upcomingDeliveries = React.useMemo(() => {
-    return [...orders]
+    const list = filteredOrders.length > 0 ? filteredOrders : orders;
+    return [...list]
       .filter((o) => !['Dispatched'].includes(normalizeStage(o.current_status)))
       .sort((a, b) => new Date(a.delivery_date || '').getTime() - new Date(b.delivery_date || '').getTime())
       .slice(0, 3);
-  }, [orders]);
+  }, [filteredOrders, orders]);
 
   // Currency formatters
   const formatINR = (val: number) => '₹' + val.toLocaleString('en-IN');
@@ -361,28 +488,130 @@ export default function DashboardTab({
   return (
     <div className="space-y-6">
       {/* Top Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">Dashboard</h1>
           <p className="text-stone-500 text-xs mt-0.5">Overview of all active orders, worker assignments and workshop activity</p>
         </div>
-        {onQuickCrmAction && (
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={() => onQuickCrmAction('add-customer')}
-              className="bg-white border border-stone-300 text-stone-700 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-stone-50 active:scale-95 transition cursor-pointer"
-            >
-              <UserPlus size={14} className="text-stone-600" /> Add Customer
-            </button>
-            <button
-              onClick={() => onQuickCrmAction('new-quotation')}
-              className="bg-[#ea580c] hover:bg-[#c2410c] text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
-            >
-              <Plus size={14} /> New Quotation
-            </button>
+
+        {/* Filter and Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Date Filter Bar */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center bg-stone-200/70 p-0.5 rounded-2xl gap-0.5 overflow-x-auto max-w-full">
+              <button
+                onClick={() => handlePresetChange('today')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === 'today'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => handlePresetChange('7days')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === '7days'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                7 Days
+              </button>
+              <button
+                onClick={() => handlePresetChange('30days')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === '30days'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                30 Days
+              </button>
+              <button
+                onClick={() => handlePresetChange('4months')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === '4months'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                4 Months
+              </button>
+              <button
+                onClick={() => handlePresetChange('currentmonth')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === 'currentmonth'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                Current Month
+              </button>
+              <button
+                onClick={() => handlePresetChange('all')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === 'all'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                All Time
+              </button>
+              <button
+                onClick={() => handlePresetChange('custom')}
+                className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                  datePreset === 'custom'
+                    ? 'bg-[#593622] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                }`}
+              >
+                Custom Range
+              </button>
+            </div>
+
+            {/* Custom Range Picker Drawer */}
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-semibold text-stone-500">From:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="border border-stone-300 rounded-lg px-2 py-1 text-xs text-stone-700 focus:outline-none focus:ring-1 focus:ring-[#593622] bg-white"
+                />
+                <span className="text-[11px] font-semibold text-stone-500">To:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="border border-stone-300 rounded-lg px-2 py-1 text-xs text-stone-700 focus:outline-none focus:ring-1 focus:ring-[#593622] bg-white"
+                />
+              </div>
+            )}
           </div>
-        )}
+
+          {onQuickCrmAction && (
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => onQuickCrmAction('add-customer')}
+                className="bg-white border border-stone-300 text-stone-700 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-stone-50 active:scale-95 transition cursor-pointer"
+              >
+                <UserPlus size={14} className="text-stone-600" /> Add Customer
+              </button>
+              <button
+                onClick={() => onQuickCrmAction('new-quotation')}
+                className="bg-[#ea580c] hover:bg-[#c2410c] text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+              >
+                <Plus size={14} /> New Quotation
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      <div className={`space-y-6 transition-opacity duration-200 ${isFilterLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
 
       {/* TOP KPI SECTION - 6 Live Business Metric Cards */}
       <div className="space-y-4">
@@ -775,7 +1004,7 @@ export default function DashboardTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {[...orders]
+                  {[...(filteredOrders.length > 0 ? filteredOrders : orders)]
                     .sort(compareOrdersByArticleSerialDesc)
                     .slice(0, 4)
                     .map((ord) => {
@@ -818,6 +1047,7 @@ export default function DashboardTab({
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
