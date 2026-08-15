@@ -547,8 +547,8 @@ export default function CRMTab({
   const [custFilter, setCustFilter] = React.useState<'all' | 'active' | 'repeat' | 'pending_payment' | 'completed' | 'vip'>('all');
 
   // CRM Dashboard Compact Date Range Filter State
-  type DateRangePreset = 'today' | 'all' | '7days' | '30days' | '4months' | 'custom';
-  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('all');
+  type DateRangePreset = 'today' | '7days' | '30days' | '4months' | 'currentmonth' | 'all' | 'custom';
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('currentmonth');
   const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -1571,6 +1571,7 @@ export default function CRMTab({
                   {datePreset === '7days' && 'Last 7 Days'}
                   {datePreset === '30days' && 'Last 30 Days'}
                   {datePreset === '4months' && 'Last 4 Months'}
+                  {datePreset === 'currentmonth' && `Current Month (${new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })})`}
                   {datePreset === 'custom' && `${customStartDate || 'Start'} to ${customEndDate || 'End'}`}
                 </span>
               )}
@@ -1588,16 +1589,6 @@ export default function CRMTab({
                   }`}
                 >
                   Today
-                </button>
-                <button
-                  onClick={() => handlePresetChange('all')}
-                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
-                    datePreset === 'all'
-                      ? 'bg-[#593622] text-white shadow-xs'
-                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
-                  }`}
-                >
-                  All Time
                 </button>
                 <button
                   onClick={() => handlePresetChange('7days')}
@@ -1628,6 +1619,26 @@ export default function CRMTab({
                   }`}
                 >
                   4 Months
+                </button>
+                <button
+                  onClick={() => handlePresetChange('currentmonth')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === 'currentmonth'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  Current Month
+                </button>
+                <button
+                  onClick={() => handlePresetChange('all')}
+                  className={`whitespace-nowrap px-3 py-1.5 text-xs font-bold transition rounded-xl cursor-pointer ${
+                    datePreset === 'all'
+                      ? 'bg-[#593622] text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 hover:bg-stone-300/50'
+                  }`}
+                >
+                  All Time
                 </button>
                 <button
                   onClick={() => handlePresetChange('custom')}
