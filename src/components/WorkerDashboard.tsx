@@ -9,6 +9,38 @@ import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc } from '../utils';
 import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, ShieldCheck, CheckCircle2, Lock } from 'lucide-react';
 
+async function compressImage(file: File): Promise<string | null> {
+  if (!file || !file.type.startsWith('image/')) return null;
+
+  const imageUrl = URL.createObjectURL(file);
+
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Image load failed'));
+      image.src = imageUrl;
+    });
+
+    const maxWidth = 1600;
+    const maxHeight = 1600;
+    const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height);
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+
+    context.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
 function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
   if (!ord) return null;
 
@@ -215,19 +247,20 @@ export default function WorkerDashboard({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
+    Array.from(files).forEach(async (file: File) => {
       if (!file.type.startsWith('image/')) {
         alert('Please choose an image file (PNG, JPG, WEBP, etc).');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setInProgressFiles((prev) => [...prev, event.target!.result as string]);
+      try {
+        const compressed = await compressImage(file);
+        if (compressed) {
+          setInProgressFiles((prev) => [...prev, compressed]);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error("Failed to compress image:", err);
+      }
     });
     
     e.target.value = '';
@@ -321,7 +354,7 @@ export default function WorkerDashboard({
     }
   }, [activeOrder?.id, activeOrder?.last_qc_failure?.failed_at, activeOrder?.qc_1_failed_at, activeOrder?.qc_2_failed_at, seenQcFailures]);
 
-  const handleUploadRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadRefImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !activeOrder) return;
 
@@ -331,13 +364,12 @@ export default function WorkerDashboard({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        const dataUrl = event.target.result as string;
+    try {
+      const compressed = await compressImage(file);
+      if (compressed) {
         const newImg = {
           id: 'img_' + generateUUID().split('-')[0],
-          url: dataUrl,
+          url: compressed,
           type: 'Design Reference' as const,
           uploaded_at: new Date().toISOString(),
           uploaded_by: currentUser.name,
@@ -352,8 +384,9 @@ export default function WorkerDashboard({
         setActiveOrder(updatedOrder);
         onUpdateOrder(updatedOrder);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Failed to compress/upload image:", err);
+    }
     e.target.value = '';
   };
 
@@ -779,7 +812,7 @@ export default function WorkerDashboard({
             </div>
           );
         })()}
-        
+
         <div className="pb-2 border-b border-stone-200">
           <h1 className="text-xl md:text-2xl font-black text-stone-900 tracking-tight font-display">Update Technical Status</h1>
           <p className="text-stone-500 text-xs">Verify measurements, log notes, and upload floor completion photographs</p>

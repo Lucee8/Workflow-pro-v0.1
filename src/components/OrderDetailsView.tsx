@@ -151,27 +151,72 @@ export default function OrderDetailsView({
     }
   };
 
+  // Compress image file to a JPEG data URL (client-side)
+  const compressImage = async (file: File): Promise<string | null> => {
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') resolve(reader.result);
+          else reject(new Error('Failed to read file'));
+        };
+        reader.onerror = () => reject(new Error('FileReader error'));
+        reader.readAsDataURL(file);
+      });
+
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Image load error'));
+        image.src = dataUrl;
+      });
+
+      const MAX_WIDTH = 1600;
+      const MAX_HEIGHT = 1600;
+      let { width, height } = img;
+
+      if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+        const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Export as JPEG with reasonable quality
+      const compressed = canvas.toDataURL('image/jpeg', 0.8);
+      return compressed;
+    } catch (err) {
+      console.error('compressImage error', err);
+      return null;
+    }
+  };
+
   const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
+    Array.from(files).forEach(async (file: File) => {
       if (!file.type.startsWith('image/')) {
         alert('Please choose an image file (PNG, JPG, WEBP, etc).');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const base64Url = event.target.result as string;
+      try {
+        const compressed = await compressImage(file);
+        if (compressed) {
           const updatedOrder: Order = {
             ...order,
             images: [
               ...(order.images || []),
               {
                 id: 'img_' + generateUUID().split('-')[0],
-                url: base64Url,
+                url: compressed,
                 type: imgType,
                 uploaded_at: new Date().toISOString(),
                 uploaded_by: currentUser.name,
@@ -180,10 +225,10 @@ export default function OrderDetailsView({
             updated_at: new Date().toISOString(),
           };
           onUpdateOrder(updatedOrder);
-          alert(`Selected file (${file.name}) uploaded and added!`);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error("Failed to compress image:", err);
+      }
     });
     
     e.target.value = '';

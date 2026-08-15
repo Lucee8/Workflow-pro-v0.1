@@ -101,5 +101,14 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && isValidId(eventId);
     }
+
+    match /woodRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(requestId);
+    }
+
+    match /test/{testId} {
+      allow read, write: if true;
+    }
   }
 }

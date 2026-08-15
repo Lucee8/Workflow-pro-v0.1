@@ -126,19 +126,8 @@ export function syncFirestore(
           .map(docSnap => {
             const data = docSnap.data();
             const docId = docSnap.id;
-            // Automatically purge blank or corrupted records from Firestore
-            if (name === 'crmCustomers') {
-              if (!data || (!data.name?.trim() && !data.phone?.trim())) {
-                deleteDoc(doc(db, 'crmCustomers', docId)).catch(() => {});
-                return null;
-              }
-            }
-            if (name === 'crmQuotations') {
-              if (!data || (!data.customer_name?.trim() && (!data.items || data.items.length === 0))) {
-                deleteDoc(doc(db, 'crmQuotations', docId)).catch(() => {});
-                return null;
-              }
-            }
+            // Retain all non-empty documents safely without executing destructive auto-deletes
+            if (!data) return null;
             return {
               ...data,
               id: docId // Firestore document ID is authoritative
@@ -176,6 +165,7 @@ export function syncFirestore(
 // Helper to transitively strip out "undefined" fields which are unsupported by firestore
 function cleanUndefined<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj.toISOString() as unknown as T;
   if (Array.isArray(obj)) {
     return obj.map(item => cleanUndefined(item)) as unknown as T;
   }

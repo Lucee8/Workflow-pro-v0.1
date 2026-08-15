@@ -219,7 +219,7 @@ export default function App() {
   };
 
   // Staging CRUD updates actions
-  const handleSaveOrder = (newOrderOrOrders: Order | Order[], newCustomer?: Customer) => {
+  const handleSaveOrder = async (newOrderOrOrders: Order | Order[], newCustomer?: Customer) => {
     const ordersToAdd = Array.isArray(newOrderOrOrders) ? newOrderOrOrders : [newOrderOrOrders];
 
     const updatedOrders = [...ordersToAdd, ...db.orders];
@@ -231,6 +231,7 @@ export default function App() {
     let updatedPayments = [...db.payments];
     const newPayments: Payment[] = [];
     const newLogs: StatusLog[] = [];
+    const firebasePromises: Promise<any>[] = [];
 
     ordersToAdd.forEach((newOrder) => {
       if (newOrder.total_amount !== undefined && newOrder.total_amount !== null) {
@@ -250,7 +251,7 @@ export default function App() {
           created_at: new Date().toISOString(),
         };
         newPayments.push(paymentRecord);
-        savePaymentToFirebase(paymentRecord);
+        firebasePromises.push(savePaymentToFirebase(paymentRecord).catch(err => console.error("Payment save failed:", err)));
       }
 
       const log: StatusLog = {
@@ -264,12 +265,12 @@ export default function App() {
         note: `Bespoke furniture order registered. Article Code: ${newOrder.article_no}.`,
       };
       newLogs.push(log);
-      saveStatusLogToFirebase(log);
-      saveOrderToFirebase(newOrder);
+      firebasePromises.push(saveStatusLogToFirebase(log).catch(err => console.error("StatusLog save failed:", err)));
+      firebasePromises.push(saveOrderToFirebase(newOrder).catch(err => console.error("Order save failed:", err)));
     });
 
     if (newCustomer) {
-      saveCustomerToFirebase(newCustomer);
+      firebasePromises.push(saveCustomerToFirebase(newCustomer).catch(err => console.error("Customer save failed:", err)));
     }
 
     updateDbState({
@@ -298,10 +299,10 @@ export default function App() {
       statusLogs: freshLogs,
     });
 
-    // Write to Firestore asynchronously
-    saveOrderToFirebase(updatedOrder);
+    // Write to Firestore asynchronously with catch guard
+    saveOrderToFirebase(updatedOrder).catch(err => console.error("Failed to update order in Firestore:", err));
     if (newLog) {
-      saveStatusLogToFirebase(newLog);
+      saveStatusLogToFirebase(newLog).catch(err => console.error("Failed to save status log in Firestore:", err));
     }
   };
 
