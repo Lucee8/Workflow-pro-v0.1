@@ -1681,7 +1681,7 @@ export default function CRMTab({
 
           {/* Top KPI Metrics Cards and Charts Container */}
           <div className={`space-y-6 transition-opacity duration-200 ${isFilterLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0">
                 <Users size={18} />
@@ -1702,7 +1702,7 @@ export default function CRMTab({
               </div>
             </div>
 
-            <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+            {/* <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
                 <DollarSign size={18} />
               </div>
@@ -1710,8 +1710,8 @@ export default function CRMTab({
                 <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
                 <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
               </div>
-            </div>
-
+            </div> */}
+            
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
                 <DollarSign size={18} />
