@@ -913,35 +913,20 @@ export default function CRMTab({
     }
   };
 
-  // Unify all customers across crmCustomers and workshop customers
-  const allUnifiedCustomers = React.useMemo(() => {
-    const map = new Map<string, CRMCustomer>();
-    (db.crmCustomers || []).forEach(c => {
-      if (c && c.id) map.set(c.id, c);
-    });
-    (db.customers || []).forEach(c => {
-      if (c && c.id && !map.has(c.id)) {
-        map.set(c.id, {
-          id: c.id,
-          name: c.name,
-          phone: c.phone || '',
-          address: c.address || '',
-          city: (c as any).city || '',
-          state: (c as any).state || '',
-          source: 'Walkin',
-          status: 'Order Confirmed',
-          created_at: c.created_at || new Date().toISOString(),
-          created_by: 'admin',
-        });
-      }
-    });
-    return Array.from(map.values());
-  }, [db.crmCustomers, db.customers]);
+  // Active customers fetched directly from the Customer Directory (excluding any deleted or invalid records)
+  const directoryCustomers = React.useMemo(() => {
+    return (db.crmCustomers || []).filter(c =>
+      c &&
+      c.id &&
+      c.id.trim() !== '' &&
+      (Boolean(c.name?.trim()) || Boolean(c.phone?.trim()) || Boolean(c.productRequirement?.trim()))
+    );
+  }, [db.crmCustomers]);
 
   // 1. STATS CALCULATIONS WITH DATE RANGE FILTERING
   const { startMs, endMs } = getDateFilterBounds(datePreset, customStartDate, customEndDate);
 
-  const filteredCrmCustomers = allUnifiedCustomers.filter(c =>
+  const filteredCrmCustomers = directoryCustomers.filter(c =>
     isDateInBounds(c.created_at, startMs, endMs)
   );
 
@@ -962,7 +947,7 @@ export default function CRMTab({
   
   // Filter valid payments linked to existing orders and customers within date bounds
   const validOrderIds = new Set((db.orders || []).map(o => o.id));
-  const validCustomerIds = new Set(allUnifiedCustomers.map(c => c.id));
+  const validCustomerIds = new Set(directoryCustomers.map(c => c.id));
 
   const validPayments = (db.payments || []).filter(p =>
     (!p.order_id || validOrderIds.has(p.order_id)) &&
@@ -1714,6 +1699,16 @@ export default function CRMTab({
               <div>
                 <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Active/Ready Orders</span>
                 <strong className="text-lg font-black text-stone-900 font-display">{activeOrders} / {completedOrders}</strong>
+              </div>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
+                <DollarSign size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
+                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
               </div>
             </div>
 

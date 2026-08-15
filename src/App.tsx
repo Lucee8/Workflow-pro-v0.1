@@ -5,6 +5,8 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from './db/firebase';
 import { loadState, saveState, AppState } from './db/store';
 import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from './types';
 import {
@@ -23,8 +25,9 @@ import {
   savePaymentToFirebase,
   deletePaymentFromFirebase,
   saveUserToFirebase,
-  deleteUserFromFirebase,
-  saveCRMCustomerToFirebase,
+  deleteUserFromFirebase
+  ,
+  // CRM related firebase helpers
   deleteCRMCustomerFromFirebase,
   saveCRMQuotationToFirebase,
   deleteCRMQuotationFromFirebase,
@@ -36,8 +39,13 @@ import {
   deleteCRMNoteFromFirebase,
   saveCRMAttachmentToFirebase,
   deleteCRMAttachmentFromFirebase,
-  saveCRMTimelineEventToFirebase
+  saveCRMTimelineEventToFirebase,
+  // deleteCRMTimelineEventFromFirebase
 } from './db/firebaseService';
+
+const saveCRMCustomerToFirebase = async (customer: CRMCustomer): Promise<void> => {
+  await setDoc(doc(db, 'crmCustomers', customer.id), customer);
+};
 
 // Component imports
 import SimulationHUD from './components/SimulationHUD';
@@ -424,11 +432,17 @@ export default function App() {
     saveCRMCustomerToFirebase(cust);
   };
 
-  const handleDeleteCRMCustomer = (id: string) => {
-    const updated = db.crmCustomers.filter(c => c.id !== id && c.id && c.id.trim() !== '' && c.name && c.name.trim() !== '');
+  const handleDeleteCRMCustomer = async (id: string) => {
+    if (!id) return;
+    const targetId = id.trim();
+    const updated = (db.crmCustomers || []).filter(c => c && c.id && c.id.trim() !== targetId);
     updateDbState({ ...db, crmCustomers: updated });
-    if (id && id.trim()) {
-      deleteCRMCustomerFromFirebase(id);
+    if (targetId) {
+      try {
+        await deleteCRMCustomerFromFirebase(targetId);
+      } catch (err) {
+        console.error("Failed to delete CRM customer from Firebase:", err);
+      }
     }
   };
 

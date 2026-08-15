@@ -22,10 +22,6 @@ service cloud.firestore {
       allow write: if isAuthenticated() && isValidId(userId);
     }
 
-    match /test/{testId} {
-      allow read, write: if isAuthenticated();
-    }
-    
     match /customers/{customerId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && isValidId(customerId);

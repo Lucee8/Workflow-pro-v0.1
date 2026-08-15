@@ -414,22 +414,47 @@ export async function deleteUserFromFirebase(userId: string): Promise<void> {
 }
 
 // CRM write and delete operations
-export async function saveCRMCustomerToFirebase(cust: CRMCustomer): Promise<void> {
-  const path = `crmCustomers/${cust.id}`;
+export async function fetchCRMCustomersFromFirestore(): Promise<CRMCustomer[]> {
+  const path = 'crmCustomers';
   try {
-    await setDoc(doc(db, 'crmCustomers', cust.id), cleanUndefined(cust));
+    const colRef = collection(db, path);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        ...data,
+        id: docSnap.id
+      } as CRMCustomer;
+    });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
   }
 }
 
+
 export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
   if (!id || !id.trim()) return;
-  const path = `crmCustomers/${id}`;
+  const trimmedId = id.trim();
+  const path = `crmCustomers/${trimmedId}`;
   try {
-    await deleteDoc(doc(db, 'crmCustomers', id));
+    // 1. Direct document deletion
+  try {
+      await deleteDoc(doc(db, 'crmCustomers', trimmedId));
+    } catch (err) {
+      console.warn(`Direct deleteDoc for crmCustomers/${trimmedId}:`, err);
+    }
+    // 2. Comprehensive check: delete any matching doc by doc.id or data.id
+    const colRef = collection(db, 'crmCustomers');
+    const snapshot = await getDocs(colRef);
+    const docsToDelete = snapshot.docs.filter(d => d.id === trimmedId || d.data().id === trimmedId);
+    if (docsToDelete.length > 0) {
+      const batch = writeBatch(db);
+      docsToDelete.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 

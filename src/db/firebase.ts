@@ -13,27 +13,26 @@ import {
 import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-// Initialize Firebase (Singleton pattern to prevent re-initialization errors)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
 const firebaseConfigWithDatabaseId = firebaseConfig as typeof firebaseConfig & {
   firestoreDatabaseId?: string;
 };
 
-// Use custom database ID in the platform environment but fallback to default database ID when run locally 
-const databaseId = firebaseConfigWithDatabaseId.projectId === "adroit-acronym-78gvj"
-  ? firebaseConfigWithDatabaseId.firestoreDatabaseId
-  : (
-    firebaseConfigWithDatabaseId.firestoreDatabaseId && !firebaseConfigWithDatabaseId.firestoreDatabaseId.startsWith("ai-studio-")
-      ? firebaseConfigWithDatabaseId.firestoreDatabaseId
-      : undefined
-  );
+// Initialize Firebase (Singleton pattern to prevent re-initialization errors)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Safe Firestore initialization with long polling for iframe environment stability
+// Use custom database ID in the platform environment but fallback to default database ID when run locally
+const databaseId = firebaseConfigWithDatabaseId.projectId === 'adroit-acronym-78gvj'
+  ? firebaseConfigWithDatabaseId.firestoreDatabaseId
+  : (firebaseConfigWithDatabaseId.firestoreDatabaseId &&
+      !firebaseConfigWithDatabaseId.firestoreDatabaseId.startsWith('ai-studio-')
+      ? firebaseConfigWithDatabaseId.firestoreDatabaseId
+      : undefined);
+
+
 function getOrInitFirestore() {
   try {
     const settings = {
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
     };
     return databaseId 
       ? initializeFirestore(app, settings, databaseId) 
@@ -90,13 +89,14 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMessage,
     authInfo: {
       userId: auth.currentUser?.uid || 'offline-simulated-user',
       email: auth.currentUser?.email || 'admin@bhisesworkshop.com',
-      emailVerified: auth.currentUser?.emailVerified ?? true,
-      isAnonymous: auth.currentUser?.isAnonymous ?? false,
+      emailVerified: auth.currentUser?.emailVerified || true,
+      isAnonymous: auth.currentUser?.isAnonymous || false,
       tenantId: auth.currentUser?.tenantId || null,
       providerInfo: auth.currentUser?.providerData?.map(provider => ({
         providerId: provider.providerId,
@@ -106,6 +106,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn(`[Firestore ${operationType} ${path || ''}] Warning/Error:`, errMessage);
+  return errInfo;
 }
