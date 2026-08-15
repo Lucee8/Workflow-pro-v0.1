@@ -5,8 +5,6 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from './db/firebase';
 import { loadState, saveState, AppState } from './db/store';
 import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from './types';
 import {
@@ -25,9 +23,8 @@ import {
   savePaymentToFirebase,
   deletePaymentFromFirebase,
   saveUserToFirebase,
-  deleteUserFromFirebase
-  ,
-  // CRM related firebase helpers
+  deleteUserFromFirebase,
+  saveCRMCustomerToFirebase,
   deleteCRMCustomerFromFirebase,
   saveCRMQuotationToFirebase,
   deleteCRMQuotationFromFirebase,
@@ -39,13 +36,8 @@ import {
   deleteCRMNoteFromFirebase,
   saveCRMAttachmentToFirebase,
   deleteCRMAttachmentFromFirebase,
-  saveCRMTimelineEventToFirebase,
-  // deleteCRMTimelineEventFromFirebase
+  saveCRMTimelineEventToFirebase
 } from './db/firebaseService';
-
-const saveCRMCustomerToFirebase = async (customer: CRMCustomer): Promise<void> => {
-  await setDoc(doc(db, 'crmCustomers', customer.id), customer);
-};
 
 // Component imports
 import SimulationHUD from './components/SimulationHUD';
@@ -231,6 +223,7 @@ export default function App() {
     let updatedPayments = [...db.payments];
     const newPayments: Payment[] = [];
     const newLogs: StatusLog[] = [];
+
     const firebasePromises: Promise<any>[] = [];
 
     ordersToAdd.forEach((newOrder) => {
@@ -354,14 +347,44 @@ export default function App() {
     }
   };
 
-  const handleDeleteCustomer = (customerId: string) => {
-    if (!window.confirm("Are you sure you want to permanently delete this customer profile? This action cannot be undone.")) return;
-    const updated = db.customers.filter((c) => c.id !== customerId);
+  const handleSaveCustomerFromDirectory = (cust: Customer, crmCust?: CRMCustomer) => {
+    const updatedCustomers = [cust, ...db.customers.filter((c) => c.id !== cust.id)];
+    const synthesizedCrm: CRMCustomer = crmCust || {
+      id: cust.id,
+      name: cust.name,
+      phone: cust.phone,
+      address: cust.address,
+      notes: cust.notes,
+      preferredContactMethod: cust.whatsapp_opt_in ? 'WhatsApp' : 'Phone',
+      source: 'Walkin',
+      status: 'New Inquiry',
+      created_at: cust.created_at || new Date().toISOString(),
+      created_by: cust.created_by || currentUser?.name || 'Admin',
+    };
+    const updatedCrmCustomers = [synthesizedCrm, ...(db.crmCustomers || []).filter((c) => c.id !== cust.id)];
+
     updateDbState({
       ...db,
-      customers: updated
+      customers: updatedCustomers,
+      crmCustomers: updatedCrmCustomers,
     });
-    deleteCustomerFromFirebase(customerId);
+
+    saveCustomerToFirebase(cust).catch((err) => console.error("Failed saving customer to Firebase:", err));
+    saveCRMCustomerToFirebase(synthesizedCrm).catch((err) => console.error("Failed saving CRM customer to Firebase:", err));
+  };
+
+  const handleDeleteCustomer = (customerId: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this customer profile? This action cannot be undone.")) return;
+    const targetId = customerId.trim();
+    const updated = db.customers.filter((c) => c.id !== targetId);
+    const updatedCrm = (db.crmCustomers || []).filter((c) => c && c.id && c.id.trim() !== targetId);
+    updateDbState({
+      ...db,
+      customers: updated,
+      crmCustomers: updatedCrm,
+    });
+    deleteCustomerFromFirebase(targetId).catch((err) => console.error("Failed deleting customer from Firebase:", err));
+    deleteCRMCustomerFromFirebase(targetId).catch((err) => console.error("Failed deleting CRM customer from Firebase:", err));
   };
 
   const handleAddPayment = (payment: Payment) => {
@@ -429,21 +452,43 @@ export default function App() {
     const updated = exists 
       ? db.crmCustomers.map(c => c.id === cust.id ? cust : c)
       : [cust, ...db.crmCustomers];
-    updateDbState({ ...db, crmCustomers: updated });
-    saveCRMCustomerToFirebase(cust);
+
+    // Synchronize customer directory
+    const synthesizedCust: Customer = {
+      id: cust.id,
+      name: cust.name,
+      phone: cust.phone,
+      address: [cust.address, cust.city, cust.state, cust.pinCode].filter(Boolean).join(', ') || cust.address,
+      notes: cust.notes || (cust.productRequirement ? `Requirement: ${cust.productRequirement}` : undefined),
+      whatsapp_opt_in: cust.preferredContactMethod === 'WhatsApp' || Boolean(cust.whatsappNumber),
+      created_at: cust.created_at || new Date().toISOString(),
+      created_by: cust.created_by || currentUser?.name || 'Admin',
+    };
+    const updatedCustomers = [synthesizedCust, ...db.customers.filter(c => c.id !== cust.id)];
+
+    updateDbState({ 
+      ...db, 
+      crmCustomers: updated,
+      customers: updatedCustomers,
+    });
+
+    saveCRMCustomerToFirebase(cust).catch((err) => console.error("Failed saving CRM customer to Firebase:", err));
+    saveCustomerToFirebase(synthesizedCust).catch((err) => console.error("Failed syncing customer to Firebase:", err));
   };
 
   const handleDeleteCRMCustomer = async (id: string) => {
     if (!id) return;
     const targetId = id.trim();
     const updated = (db.crmCustomers || []).filter(c => c && c.id && c.id.trim() !== targetId);
-    updateDbState({ ...db, crmCustomers: updated });
+    const updatedCust = db.customers.filter((c) => c.id !== targetId);
+    updateDbState({ 
+      ...db, 
+      crmCustomers: updated,
+      customers: updatedCust,
+    });
     if (targetId) {
-      try {
-        await deleteCRMCustomerFromFirebase(targetId);
-      } catch (err) {
-        console.error("Failed to delete CRM customer from Firebase:", err);
-      }
+      deleteCRMCustomerFromFirebase(targetId).catch((err) => console.error("Failed to delete CRM customer from Firebase:", err));
+      deleteCustomerFromFirebase(targetId).catch((err) => console.error("Failed to delete Customer from Firebase:", err));
     }
   };
 
@@ -453,7 +498,7 @@ export default function App() {
       ? db.crmQuotations.map(q => q.id === quote.id ? quote : q)
       : [quote, ...db.crmQuotations];
     updateDbState({ ...db, crmQuotations: updated });
-    saveCRMQuotationToFirebase(quote);
+    saveCRMQuotationToFirebase(quote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
   };
 
   const handleDeleteCRMQuotation = (id: string) => {
@@ -799,7 +844,6 @@ export default function App() {
                 isAdmin={isAdmin}
                 onDeleteOrder={handleDeleteOrder}
                 isDeletingOrderId={isDeletingOrderId}
-
               />
             </motion.div>
           )}
@@ -820,6 +864,9 @@ export default function App() {
                 onViewOrder={handleViewOrder}
                 crmQuotations={db.crmQuotations}
                 onDeleteCustomer={handleDeleteCustomer}
+                onSaveCustomer={handleSaveCustomerFromDirectory}
+                currentUser={currentUser}
+                onNavigateTab={(tab) => setCurrentTab(tab as any)}
               />
             </motion.div>
           )}

@@ -231,6 +231,41 @@ export default function CRMTab({
   const [quoteNotes, setQuoteNotes] = React.useState<string>('');
   const [quoteReceivedAmount, setQuoteReceivedAmount] = React.useState<number>(0);
 
+  const allAvailableCustomers = React.useMemo(() => {
+    const list: Array<{ id: string; name: string; phone?: string; city?: string; productRequirement?: string; status?: string }> = [];
+    const seenIds = new Set<string>();
+
+    (db.crmCustomers || []).forEach(c => {
+      if (c && c.id && !seenIds.has(c.id)) {
+        seenIds.add(c.id);
+        list.push({
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          city: c.city,
+          productRequirement: c.productRequirement,
+          status: c.status
+        });
+      }
+    });
+
+    (db.customers || []).forEach(c => {
+      if (c && c.id && !seenIds.has(c.id)) {
+        seenIds.add(c.id);
+        list.push({
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          city: c.address,
+          productRequirement: c.notes,
+          status: 'Customer'
+        });
+      }
+    });
+
+    return list;
+  }, [db.crmCustomers, db.customers]);
+
   React.useEffect(() => {
     if (showAddQuoteModal) {
       if (editingQuotation) {
@@ -1308,7 +1343,7 @@ export default function CRMTab({
       return;
     }
 
-    const customer = db.crmCustomers?.find(c => c.id === quoteCustomerId);
+    const customer = allAvailableCustomers.find(c => c.id === quoteCustomerId) || db.crmCustomers?.find(c => c.id === quoteCustomerId) || db.customers?.find(c => c.id === quoteCustomerId);
     const quoteId = editingQuotation ? editingQuotation.id : generateCRMQuotationId(db.crmQuotations || []);
     const nextEstimateNo = (db.crmQuotations && db.crmQuotations.length > 0) 
       ? Math.max(0, ...db.crmQuotations.map(q => q.estimateNo || 0)) + 1 
@@ -3276,16 +3311,28 @@ export default function CRMTab({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
                     <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
                       Select Customer Lead <span className="text-rose-500">*</span>
                     </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCustomer(null);
+                          setShowAddCustModal(true);
+                        }}
+                        className="text-[11px] font-bold text-[#593622] hover:text-[#402414] hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus size={12} /> New Customer Lead
+                      </button>
+                    </div>
                     <select
                       required
                       value={quoteCustomerId}
                       onChange={(e) => {
                         const custId = e.target.value;
                         setQuoteCustomerId(custId);
-                        const customer = db.crmCustomers?.find(c => c.id === custId);
+                        const customer = allAvailableCustomers.find(c => c.id === custId);
                         if (customer && customer.productRequirement && quoteItems.length === 1 && !quoteItems[0].furnitureItem) {
                           setQuoteItems([{ ...quoteItems[0], furnitureItem: customer.productRequirement }]);
                         }
@@ -3293,7 +3340,7 @@ export default function CRMTab({
                       className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-bold text-stone-900"
                     >
                       <option value="" disabled>-- Select Customer Lead --</option>
-                      {db.crmCustomers?.map(c => (
+                      {allAvailableCustomers.map(c => (
                         <option key={c.id} value={c.id}>{c.name} ({c.id}) {c.phone ? `• ${c.phone}` : ''}</option>
                       ))}
                     </select>
@@ -3301,7 +3348,7 @@ export default function CRMTab({
 
                   {/* Customer Quick Summary Card */}
                   {(() => {
-                    const selectedCust = db.crmCustomers?.find(c => c.id === quoteCustomerId);
+                    const selectedCust = allAvailableCustomers.find(c => c.id === quoteCustomerId) || db.crmCustomers?.find(c => c.id === quoteCustomerId);
                     if (!selectedCust) return (
                       <div className="border border-dashed border-stone-200 rounded-xl p-3 bg-stone-50/50 flex items-center justify-center text-stone-400 text-xs italic">
                         Select a customer lead above to view contact details

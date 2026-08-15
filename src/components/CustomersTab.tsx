@@ -5,9 +5,10 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { Customer, Order, Payment, User } from '../types';
-import { Search, Phone, MapPin, MessageSquare, CreditCard, CheckCircle, Clock, AlertTriangle, ChevronRight, User as UserIcon, Calendar, ArrowUpRight, Trash2 } from 'lucide-react';
+import { Customer, Order, Payment, User, CRMCustomer } from '../types';
+import { Search, Phone, MapPin, MessageSquare, CreditCard, CheckCircle, Clock, AlertTriangle, ChevronRight, User as UserIcon, Calendar, ArrowUpRight, Trash2, UserPlus, Plus, X, Building2, Mail, FileText, CheckCircle2 } from 'lucide-react';
 import { formatToDDMMYYYY } from '../utils';
+import { generateUUID } from '../db/store';
 
 interface CustomersTabProps {
   customers: Customer[];
@@ -18,6 +19,9 @@ interface CustomersTabProps {
   initialSelectedCustomerId?: string | null;
   crmQuotations?: any[];
   onDeleteCustomer: (customerId: string) => void;
+  onSaveCustomer?: (newCustomer: Customer, newCrmCustomer?: CRMCustomer) => void;
+  currentUser?: User | null;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export default function CustomersTab({
@@ -29,17 +33,43 @@ export default function CustomersTab({
   initialSelectedCustomerId = null,
   crmQuotations = [],
   onDeleteCustomer,
+  onSaveCustomer,
+  currentUser,
+  onNavigateTab,
 }: CustomersTabProps) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(
     initialSelectedCustomerId || (customers.length > 0 ? customers[0].id : null)
   );
+  const [showAddModal, setShowAddModal] = React.useState(false);
+  const [formData, setFormData] = React.useState({
+    name: '',
+    phone: '',
+    companyName: '',
+    whatsappNumber: '',
+    sameAsPhone: true,
+    email: '',
+    address: '',
+    city: '',
+    state: '',
+    pinCode: '',
+    source: 'Walkin',
+    notes: '',
+    productRequirement: '',
+    budget: '',
+  });
 
   React.useEffect(() => {
     if (initialSelectedCustomerId) {
       setSelectedCustomerId(initialSelectedCustomerId);
     }
   }, [initialSelectedCustomerId]);
+
+  React.useEffect(() => {
+    if (!selectedCustomerId && customers.length > 0) {
+      setSelectedCustomerId(customers[0].id);
+    }
+  }, [customers, selectedCustomerId]);
 
   // Filters customers list based on searched term (sorted descending by ID)
   const filteredCustomers = customers
@@ -75,8 +105,8 @@ export default function CustomersTab({
 
         if (orderPayment && orderPayment.total_amount > 0) {
           ordInvoiced = orderPayment.total_amount;
-          ordPaid = orderPayment.advance_paid || 0;
-          ordOutstanding = Math.max(0, ordInvoiced - ordPaid);
+          ordPaid = orderPayment.advance_paid;
+          ordOutstanding = orderPayment.balance_due;
         } else if (ord.total_amount !== undefined && ord.total_amount !== null) {
           ordInvoiced = ord.total_amount;
           ordPaid = ord.advance_paid || 0;
@@ -88,7 +118,7 @@ export default function CustomersTab({
           const packing = 1200;
           const transportation = 1800;
           ordInvoiced = (finalRate * qty) + packing + transportation;
-          ordPaid = orderPayment ? (orderPayment.advance_paid || 0) : 0;
+          ordPaid = orderPayment ? orderPayment.advance_paid : 0;
           ordOutstanding = Math.max(0, ordInvoiced - ordPaid);
         }
 
@@ -136,11 +166,100 @@ export default function CustomersTab({
     };
   }, [activeCustomer, customerOrders, payments, crmQuotations]);
 
+  const handleAddCustomerSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim()) {
+      alert('Please enter the customer name.');
+      return;
+    }
+    if (!formData.phone.trim()) {
+      alert('Please enter the customer phone number.');
+      return;
+    }
+
+    const d = new Date();
+    const yy = d.getFullYear().toString().slice(-2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const prefix = `CRM-${yy}-${mm}-`;
+    const randSuffix = Math.floor(100 + Math.random() * 900).toString();
+    const custId = `${prefix}${randSuffix}`;
+
+    const fullAddress = [
+      formData.address.trim(),
+      formData.city.trim(),
+      formData.state.trim(),
+      formData.pinCode.trim() ? `PIN: ${formData.pinCode.trim()}` : ''
+    ].filter(Boolean).join(', ');
+
+    const newCustomer: Customer = {
+      id: custId,
+      name: formData.name.trim(),
+      phone: formData.phone.trim(),
+      address: fullAddress || undefined,
+      notes: formData.notes.trim() || (formData.productRequirement.trim() ? `Requirement: ${formData.productRequirement.trim()}` : undefined),
+      whatsapp_opt_in: formData.sameAsPhone || Boolean(formData.whatsappNumber.trim()),
+      created_at: new Date().toISOString(),
+      created_by: currentUser?.name || 'Admin',
+    };
+
+    const newCrmCustomer: CRMCustomer = {
+      id: custId,
+      name: formData.name.trim(),
+      companyName: formData.companyName.trim() || undefined,
+      phone: formData.phone.trim(),
+      whatsappNumber: formData.sameAsPhone ? formData.phone.trim() : (formData.whatsappNumber.trim() || undefined),
+      email: formData.email.trim() || undefined,
+      address: formData.address.trim() || undefined,
+      city: formData.city.trim() || undefined,
+      state: formData.state.trim() || undefined,
+      pinCode: formData.pinCode.trim() || undefined,
+      source: (formData.source as any) || 'Walkin',
+      budget: formData.budget ? Number(formData.budget) : undefined,
+      status: 'New Inquiry',
+      productRequirement: formData.productRequirement.trim() || undefined,
+      notes: formData.notes.trim() || undefined,
+      preferredContactMethod: formData.sameAsPhone ? 'WhatsApp' : 'Phone',
+      created_at: new Date().toISOString(),
+      created_by: currentUser?.name || 'Admin',
+    };
+
+    if (onSaveCustomer) {
+      onSaveCustomer(newCustomer, newCrmCustomer);
+    }
+
+    setSelectedCustomerId(custId);
+    setShowAddModal(false);
+    setFormData({
+      name: '',
+      phone: '',
+      companyName: '',
+      whatsappNumber: '',
+      sameAsPhone: true,
+      email: '',
+      address: '',
+      city: '',
+      state: '',
+      pinCode: '',
+      source: 'Walkin',
+      notes: '',
+      productRequirement: '',
+      budget: '',
+    });
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">Customer Directory</h1>
-        <p className="text-stone-500 text-xs mt-1">Review unified client profiles, contact pipelines, and aggregate payment ledgers</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">Customer Directory</h1>
+          <p className="text-stone-500 text-xs mt-1">Review unified client profiles, contact pipelines, and aggregate payment ledgers</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-2 bg-[#593622] hover:bg-[#432818] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition cursor-pointer active:scale-95 shrink-0 self-start sm:self-auto"
+        >
+          <UserPlus size={15} /> Add New Customer
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -365,7 +484,7 @@ export default function CustomersTab({
                           const orderRef = customerOrders.find((ord) => ord.id === p.order_id);
                           return (
                             <tr key={p.id} className="hover:bg-stone-50/50 transition">
-                              <td className="py-3 font-mono font-semibold">{(p as any).dispatchedAt || orderRef?.order_date || '—'}</td>
+                              <td className="py-3 font-mono font-semibold">{p.payment_date}</td>
                               <td className="py-3 font-mono font-bold text-stone-800">
                                 {orderRef ? (
                                   <button
@@ -379,15 +498,21 @@ export default function CustomersTab({
                                 )}
                               </td>
                               <td className="py-3 font-mono text-stone-900">₹ {p.total_amount.toLocaleString('en-IN')}</td>
-                              <td className="py-3 font-mono text-emerald-600 font-bold">₹ {(p.advance_paid || 0).toLocaleString('en-IN')}</td>
-                              <td className="py-3 font-mono font-bold text-rose-600">₹ {Math.max(0, p.total_amount - (p.advance_paid || 0)).toLocaleString('en-IN')}</td>
+                              <td className="py-3 font-mono text-emerald-600 font-bold">₹ {p.advance_paid.toLocaleString('en-IN')}</td>
+                              <td className="py-3 font-mono font-bold text-rose-600">₹ {p.balance_due.toLocaleString('en-IN')}</td>
                               <td className="py-3 capitalize">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-stone-50 text-stone-700 border-stone-200">
-                                  {(p as any).dispatchedBy ? 'Dispatched' : 'Pending'}
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  p.payment_mode === 'cash'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : p.payment_mode === 'upi'
+                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                    : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                }`}>
+                                  {p.payment_mode}
                                 </span>
                               </td>
-                              <td className="py-3 text-right font-medium text-stone-550 max-w-[180px] truncate" title={(p as any).dispatchNotes}>
-                                {(p as any).dispatchNotes || '—'}
+                              <td className="py-3 text-right font-medium text-stone-550 max-w-[180px] truncate" title={p.notes}>
+                                {p.notes || '—'}
                               </td>
                             </tr>
                           );
@@ -412,6 +537,241 @@ export default function CustomersTab({
           )}
         </div>
       </div>
+
+      {/* ADD NEW CUSTOMER MODAL */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-stone-950/75 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 overflow-hidden">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            className="bg-white rounded-3xl max-w-xl w-full border border-stone-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            {/* Header */}
+            <div className="bg-[#593622] text-white p-5 sm:p-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-400 text-stone-950 flex items-center justify-center font-black shadow-md">
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg text-white">Add New Customer</h3>
+                  <p className="text-xs text-stone-300">Create client profile & sync directly with CRM and Orders</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="text-stone-400 hover:text-white bg-stone-800/60 hover:bg-stone-800 p-2 rounded-xl transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleAddCustomerSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                    Customer Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g. Rajesh Sharma"
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                    Phone Number <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-2.5 text-stone-400" size={14} />
+                    <input
+                      type="tel"
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="10-digit mobile number"
+                      className="w-full pl-9 bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                    Company / Firm Name (Optional)
+                  </label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-2.5 text-stone-400" size={14} />
+                    <input
+                      type="text"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
+                      placeholder="e.g. Sharma Interiors"
+                      className="w-full pl-9 bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                    Email Address (Optional)
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-2.5 text-stone-400" size={14} />
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="e.g. rajesh@example.com"
+                      className="w-full pl-9 bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* WhatsApp Opt-in */}
+              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-3 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-900">
+                  <input
+                    type="checkbox"
+                    checked={formData.sameAsPhone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, sameAsPhone: e.target.checked }))}
+                    className="accent-emerald-600 rounded w-4 h-4"
+                  />
+                  <span>WhatsApp number is same as primary phone</span>
+                </label>
+
+                {!formData.sameAsPhone && (
+                  <div className="pt-1">
+                    <input
+                      type="tel"
+                      value={formData.whatsappNumber}
+                      onChange={(e) => setFormData(prev => ({ ...prev, whatsappNumber: e.target.value }))}
+                      placeholder="Enter WhatsApp mobile number"
+                      className="w-full bg-white border border-emerald-300 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl px-3.5 py-2 text-xs font-semibold text-stone-900"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Address / Location */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                  Delivery / Site Address
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-2.5 text-stone-400" size={14} />
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                    placeholder="Building, Flat, Street, Area coordinates"
+                    className="w-full pl-9 bg-stone-50 border border-stone-200 focus:border-[#593622] focus:ring-1 focus:ring-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-[11px]">City</label>
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                    placeholder="Mumbai / Pune"
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 text-xs font-semibold text-stone-900"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-[11px]">State</label>
+                  <input
+                    type="text"
+                    value={formData.state}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                    placeholder="Maharashtra"
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 text-xs font-semibold text-stone-900"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-[11px]">PIN Code</label>
+                  <input
+                    type="text"
+                    value={formData.pinCode}
+                    onChange={(e) => setFormData(prev => ({ ...prev, pinCode: e.target.value }))}
+                    placeholder="400001"
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 text-xs font-semibold text-stone-900"
+                  />
+                </div>
+              </div>
+
+              {/* Requirement & Source */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-xs">Product Requirement</label>
+                  <input
+                    type="text"
+                    value={formData.productRequirement}
+                    onChange={(e) => setFormData(prev => ({ ...prev, productRequirement: e.target.value }))}
+                    placeholder="e.g. 4-Door Wardrobe, Modular Kitchen"
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-stone-700 text-xs">Lead Source</label>
+                  <select
+                    value={formData.source}
+                    onChange={(e) => setFormData(prev => ({ ...prev, source: e.target.value }))}
+                    className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900"
+                  >
+                    <option value="Walkin">Walk-in Customer</option>
+                    <option value="IndiaMART">IndiaMART</option>
+                    <option value="Reference">Reference / Word of Mouth</option>
+                    <option value="Website">Website</option>
+                    <option value="Instagram">Social Media / Instagram</option>
+                    <option value="Repeat Client">Repeat Client</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-700 text-xs">Additional Notes</label>
+                <textarea
+                  rows={2}
+                  value={formData.notes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Special client preferences, delivery instructions, or notes..."
+                  className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2 text-xs font-semibold text-stone-900 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-150">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2.5 border border-stone-300 text-stone-700 hover:bg-stone-100 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-[#593622] hover:bg-[#432818] text-white rounded-xl text-xs font-extrabold shadow-md hover:shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 size={14} /> Save Customer Profile
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

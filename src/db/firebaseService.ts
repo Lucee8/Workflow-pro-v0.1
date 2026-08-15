@@ -43,9 +43,7 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('offline')) {
-      console.warn("Please check your Firebase configuration or network status.");
-    }
+    console.warn("Firestore connection check note:", error instanceof Error ? error.message : error);
   }
 }
 
@@ -133,7 +131,8 @@ export function syncFirestore(
               id: docId // Firestore document ID is authoritative
             };
           })
-          .filter(Boolean);        callback(docs);
+          .filter(Boolean);
+        callback(docs);
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, name);
@@ -167,7 +166,9 @@ function cleanUndefined<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj;
   if (obj instanceof Date) return obj.toISOString() as unknown as T;
   if (Array.isArray(obj)) {
-    return obj.map(item => cleanUndefined(item)) as unknown as T;
+    return obj
+      .filter(item => item !== undefined)
+      .map(item => cleanUndefined(item)) as unknown as T;
   }
   if (typeof obj === 'object') {
     const cleaned: any = {};
@@ -189,6 +190,7 @@ export async function saveUserToFirebase(user: User): Promise<void> {
     await setDoc(doc(db, 'users', user.id), cleanUndefined(user));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 
@@ -198,6 +200,7 @@ export async function saveCustomerToFirebase(customer: Customer): Promise<void> 
     await setDoc(doc(db, 'customers', customer.id), cleanUndefined(customer));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 
@@ -422,6 +425,15 @@ export async function fetchCRMCustomersFromFirestore(): Promise<CRMCustomer[]> {
   }
 }
 
+export async function saveCRMCustomerToFirebase(cust: CRMCustomer): Promise<void> {
+  const path = `crmCustomers/${cust.id}`;
+  try {
+    await setDoc(doc(db, 'crmCustomers', cust.id), cleanUndefined(cust));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
 
 export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
   if (!id || !id.trim()) return;
@@ -429,7 +441,7 @@ export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
   const path = `crmCustomers/${trimmedId}`;
   try {
     // 1. Direct document deletion
-  try {
+    try {
       await deleteDoc(doc(db, 'crmCustomers', trimmedId));
     } catch (err) {
       console.warn(`Direct deleteDoc for crmCustomers/${trimmedId}:`, err);
@@ -454,6 +466,7 @@ export async function saveCRMQuotationToFirebase(quote: CRMQuotation): Promise<v
     await setDoc(doc(db, 'crmQuotations', quote.id), cleanUndefined(quote));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 
