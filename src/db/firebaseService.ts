@@ -58,14 +58,13 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
       const snapshot = await getDocs(colRef);
       
       if (snapshot.empty) {
-        console.log(`Cloud collection '${name}' is empty. Initially seeding '${name}' with ${items.length} local items...`);
+        console.log(`Cloud collection '${name}' is empty. Initially seeding '${name}' with ${items.length} initial items...`);
         const batch = writeBatch(db);
         for (const item of items) {
           batch.set(doc(db, name, item.id), cleanUndefined(item));
         }
         await batch.commit();
       } else {
-        let currentSnapshot = snapshot;
         if (name === 'users') {
           const batch = writeBatch(db);
           let deletedAny = false;
@@ -85,23 +84,7 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
           if (deletedAny) {
             console.log("Deleting old legacy users from Firestore...");
             await batch.commit();
-            // Re-fetch snapshot to get the fresh accurate state of cloud documents
-            currentSnapshot = await getDocs(colRef);
           }
-        }
-
-        // If Firestore already has some items, let's identify which local items are missing from the cloud
-        // and upload only the missing ones so local-only or offline-created items are never lost!
-        const existingCloudIds = currentSnapshot.docs.map(doc => doc.id);
-        const missingLocalItems = items.filter(item => item.id && !existingCloudIds.includes(item.id));
-        
-        if (missingLocalItems.length > 0) {
-          console.log(`Uploading ${missingLocalItems.length} local-only items to cloud collection '${name}'...`);
-          const batch = writeBatch(db);
-          for (const item of missingLocalItems) {
-            batch.set(doc(db, name, item.id), cleanUndefined(item));
-          }
-          await batch.commit();
         }
       }
     };
@@ -158,7 +141,7 @@ export function syncFirestore(
             }
             return {
               ...data,
-              id: data.id && String(data.id).trim() ? data.id : docId
+              id: docId // Firestore document ID is authoritative
             };
           })
           .filter(Boolean);        callback(docs);
@@ -237,21 +220,142 @@ export async function deleteCustomerFromFirebase(customerId: string): Promise<vo
   }
 }
 
+export async function fetchOrdersFromFirestore(): Promise<Order[]> {
+  const path = 'orders';
+  try {
+    const colRef = collection(db, path);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        ...data,
+        id: docSnap.id
+      } as Order;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    throw error;
+  }
+}
+
+export async function fetchStatusLogsFromFirestore(): Promise<StatusLog[]> {
+  const path = 'statusLogs';
+  try {
+    const colRef = collection(db, path);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        ...data,
+        id: docSnap.id
+      } as StatusLog;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
+}
+
+export async function fetchPaymentsFromFirestore(): Promise<Payment[]> {
+  const path = 'payments';
+  try {
+    const colRef = collection(db, path);
+    const snapshot = await getDocs(colRef);
+    return snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        ...data,
+        id: docSnap.id
+      } as Payment;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return [];
+  }
+}
+
 export async function saveOrderToFirebase(order: Order): Promise<void> {
   const path = `orders/${order.id}`;
   try {
     await setDoc(doc(db, 'orders', order.id), cleanUndefined(order));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 
 export async function deleteOrderFromFirebase(orderId: string): Promise<void> {
-  const path = `orders/${orderId}`;
+  if (!orderId || !orderId.trim()) {
+    throw new Error('Invalid order ID provided for deletion');
+  }
+
+  const trimmedId = orderId.trim();
+  const path = `orders/${trimmedId}`;
+
   try {
-    await deleteDoc(doc(db, 'orders', orderId));
+    // 1. Direct document deletion using the provided document ID
+    try {
+      await deleteDoc(doc(db, 'orders', trimmedId));
+    } catch (err) {
+      console.warn(`Direct deleteDoc for orders/${trimmedId} encountered:`, err);
+    }
+
+    // 2. Comprehensive check: query the orders collection to find any matching docs by doc.id, data.id, or data.article_no
+    const colRef = collection(db, 'orders');
+    const snapshot = await getDocs(colRef);
+    const docsToDelete = snapshot.docs.filter((d) => {
+      const data = d.data();
+      return (
+        d.id === trimmedId ||
+        data.id === trimmedId ||
+        (data.article_no && data.article_no === trimmedId)
+      );
+    });
+
+    if (docsToDelete.length > 0) {
+      const batch = writeBatch(db);
+      docsToDelete.forEach((d) => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+    }
+
+    // 3. Cascade cleanup of related status logs in Firestore
+    try {
+      const logsCol = collection(db, 'statusLogs');
+      const logsSnap = await getDocs(logsCol);
+      const logsToDelete = logsSnap.docs.filter(d => {
+        const data = d.data();
+        return data.order_id === trimmedId || d.id === trimmedId;
+      });
+      if (logsToDelete.length > 0) {
+        const batch = writeBatch(db);
+        logsToDelete.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (logErr) {
+      console.warn(`Failed cascading statusLogs deletion for order ${trimmedId}:`, logErr);
+    }
+
+    // 4. Cascade cleanup of related payments in Firestore
+    try {
+      const payCol = collection(db, 'payments');
+      const paySnap = await getDocs(payCol);
+      const payToDelete = paySnap.docs.filter(d => {
+        const data = d.data();
+        return data.order_id === trimmedId;
+      });
+      if (payToDelete.length > 0) {
+        const batch = writeBatch(db);
+        payToDelete.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (payErr) {
+      console.warn(`Failed cascading payments deletion for order ${trimmedId}:`, payErr);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
   }
 }
 

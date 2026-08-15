@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Order, User, Customer, OrderStage, OrderPriority, Payment, normalizeStage } from '../types';
-import { Search, Eye, PlusCircle, AlertCircle, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, CreditCard, Trash2 } from 'lucide-react';
+import { Search, Eye, PlusCircle, AlertCircle, ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, CreditCard, Trash2, Loader2 } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc } from '../utils';
 
 interface OrdersTabProps {
@@ -16,7 +16,8 @@ interface OrdersTabProps {
   onViewOrder: (orderId: string) => void;
   onNavigateTab: (tabId: string) => void;
   isAdmin: boolean;
-  onDeleteOrder?: (orderId: string) => void;
+  onDeleteOrder?: (orderId: string) => void | Promise<void>;
+  isDeletingOrderId?: string | null;
 }
 
 export default function OrdersTab({
@@ -28,6 +29,7 @@ export default function OrdersTab({
   onNavigateTab,
   isAdmin,
   onDeleteOrder,
+  isDeletingOrderId,
 }: OrdersTabProps) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [stageFilter, setStageFilter] = React.useState<string>('All Stages');
@@ -296,10 +298,19 @@ export default function OrdersTab({
                           {isAdmin && (
                             <button
                               onClick={() => onDeleteOrder?.(order.id)}
-                              className="bg-stone-100 hover:bg-rose-600 hover:text-white p-2 rounded-xl text-rose-600 transition"
-                              title="Cancel & Delete Order"
+                              disabled={isDeletingOrderId === order.id}
+                              className={`p-2 rounded-xl transition cursor-pointer ${
+                                isDeletingOrderId === order.id
+                                  ? 'bg-rose-100 text-rose-400 cursor-not-allowed'
+                                  : 'bg-stone-100 hover:bg-rose-600 hover:text-white text-rose-600'
+                              }`}
+                              title={isDeletingOrderId === order.id ? 'Deleting from database...' : 'Cancel & Delete Order'}
                             >
-                              <Trash2 size={13} strokeWidth={2.5} />
+                              {isDeletingOrderId === order.id ? (
+                                <Loader2 size={13} strokeWidth={2.5} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={13} strokeWidth={2.5} />
+                              )}
                             </button>
                           )}
                         </div>

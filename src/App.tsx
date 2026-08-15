@@ -13,6 +13,9 @@ import {
   syncFirestore,
   saveOrderToFirebase,
   deleteOrderFromFirebase,
+  fetchOrdersFromFirestore,
+  fetchStatusLogsFromFirestore,
+  fetchPaymentsFromFirestore,
   saveCustomerToFirebase,
   deleteCustomerFromFirebase,
   saveStatusLogToFirebase,
@@ -75,6 +78,7 @@ export default function App() {
   // Firebase connection and sync states
   const [firebaseConnected, setFirebaseConnected] = React.useState<boolean>(false);
   const [firebaseSeeding, setFirebaseSeeding] = React.useState<boolean>(false);
+  const [isDeletingOrderId, setIsDeletingOrderId] = React.useState<string | null>(null);
 
   // Sync with Firestore asynchronously on initialization
   React.useEffect(() => {
@@ -293,7 +297,7 @@ export default function App() {
     }
   };
 
-  const handleDeleteOrder = (orderId: string) => {
+  const handleDeleteOrder = async (orderId: string) => {
     const targetOrder = db.orders.find((o) => o.id === orderId);
     const label = targetOrder?.article_no ? `order ${targetOrder.article_no}` : "this order";
     if (
@@ -304,22 +308,41 @@ export default function App() {
       return;
     }
 
-    const updatedOrders = db.orders.filter((o) => o.id !== orderId);
-    const logsToDelete = db.statusLogs.filter((l) => l.order_id === orderId);
-    const updatedLogs = db.statusLogs.filter((l) => l.order_id !== orderId);
-    const paymentsToDelete = db.payments.filter((p) => p.order_id === orderId);
-    const updatedPayments = db.payments.filter((p) => p.order_id !== orderId);
+    try {
+      setIsDeletingOrderId(orderId);
 
-    updateDbState({
-      ...db,
-      orders: updatedOrders,
-      statusLogs: updatedLogs,
-      payments: updatedPayments,
-    });
+      // 1. Delete order permanently from Firestore database
+      await deleteOrderFromFirebase(orderId);
 
-    deleteOrderFromFirebase(orderId);
-    logsToDelete.forEach((l) => deleteStatusLogFromFirebase(l.id));
-    paymentsToDelete.forEach((p) => deletePaymentFromFirebase(p.id));
+      // 2. Cascade delete related logs and payments from Firestore
+      const logsToDelete = db.statusLogs.filter((l) => l.order_id === orderId);
+      const paymentsToDelete = db.payments.filter((p) => p.order_id === orderId);
+      await Promise.allSettled([
+        ...logsToDelete.map((l) => deleteStatusLogFromFirebase(l.id)),
+        ...paymentsToDelete.map((p) => deletePaymentFromFirebase(p.id)),
+      ]);
+
+      // 3. Re-fetch fresh Orders, StatusLogs, and Payments directly from the database to ensure synchronization
+      const [freshOrders, freshLogs, freshPayments] = await Promise.all([
+        fetchOrdersFromFirestore().catch(() => db.orders.filter((o) => o.id !== orderId)),
+        fetchStatusLogsFromFirestore().catch(() => db.statusLogs.filter((l) => l.order_id !== orderId)),
+        fetchPaymentsFromFirestore().catch(() => db.payments.filter((p) => p.order_id !== orderId)),
+      ]);
+
+      // 4. Update UI and local state only after successful database deletion
+      updateDbState({
+        ...db,
+        orders: freshOrders,
+        statusLogs: freshLogs,
+        payments: freshPayments,
+      });
+    } catch (error: any) {
+      console.error("Failed to delete order from database:", error);
+      const message = error?.message || "Failed to permanently delete order from database. Please check your connection and try again.";
+      alert(`Error deleting order: ${message}`);
+    } finally {
+      setIsDeletingOrderId(null);
+    }
   };
 
   const handleDeleteCustomer = (customerId: string) => {
@@ -760,6 +783,8 @@ export default function App() {
                 onNavigateTab={(tab) => setCurrentTab(tab)}
                 isAdmin={isAdmin}
                 onDeleteOrder={handleDeleteOrder}
+                isDeletingOrderId={isDeletingOrderId}
+
               />
             </motion.div>
           )}
