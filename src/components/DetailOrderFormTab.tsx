@@ -675,14 +675,16 @@ export default function DetailOrderFormTab({
       }, 50);
     }
 
-    // Prefill advance payment from unique quotation(s) recorded received_amount at ORDER-LEVEL
-    const totalQuoteAdvance = uniqueQuoteIds.reduce((sum, qId) => {
+    // Prefill transportation charges from quotation if available
+    const totalQuoteTransportation = uniqueQuoteIds.reduce((sum, qId) => {
       const itemWithQuote = selectedItems.find((s) => s.quoteId === qId);
       const quote = itemWithQuote?.quoteObj || crmQuotations?.find((q) => q.id === qId);
-      const recAmt = quote?.received_amount !== undefined ? quote.received_amount : (quote?.receivedAmount || 0);
-      return sum + Math.max(0, Number(recAmt) || 0);
+      const transAmt = quote?.transportation_charges !== undefined ? quote.transportation_charges : (quote?.transportation || 0);
+      return sum + Math.max(0, Number(transAmt) || 0);
     }, 0);
-    setAdvance(totalQuoteAdvance);
+    if (totalQuoteTransportation > 0) {
+      setTransportation(totalQuoteTransportation);
+    }
 
     setSelectedOrderId('');
   };

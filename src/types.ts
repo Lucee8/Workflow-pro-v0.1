@@ -313,6 +313,7 @@ export interface CRMQuotation {
   customer_name: string;
   items: CRMQuotationItem[];
   subtotal?: number;
+  transportation_charges?: number;
   discount?: number;
   discountType?: 'amount' | 'percentage';
   gst?: number;

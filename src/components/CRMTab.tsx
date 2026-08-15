@@ -83,6 +83,7 @@ import {
   ShoppingBag,
   Compass,
   Loader2,
+  Truck,
   PieChart as PieChartIcon
 } from 'lucide-react';
 
@@ -223,6 +224,8 @@ export default function CRMTab({
 
   const [quoteCustomerId, setQuoteCustomerId] = React.useState<string>('');
   const [quoteItems, setQuoteItems] = React.useState<CRMQuotationItem[]>([]);
+  const [quoteTransportationCharges, setQuoteTransportationCharges] = React.useState<number>(0);
+  const [showTransportationInput, setShowTransportationInput] = React.useState<boolean>(false);
   const [quoteDiscount, setQuoteDiscount] = React.useState<number>(0);
   const [quoteGst, setQuoteGst] = React.useState<number>(0);
   const [quoteValidUntil, setQuoteValidUntil] = React.useState<string>('');
@@ -296,6 +299,8 @@ export default function CRMTab({
               images: []
             }];
         setQuoteItems(loadedItems);
+        setQuoteTransportationCharges(editingQuotation.transportation_charges || 0);
+        setShowTransportationInput(Boolean(editingQuotation.transportation_charges && editingQuotation.transportation_charges > 0));
         setQuoteDiscount(editingQuotation.discount !== undefined ? editingQuotation.discount : (editingQuotation.items?.[0]?.discount || 0));
         setQuoteGst(editingQuotation.gst !== undefined ? editingQuotation.gst : (editingQuotation.items?.[0]?.gst || 0));
         setQuoteValidUntil(editingQuotation.validUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
@@ -319,6 +324,8 @@ export default function CRMTab({
           totalAmount: 0,
           images: []
         }]);
+        setQuoteTransportationCharges(0);
+        setShowTransportationInput(false);
         setQuoteDiscount(0);
         setQuoteGst(0);
         setQuoteValidUntil(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
@@ -330,6 +337,8 @@ export default function CRMTab({
     } else {
       setQuoteCustomerId('');
       setQuoteItems([]);
+      setQuoteTransportationCharges(0);
+      setShowTransportationInput(false);
       setQuoteDiscount(0);
       setQuoteGst(0);
       setQuoteValidUntil('');
@@ -475,8 +484,9 @@ export default function CRMTab({
   };
 
   const quoteSubtotal = quoteItems.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0);
+  const quoteTransportationAmt = Number(quoteTransportationCharges) || 0;
   const quoteDiscountAmt = Number(quoteDiscount) || 0;
-  const quoteTaxableSubtotal = Math.max(0, quoteSubtotal - quoteDiscountAmt);
+  const quoteTaxableSubtotal = Math.max(0, quoteSubtotal + quoteTransportationAmt - quoteDiscountAmt);
   const quoteGstPercent = Number(quoteGst) || 0;
   const quoteGstAmt = Math.round(quoteTaxableSubtotal * (quoteGstPercent / 100));
   const quoteGrandTotal = quoteTaxableSubtotal + quoteGstAmt;
@@ -1372,6 +1382,7 @@ export default function CRMTab({
       customer_name: customer ? customer.name : 'Unknown Customer',
       items: formattedItems,
       subtotal: quoteSubtotal,
+      transportation_charges: quoteTransportationAmt,
       discount: quoteDiscountAmt,
       gst: quoteGstPercent,
       gstAmount: quoteGstAmt,
@@ -3659,6 +3670,80 @@ export default function CRMTab({
                   <Plus size={18} />
                   <span>+ Add Product</span>
                 </button>
+
+                {/* Add Transportation Charges Section */}
+                {!showTransportationInput && quoteTransportationAmt === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowTransportationInput(true)}
+                    className="w-full py-3 px-4 bg-emerald-50/70 hover:bg-emerald-100/90 border-2 border-dashed border-emerald-300 hover:border-emerald-400 rounded-2xl text-emerald-900 font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-2xs group"
+                  >
+                    <Truck size={17} className="text-emerald-700 group-hover:scale-110 transition-transform" />
+                    <span>+ Add Transportation Charges</span>
+                  </button>
+                ) : (
+                  <div className="bg-emerald-50/60 border border-emerald-300/80 rounded-2xl p-4 space-y-3 shadow-2xs transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                          <Truck size={15} />
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-black text-emerald-950 uppercase tracking-wider">
+                            Transportation / Freight Charges
+                          </h5>
+                          <p className="text-[10px] text-emerald-800 font-medium">
+                            Added directly to the invoice below Subtotal & included in Grand Total.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuoteTransportationCharges(0);
+                          setShowTransportationInput(false);
+                        }}
+                        className="text-[11px] text-rose-600 hover:text-rose-700 font-bold hover:bg-rose-50 px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                        title="Remove Transportation Charges"
+                      >
+                        <Trash2 size={13} />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <div className="relative flex-1">
+                        <span className="absolute left-3.5 top-2.5 text-emerald-700 font-bold text-xs">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={quoteTransportationCharges === 0 ? '' : quoteTransportationCharges}
+                          onChange={(e) => setQuoteTransportationCharges(Math.max(0, parseFloat(e.target.value) || 0))}
+                          placeholder="Enter transportation charge in ₹"
+                          className="w-full bg-white border border-emerald-300 focus:border-emerald-600 rounded-xl pl-8 pr-3.5 py-2 font-mono text-emerald-950 text-xs font-black placeholder:text-stone-400 outline-none transition shadow-2xs"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {[500, 1000, 1500, 2000, 2500, 3000, 5000].map(amt => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setQuoteTransportationCharges(amt)}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition cursor-pointer font-mono ${
+                              quoteTransportationCharges === amt
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                : 'bg-white text-emerald-900 border-emerald-200 hover:bg-emerald-100/80'
+                            }`}
+                          >
+                            +₹{amt.toLocaleString('en-IN')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Step 3: Shared Quotation Fields & Summary */}
@@ -3777,6 +3862,20 @@ export default function CRMTab({
                           ₹{quoteSubtotal.toLocaleString('en-IN')}.00
                         </span>
                       </div>
+
+
+                      {/* Transportation Charges row */}
+                      {(quoteTransportationAmt > 0 || showTransportationInput) && (
+                        <div className="flex justify-between items-center py-1.5 px-2.5 bg-emerald-950/60 border border-emerald-500/30 rounded-xl text-emerald-300">
+                          <span className="flex items-center gap-1.5 font-bold">
+                            <Truck size={13} className="text-emerald-400" />
+                            Transportation Charges
+                          </span>
+                          <span className="font-mono font-black text-emerald-300">
+                            +₹{quoteTransportationAmt.toLocaleString('en-IN')}.00
+                          </span>
+                        </div>
+                      )}
 
                       {/* Discount Input */}
                       <div className="space-y-1 pt-2 border-t border-stone-800">
@@ -4233,13 +4332,14 @@ export default function CRMTab({
           onSaveCRMQuotation(updated);
         };
 
-        const customer = db.crmCustomers?.find(c => c.id === viewingEstimateQuote.customer_id);
+        const customer = db.crmCustomers?.find(c => c.id === viewingEstimateQuote.customer_id) || db.customers?.find(c => c.id === viewingEstimateQuote.customer_id);
         const itemsList = viewingEstimateQuote.items || [];
         const itemSubtotal = itemsList.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
+        const transportationCharges = Number(viewingEstimateQuote.transportation_charges) || 0;
         const totalDiscount = (viewingEstimateQuote.discount !== undefined && Number(viewingEstimateQuote.discount) >= 0)
           ? Number(viewingEstimateQuote.discount)
           : itemsList.reduce((acc, item) => acc + (item.discount || 0), 0);
-        const taxableAmount = Math.max(0, itemSubtotal - totalDiscount);
+        const taxableAmount = Math.max(0, itemSubtotal + transportationCharges - totalDiscount);
         const totalGstAmount = itemsList.reduce((acc, item) => {
           const itemTaxable = Math.max(0, (item.unitPrice * item.quantity) - (item.discount || 0));
           return acc + Math.round(itemTaxable * ((item.gst || 0) / 100));
@@ -4409,8 +4509,9 @@ export default function CRMTab({
                             <div className="space-y-0.5 text-slate-600 text-[11px]">
                               <p>Contact: <span className="font-semibold text-slate-800">{customer.phone}</span></p>
                               {customer.address && (
-                                <p className="leading-snug">Address: {customer.address}, {customer.city}</p>
-                              )}
+                                <p className="leading-snug">
+                                  Address: {customer.address}{'city' in customer && customer.city ? `, ${customer.city}` : ''}
+                                </p>                              )}
                             </div>
                           )}
                         </div>
@@ -4531,6 +4632,15 @@ export default function CRMTab({
                           <span className="text-right font-bold pr-1">: ₹{itemSubtotal.toLocaleString('en-IN')}.00</span>
                         </div>
 
+                        {transportationCharges > 0 && (
+                          <div className="grid grid-cols-2 p-1.5 print:p-1 text-emerald-950 bg-emerald-50/40">
+                            <span className="font-semibold text-emerald-950 flex items-center gap-1">
+                              Transportation Charges
+                            </span>
+                            <span className="text-right font-bold text-emerald-900 pr-1">: +₹{transportationCharges.toLocaleString('en-IN')}.00</span>
+                          </div>
+                        )}
+
                         {totalDiscount > 0 && (
                           <div className="grid grid-cols-2 p-1.5 print:p-1 text-rose-800 bg-rose-50/20">
                             <span className="font-semibold text-rose-950">Discount</span>
@@ -4538,7 +4648,7 @@ export default function CRMTab({
                           </div>
                         )}
 
-                        {(totalDiscount > 0 || totalGstAmount > 0) && (
+                        {(totalDiscount > 0 || totalGstAmount > 0 || transportationCharges > 0) && (
                           <div className="grid grid-cols-2 p-1.5 print:p-1 text-slate-600">
                             <span>Taxable Value</span>
                             <span className="text-right font-bold text-slate-800 pr-1">: ₹{taxableAmount.toLocaleString('en-IN')}.00</span>
