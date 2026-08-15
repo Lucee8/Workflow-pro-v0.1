@@ -965,7 +965,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
     isDateInBounds(o.order_date || o.created_at, startMs, endMs)
   );
 
-  const totalCustomers = filteredCrmCustomers.length;
+  const totalCustomers = allUnifiedCustomers.length;
   const activeOrders = filteredOrders.filter(o => o.current_status !== 'Dispatched').length;
   const completedOrders = filteredOrders.filter(o => o.current_status === 'Dispatched').length;
   const pendingQuotes = (db.crmQuotations || []).filter(q =>
@@ -1425,7 +1425,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
   };
 
   // 4. SEARCHES & FILTERING LOGIC
-  const filteredCustomersList = (db.crmCustomers || [])
+  const filteredCustomersList = allUnifiedCustomers
     .filter(c => {
       if (!c || (!c.name?.trim() && !c.phone?.trim() && !c.id?.trim())) return false;
       const nameStr = c.name || '';
@@ -1709,7 +1709,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
 
           {/* Top KPI Metrics Cards and Charts Container */}
           <div className={`space-y-6 transition-opacity duration-200 ${isFilterLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0">
                 <Users size={18} />
@@ -1727,16 +1727,6 @@ if (typeof endMs === 'number' && time > endMs) return false;
               <div>
                 <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Active/Ready Orders</span>
                 <strong className="text-lg font-black text-stone-900 font-display">{activeOrders} / {completedOrders}</strong>
-              </div>
-            </div>
-
-            <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
-              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
-                <DollarSign size={18} />
-              </div>
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
-                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
               </div>
             </div>
 

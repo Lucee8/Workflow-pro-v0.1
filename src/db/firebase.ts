@@ -10,7 +10,7 @@ import {
   inMemoryPersistence, 
   getAuth 
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
@@ -29,7 +29,21 @@ const databaseId = firebaseConfigWithDatabaseId.projectId === "adroit-acronym-78
       : undefined
   );
 
-export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+// Safe Firestore initialization with long polling for iframe environment stability
+function getOrInitFirestore() {
+  try {
+    const settings = {
+      experimentalForceLongPolling: true,
+    };
+    return databaseId 
+      ? initializeFirestore(app, settings, databaseId) 
+      : initializeFirestore(app, settings);
+  } catch {
+    return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+  }
+}
+
+export const db = getOrInitFirestore();
 
 // Safe Auth initialization avoiding IndexedDB issues in iframe environments
 function getOrInitAuth() {
@@ -44,7 +58,7 @@ function getOrInitAuth() {
     });
   } catch {
     return getAuth(app);
-  }
+  } 
 }
 
 export const auth = getOrInitAuth();
@@ -81,8 +95,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     authInfo: {
       userId: auth.currentUser?.uid || 'offline-simulated-user',
       email: auth.currentUser?.email || 'admin@bhisesworkshop.com',
-      emailVerified: auth.currentUser?.emailVerified || true,
-      isAnonymous: auth.currentUser?.isAnonymous || false,
+      emailVerified: auth.currentUser?.emailVerified ?? true,
+      isAnonymous: auth.currentUser?.isAnonymous ?? false,
       tenantId: auth.currentUser?.tenantId || null,
       providerInfo: auth.currentUser?.providerData?.map(provider => ({
         providerId: provider.providerId,
