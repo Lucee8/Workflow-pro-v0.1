@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/UPI QR code.jpeg';
-import signatureImg from '../assets/images/Authorized Signatory.png';
+import upiQrImg from '../assets/images/upi_qr.png';
+import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
@@ -338,7 +338,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = document.createElement('img');
+          const img = new Image();
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -447,24 +447,9 @@ export default function CRMTab({
   const quoteGrandTotal = quoteTaxableSubtotal + quoteGstAmt;
 
   // Customized printable estimate asset states (stored in localStorage for persistence)
-  const [customLogo, setCustomLogo] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('estimate_custom_logo');
-    }
-    return null;
-  });
-  const [customQR, setCustomQR] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('estimate_custom_qr');
-    }
-    return null;
-  });
-  const [customSignature, setCustomSignature] = React.useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('estimate_custom_signature');
-    }
-    return null;
-  });
+  const [customLogo, setCustomLogo] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_logo'));
+  const [customQR, setCustomQR] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_qr'));
+  const [customSignature, setCustomSignature] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_signature'));
 
   // Attachment Dialog States
   const [showAttachmentModal, setShowAttachmentModal] = React.useState(false);
@@ -636,7 +621,7 @@ export default function CRMTab({
     startMs?: number | null,
     endMs?: number | null
   ): boolean => {
-    if (typeof startMs !== 'number' && typeof endMs !== 'number') return true;
+    if (startMs === null && endMs === null) return true;
     if (!dateStr) return false;
 
     let time: number | null = null;
@@ -656,8 +641,8 @@ export default function CRMTab({
 
     if (time === null || isNaN(time)) return false;
 
-if (typeof startMs === 'number' && time < startMs) return false;
-if (typeof endMs === 'number' && time > endMs) return false;
+    if (startMs !== null && time < startMs) return false;
+    if (endMs !== null && time > endMs) return false;
     return true;
   };
 
@@ -821,7 +806,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
           color_shade: 'Teak / Walnut',
           no_of_units: item.quantity || 1,
           carpenter_id: defaultCarp,
-          current_status: 'Pending',
+          current_status: 'Designing',
           is_delayed: false,
           priority: 'normal',
           order_date: new Date().toISOString().split('T')[0],
@@ -871,7 +856,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
       const orderId = generateNewOrderNo(undefined, db.orders, db.crmQuotations);
       const defaultCarp = users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod';
       const articleNo = generateArticleNumber('Living Room', defaultCarp, db.orders || [], users, 0);
-     
+      
       const newOrder: Order = {
         id: orderId,
         article_no: articleNo,
@@ -928,7 +913,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
     }
   };
 
-    // Unify all customers across crmCustomers and workshop customers
+  // Unify all customers across crmCustomers and workshop customers
   const allUnifiedCustomers = React.useMemo(() => {
     const map = new Map<string, CRMCustomer>();
     (db.crmCustomers || []).forEach(c => {
@@ -936,7 +921,6 @@ if (typeof endMs === 'number' && time > endMs) return false;
     });
     (db.customers || []).forEach(c => {
       if (c && c.id && !map.has(c.id)) {
-        const workshopCustomer = c as typeof c & { city?: string; state?: string };
         map.set(c.id, {
           id: c.id,
           name: c.name,
@@ -965,7 +949,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
     isDateInBounds(o.order_date || o.created_at, startMs, endMs)
   );
 
-  const totalCustomers = allUnifiedCustomers.length;
+  const totalCustomers = filteredCrmCustomers.length;
   const activeOrders = filteredOrders.filter(o => o.current_status !== 'Dispatched').length;
   const completedOrders = filteredOrders.filter(o => o.current_status === 'Dispatched').length;
   const pendingQuotes = (db.crmQuotations || []).filter(q =>
@@ -980,11 +964,9 @@ if (typeof endMs === 'number' && time > endMs) return false;
   const validOrderIds = new Set((db.orders || []).map(o => o.id));
   const validCustomerIds = new Set(allUnifiedCustomers.map(c => c.id));
 
-
   const validPayments = (db.payments || []).filter(p =>
     (!p.order_id || validOrderIds.has(p.order_id)) &&
-    // Payment type may not have a strongly-typed `created_at` property; fallback via any
-    isDateInBounds((p as any).created_at, startMs, endMs)
+    isDateInBounds(p.payment_date || p.created_at, startMs, endMs)
   );
 
   const validCrmPayments = (db.crmPayments || []).filter(cp => {
@@ -993,7 +975,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
     return isDateInBounds(cp.payment_date, startMs, endMs);
   });
 
-    // Calculate advance paid directly on filtered orders if not present in payments array
+  // Calculate advance paid directly on filtered orders if not present in payments array
   const orderDirectAdvances = filteredOrders.reduce((sum, o) => {
     const hasPaymentRecord = validPayments.some(p => p.order_id === o.id);
     if (!hasPaymentRecord && o.advance_paid) {
@@ -1005,7 +987,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
   // Total Revenue Calculation (summing valid payments within selected date bounds)
   const totalRevenue = (validPayments.reduce((acc, p) => acc + (p.advance_paid || 0), 0)) +
                        (validCrmPayments.reduce((acc, cp) => acc + (cp.advance_paid || 0), 0)) +
-                       orderDirectAdvances;  
+                       orderDirectAdvances;
+  
   // Repeat Customers (Customers with > 1 order)
   const customerOrderCounts = (db.orders || []).reduce((acc: Record<string, number>, o) => {
     acc[o.customer_id] = (acc[o.customer_id] || 0) + 1;
@@ -1072,7 +1055,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
   // (b) Revenue Trend (computed across all historical payments over 6 months)
   const revenueTrendData = last6Months.map(({ key, name }) => {
     const paymentSum = allValidPayments.filter(p => {
-      const k = getYearMonthKey((p as any).payment_date || (p as any).created_at);
+      const k = getYearMonthKey(p.payment_date || p.created_at);
       return k === key;
     }).reduce((acc, p) => acc + (p.advance_paid || 0), 0);
 
@@ -1093,10 +1076,15 @@ if (typeof endMs === 'number' && time > endMs) return false;
 
   // (c) Source Performance (calculated from filteredCrmCustomers)
   const sourceBarColors: Record<string, string> = {
+    'IndiaMART': '#6D4025',     // Coffee Brown
     'Walkin': '#D97706',        // Amber Orange
-    'Social Media': '#A855F7',   // Purple
-    'Reference': '#6B7280',     // Gray
+    'Manual': '#1A110A',        // Dark Brown
+    'TradeIndia': '#EA7300',    // Bright Orange
+    'Email': '#F2B233',         // Gold
     'Website': '#6366F1',       // Blue
+    'Social Media': '#A855F7',   // Purple
+    'Youtube': '#6D4025',       // Coffee Brown
+    'Reference': '#6B7280',     // Gray
   };
 
   const defaultSourcesList = ['Walkin', 'Social Media', 'Reference', 'Website'];
@@ -1425,7 +1413,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
   };
 
   // 4. SEARCHES & FILTERING LOGIC
-  const filteredCustomersList = allUnifiedCustomers
+  const filteredCustomersList = (db.crmCustomers || [])
     .filter(c => {
       if (!c || (!c.name?.trim() && !c.phone?.trim() && !c.id?.trim())) return false;
       const nameStr = c.name || '';
@@ -1442,7 +1430,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
       const ordersForCust = db.orders?.filter(o => o.customer_id === c.id) || [];
       const hasCompletedOrder = ordersForCust.some(o => o.current_status === 'Dispatched');
       const hasActiveOrder = ordersForCust.some(o => o.current_status !== 'Dispatched' && o.current_status !== 'Pending');
-      const hasPendingPayment = db.payments?.some(p => ordersForCust.some(o => o.id === p.order_id) && (p.total_amount - (p.advance_paid || 0)) > 0);
+      const hasPendingPayment = db.payments?.some(p => ordersForCust.some(o => o.id === p.order_id) && p.balance_due > 0);
       const isVip = ordersForCust.length >= 2 || (db.payments?.filter(p => ordersForCust.some(o => o.id === p.order_id)).reduce((sum, p) => sum + p.total_amount, 0) || 0) > 200000;
 
       switch (custFilter) {
@@ -1538,8 +1526,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                 <Plus size={16} /> New Quotation
               </button>
             </div>
-          ) : <div /> }
-
+          ) : <div />}
 
           {/* Right: Navigation tabs */}
           <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/80 max-w-full overflow-x-auto shrink-0">
@@ -1709,7 +1696,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
 
           {/* Top KPI Metrics Cards and Charts Container */}
           <div className={`space-y-6 transition-opacity duration-200 ${isFilterLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0">
                 <Users size={18} />
@@ -1727,6 +1714,16 @@ if (typeof endMs === 'number' && time > endMs) return false;
               <div>
                 <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Active/Ready Orders</span>
                 <strong className="text-lg font-black text-stone-900 font-display">{activeOrders} / {completedOrders}</strong>
+              </div>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
+                <DollarSign size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
+                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
               </div>
             </div>
 
@@ -1769,7 +1766,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val?: any) => [`${val ?? 0} lead(s)`, 'Count']} />
+                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1892,7 +1889,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${(value as number)?.toLocaleString() || '0'}`} />
+                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1985,10 +1982,9 @@ if (typeof endMs === 'number' && time > endMs) return false;
                     <p className="text-[10px] text-stone-400">Log customer contacts, quotes or logs to trigger activities.</p>
                   </div>
                 )}
-                              </div>
-
               </div>
             </div>
+          </div>
           </div>
         </div>
       )}
@@ -2068,11 +2064,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                       {filteredCustomersList.map(cust => {
                         const totalOrders = db.orders?.filter(o => o.customer_id === cust.id).length || 0;
                         const paymentsForCust = db.payments?.filter(p => db.orders?.some(o => o.id === p.order_id && o.customer_id === cust.id)) || [];
-                        // Payment type may not have `balance_due` property; fallback to common alternatives or zero
-                        const unpaidAmount = paymentsForCust.reduce((acc, p) => {
-                          const bal = (p as any).balance_due ?? (p as any).balance ?? (p as any).amount_due ?? 0;
-                          return acc + (typeof bal === 'number' ? bal : 0);
-                        }, 0);
+                        const unpaidAmount = paymentsForCust.reduce((acc, p) => acc + p.balance_due, 0);
                         const displayStatus = getCustomerStatus(cust);
                         
                         return (
@@ -3146,7 +3138,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                   defaultValue={editingCustomer?.source || 'Walkin'}
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
-                 <option value="Walkin">Walkin</option>
+                  <option value="Walkin">Walkin</option>
                   <option value="Social Media">Social Media</option>
                   <option value="Reference">Reference</option>
                   <option value="Website">Website</option>
@@ -3793,8 +3785,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
                       <span className="text-emerald-400 font-mono text-xs font-bold">
                         ₹{(quoteReceivedAmount || 0).toLocaleString('en-IN')}
                       </span>
-                </div>
-                <div className="relative">
+                    </div>
+                    <div className="relative">
                       <span className="absolute left-3.5 top-2.5 text-stone-400 font-bold text-xs">₹</span>
                       <input
                         type="number"
@@ -4238,7 +4230,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
             const htmlString = '<html><head><title>' + docTitle + '_' + quoteDisplayId + '</title>' +
               '<script src="https://cdn.tailwindcss.com"></script>' +
               '<style>' +
-              // '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
+              '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");' +
               '@page { size: A4 portrait; margin: 8mm; }' +
               'body, * { font-family: Calibri, "Segoe UI", Arial, sans-serif !important; }' +
               'body { background-color: white; color: black; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
@@ -4302,6 +4294,8 @@ if (typeof endMs === 'number' && time > endMs) return false;
                 </div>
               </div>
 
+
+
               {/* Scrollable sheet container for mobile preview */}
               <div className="overflow-x-auto bg-white p-2 rounded-3xl border border-stone-200 shadow-sm">
                 <div id="estimate-print-sheet" className="min-w-[760px] bg-white text-slate-800 p-4 sm:p-6 print:p-0" style={{ fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif' }}>
@@ -4323,7 +4317,7 @@ if (typeof endMs === 'number' && time > endMs) return false;
                         <img 
                           src={customLogo || companyLogoImg} 
                           alt="Company Brand Logo" 
-                          className="max-h-28 sm:max-h-28 print:max-h-20 max-w-full object-contain" 
+                          className="max-h-24 sm:max-h-28 print:max-h-20 max-w-full object-contain" 
                         />
                       </div>
 
@@ -4434,7 +4428,6 @@ if (typeof endMs === 'number' && time > endMs) return false;
                                         {item.material && <span>Wood: <span className="text-slate-700">{item.material}</span></span>}
                                       </div>
                                     )}
-
                                   </td>
                                   <td className="p-2 text-center text-slate-400">-</td>
                                   <td className="p-2 text-center font-bold text-slate-900">{item.quantity}</td>
@@ -4479,9 +4472,10 @@ if (typeof endMs === 'number' && time > endMs) return false;
                           <span className="font-semibold text-slate-800">Subtotal</span>
                           <span className="text-right font-bold pr-1">: ₹{itemSubtotal.toLocaleString('en-IN')}.00</span>
                         </div>
+
                         {totalDiscount > 0 && (
-                        <div className="grid grid-cols-2 p-1.5 print:p-1 text-rose-800 bg-rose-50/20">
-                          <span className="font-semibold text-rose-950">Discount</span>
+                          <div className="grid grid-cols-2 p-1.5 print:p-1 text-rose-800 bg-rose-50/20">
+                            <span className="font-semibold text-rose-950">Discount</span>
                             <span className="text-right font-bold pr-1">: -₹{totalDiscount.toLocaleString('en-IN')}.00</span>
                           </div>
                         )}
@@ -4612,40 +4606,14 @@ if (typeof endMs === 'number' && time > endMs) return false;
                               alt="Authorized Signatory Signature" 
                               className="max-w-full max-h-full object-contain" 
                             />
-                              </div>
-
+                          </div>
                           <span className="text-[10px] text-slate-500 font-bold mt-1 font-sans">Authorized Signatory</span>
                         </div>
                       </div>
                     </div>
 
                     {/* NEW PAGE: PRODUCT VISUAL GALLERY / ATTACHMENTS */}
-                    <div className="break-before-page print:break-before-page page-break-before-always pt-6 print:pt-0 mt-6 print:mt-0 border-t-2 border-dashed border-slate-300 print:border-none space-y-6">
-                      {/* Header for Image Sheet */}
-                      <div className="border-2 border-slate-800 bg-white p-4 space-y-3">
-                        <div className="flex justify-between items-center border-b border-slate-300 pb-3">
-                          <div>
-                            <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">Bhisez Furniture</h2>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">PRODUCT VISUAL SPECIFICATIONS & GALLERY</p>
-                          </div>
-                          <div className="text-right text-xs">
-                          <div className="text-right text-xs">
-                            <span className="font-bold text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded">
-                              Estimate Ref: {quoteDisplayId}
-                            </span>
-                            <p className="text-[10px] text-slate-500 mt-1">{formatToDDMMYYYY(viewingEstimateQuote.created_at)}</p>
-                          </div>
-                        </div>
-                        <div className="text-xs text-slate-700 flex justify-between items-center font-medium">
-                          <div>
-                            Customer Name: <strong className="text-slate-900 font-bold">{customer?.name || viewingEstimateQuote.customer_name}</strong>
-                          </div>
-                          <div className="text-[10px] text-slate-500">
-                            Total Products: <strong className="text-slate-900">{itemsList.length}</strong>
-                          </div>
-                        </div>
-                      </div>
-
+                    <div className="break-before-page print:break-before-page page-break-before-always pt-6 print:pt-0 mt-6 print:mt-0 border-t-2 border-dashed border-slate-300 print:border-none space-y-4">
                       {/* Products Gallery 2-Column Grid */}
                       {(() => {
                         // Build list of active image slots
@@ -4710,7 +4678,6 @@ if (typeof endMs === 'number' && time > endMs) return false;
                                       )}
                                     </div>
 
-
                                     {/* Centered Image Container */}
                                     <div className="w-full flex-1 my-2 bg-slate-50/70 rounded-xl border border-slate-200 flex items-center justify-center p-2 min-h-[160px] max-h-[220px] overflow-hidden">
                                       {slot.imgSrc ? (
@@ -4735,27 +4702,30 @@ if (typeof endMs === 'number' && time > endMs) return false;
                                     </div>
                                   </div>
                                 );
+                              } else {
+                                return (
+                                  <div
+                                    key={slotI}
+                                    className="border border-dashed border-slate-200 rounded-2xl p-4 bg-slate-50/30 flex flex-col items-center justify-center text-slate-300 font-mono text-xs italic min-h-[280px] sm:min-h-[310px] shadow-2xs select-none page-break-inside-avoid print:page-break-inside-avoid"
+                                  >
+                                    <span>[Intentionally Left Blank]</span>
+                                  </div>
+                                );
                               }
-
-                              return (
-                                <div
-                                  key={slotI}
-                                  className="border border-dashed border-slate-200 rounded-2xl p-4 bg-slate-50/30 flex flex-col items-center justify-center text-slate-300 font-mono text-xs italic min-h-[280px] sm:min-h-[310px] shadow-2xs select-none page-break-inside-avoid print:page-break-inside-avoid"
-                                >
-                                  <span>[Intentionally Left Blank]</span>
-                                </div>
-                              );
                             })}
                           </div>
                         );
                       })()}
                     </div>
+
                   </div>
+
+
+
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </div>
+            </motion.div>
+          </div>
         );
       })()}
 
