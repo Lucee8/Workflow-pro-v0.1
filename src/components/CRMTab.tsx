@@ -738,7 +738,7 @@ export default function CRMTab({
     if (time === null || isNaN(time)) return false;
 
     if (startMs != null && time < startMs) return false;
-    if (endMs !== null && time > endMs) return false;
+    if (endMs != null && time > endMs) return false;
     return true;
   };
 
@@ -1849,7 +1849,12 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
+                          <Tooltip
+                            formatter={(value: number | string | Array<number | string> | readonly (number | string)[] | undefined) => {
+                              const leadCount = Number(Array.isArray(value) ? value[0] ?? 0 : value ?? 0);
+                              return [`${leadCount} lead(s)`, 'Count'];
+                            }}
+                          />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1972,7 +1977,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip formatter={(value) => value !== undefined ? `₹${value.toLocaleString()}` : ''} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

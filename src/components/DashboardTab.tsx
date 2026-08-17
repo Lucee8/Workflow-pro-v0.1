@@ -51,32 +51,29 @@ export function isOrderApproved(order: any): boolean {
   if (!order) return false;
   if (isOrderDeleted(order)) return false;
 
-  // 1. Explicit status field check (e.g. 'approved', 'draft', 'sent', 'rejected', 'expired', 'pending')
-  if (order.status !== undefined && order.status !== null && String(order.status).trim() !== '') {
-    const s = String(order.status).trim().toLowerCase();
-    if (s === 'approved') return true;
-    return false; // Any other explicit status (sent, draft, rejected, expired, pending, etc.) is strictly excluded
-  }
+  const rawStatus = String(order.status || '').trim().toUpperCase();
+  const rawOrderStatus = String(order.order_status || '').trim().toUpperCase();
+  const rawApprovalStatus = String(order.approval_status || '').trim().toUpperCase();
 
-  // 2. Explicit order_status field check
-  if (order.order_status !== undefined && order.order_status !== null && String(order.order_status).trim() !== '') {
-    const s = String(order.order_status).trim().toLowerCase();
-    if (s === 'approved') return true;
+  // Exclude explicit unapproved/rejected/draft/sent/expired/deleted statuses
+  const excludedStatuses = ['SENT', 'DRAFT', 'REJECTED', 'EXPIRED', 'PENDING', 'CANCELLED', 'CANCELED', 'DELETED', 'TRASH'];
+  if (
+    (rawStatus && excludedStatuses.includes(rawStatus)) ||
+    (rawOrderStatus && excludedStatuses.includes(rawOrderStatus)) ||
+    (rawApprovalStatus && excludedStatuses.includes(rawApprovalStatus))
+  ) {
     return false;
   }
 
-  // 3. Explicit approval_status field check
-  if (order.approval_status !== undefined && order.approval_status !== null && String(order.approval_status).trim() !== '') {
-    const s = String(order.approval_status).trim().toLowerCase();
-    if (s === 'approved') return true;
-    return false;
+  // Include explicit approved status
+  if (rawStatus === 'APPROVED' || rawOrderStatus === 'APPROVED' || rawApprovalStatus === 'APPROVED') {
+    return true;
   }
 
-  // 4. Default active workshop order (no explicit status field set):
-  // Must not be in pending approval/review, draft, or rejected stage
+  // Default active production workshop orders (where status was not explicitly specified as Draft/Sent/Rejected)
   if (order.current_status) {
-    const cs = String(order.current_status).trim().toLowerCase();
-    if (cs === 'pending' || cs === 'draft' || cs === 'rejected' || cs === 'cancelled' || cs === 'canceled') {
+    const cs = String(order.current_status).trim().toUpperCase();
+    if (['PENDING', 'DRAFT', 'REJECTED', 'CANCELLED', 'CANCELED', 'EXPIRED'].includes(cs)) {
       return false;
     }
     return true;
@@ -94,16 +91,83 @@ export function isPaymentDeleted(payment: any): boolean {
   return false;
 }
 
-export function getOrderGrandTotal(order: any): number {
+export function getOrderGrandTotal(
+  order: any,
+  crmQuotations?: any[],
+  payments?: any[],
+  crmPayments?: any[]
+): number {
   if (!order) return 0;
-  const val = order.grandTotal ?? order.grand_total ?? order.total_amount ?? order.totalAmount ?? order.total ?? order.amount;
-  if (typeof val === 'number' && !isNaN(val)) {
-    return Math.max(0, val);
+  
+  // 1. Direct candidate fields on the order
+  const candidates = [
+    order.grandTotal,
+    order.grand_total,
+    order.total_amount,
+    order.totalAmount,
+    order.final_amount,
+    order.finalAmount,
+    order.total,
+    order.amount,
+    order.price,
+    order.estimated_value,
+    order.estimatedValue,
+    order.estimate_amount,
+    order.budget,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === 'number' && !isNaN(c) && c > 0) return c;
+    if (typeof c === 'string') {
+      const p = parseFloat(c.replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(p) && p > 0) return p;
+    }
   }
-  if (typeof val === 'string') {
-    const parsed = parseFloat(val);
-    if (!isNaN(parsed)) return Math.max(0, parsed);
+
+  // 2. If order has items array (e.g. multi-item order or converted quotation items)
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    const itemsSum = order.items.reduce((sum: number, it: any) => {
+      const price = Number(it.unitPrice ?? it.unit_price ?? it.price ?? it.amount ?? it.total ?? 0);
+      const qty = Number(it.quantity ?? it.qty ?? it.no_of_units ?? 1);
+      return sum + (price * (qty > 0 ? qty : 1));
+    }, 0);
+    if (itemsSum > 0) return itemsSum;
   }
+
+  // 3. If unit_price * no_of_units
+  const unitPrice = Number(order.unit_price ?? order.unitPrice ?? 0);
+  const units = Number(order.no_of_units ?? order.quantity ?? 1);
+  if (unitPrice > 0) {
+    return unitPrice * (units > 0 ? units : 1);
+  }
+
+  // 4. Linked Quotation lookup
+  if (crmQuotations && crmQuotations.length > 0) {
+    const quoteId = order.quotation_id || order.quotationId || (order.special_notes ? order.special_notes.match(/CRM-QT-[\w-]+|QT-[\w-]+/)?.[0] : null);
+    if (quoteId) {
+      const q = crmQuotations.find((item: any) => item.id === quoteId);
+      if (q) {
+        const qVal = Number(q.totalAmount ?? q.grandTotal ?? q.total ?? 0);
+        if (qVal > 0) return qVal;
+      }
+    }
+  }
+
+  // 5. Linked Payment lookup
+  if (crmPayments && crmPayments.length > 0) {
+    const cp = crmPayments.find((p: any) => p.order_id === order.id || (order.parent_order_id && p.order_id === order.parent_order_id));
+    if (cp && typeof cp.total_amount === 'number' && cp.total_amount > 0) {
+      return cp.total_amount;
+    }
+  }
+
+  if (payments && payments.length > 0) {
+    const p = payments.find((pay: any) => pay.order_id === order.id || (order.parent_order_id && pay.order_id === order.parent_order_id));
+    if (p && typeof p.total_amount === 'number' && p.total_amount > 0) {
+      return p.total_amount;
+    }
+  }
+
   return 0;
 }
 
@@ -131,9 +195,9 @@ export default function DashboardTab({
   onNavigateTab,
   onQuickCrmAction,
 }: DashboardTabProps) {
-  // Date Range Filter State
+  // Date Range Filter State - defaults to 'all' to show all active approved records unless user selects a specific range
   type DateRangePreset = 'today' | '7days' | '30days' | '4months' | 'currentmonth' | 'all' | 'custom';
-  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('currentmonth');
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('all');
   const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -336,7 +400,7 @@ export default function DashboardTab({
       // 1. Calculate invoice grand total (SUM of grandTotal from approved orders)
       const explicitTotalFromPayment = matchingPayments.find((p) => typeof p.total_amount === 'number' && p.total_amount > 0)?.total_amount;
       const explicitTotalFromCrm = matchingCrmPayments.find((cp) => typeof cp.total_amount === 'number' && cp.total_amount > 0)?.total_amount;
-      const sumOfOrderItems = groupOrders.reduce((sum, ord) => sum + getOrderGrandTotal(ord), 0);
+      const sumOfOrderItems = groupOrders.reduce((sum, ord) => sum + getOrderGrandTotal(ord, crmQuotations, payments, crmPayments), 0);
 
       const groupGrandTotal = Math.max(sumOfOrderItems, explicitTotalFromPayment || 0, explicitTotalFromCrm || 0);
 
@@ -379,7 +443,7 @@ export default function DashboardTab({
       moneyDue: totalDue,
       finalizedOrdersCount: finalizedCount,
     };
-  }, [approvedInvoiceGroups, filteredApprovedOrders, payments, crmPayments]);
+  }, [approvedInvoiceGroups, filteredApprovedOrders, payments, crmPayments, crmQuotations]);
 
   // 3. Ongoing in factory: Count of APPROVED orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
