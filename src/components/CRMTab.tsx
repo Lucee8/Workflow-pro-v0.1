@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/upi_qr.png';
-import signatureImg from '../assets/images/signature.svg';
+import upiQrImg from '../assets/images/UPI QR code.jpeg';
+import signatureImg from '../assets/images/Authorized Signatory.png';
 import { 
   AppState,
   generateArticleNumber
@@ -70,7 +70,7 @@ import {
   Printer,
   Download,
   Share2,
-  Image,
+  Image as ImageIcon,
   QrCode,
   FileSignature,
   Package,
@@ -644,11 +644,6 @@ export default function CRMTab({
       return { startMs: start.getTime(), endMs: todayEnd.getTime() };
     }
 
-    if (preset === 'currentmonth') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
-    }
-
     if (preset === 'custom') {
       let startMs: number | null = null;
       let endMs: number | null = null;
@@ -671,7 +666,7 @@ export default function CRMTab({
     startMs?: number | null,
     endMs?: number | null
   ): boolean => {
-    if (startMs === null && endMs === null) return true;
+    if (startMs == null && endMs == null) return true;
     if (!dateStr) return false;
 
     let time: number | null = null;
@@ -1763,6 +1758,26 @@ export default function CRMTab({
                 <strong className="text-lg font-black text-stone-900 font-display">{activeOrders} / {completedOrders}</strong>
               </div>
             </div>
+
+            {/* <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
+                <DollarSign size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
+                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
+              </div>
+            </div> */}
+
+            {/* <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
+                <DollarSign size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
+                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
+              </div>
+            </div> */}
 
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-700 shrink-0">
@@ -3308,9 +3323,9 @@ export default function CRMTab({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
-                        Select Customer Lead <span className="text-rose-500">*</span>
-                      </label>
+                    <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                      Select Customer Lead <span className="text-rose-500">*</span>
+                    </label>
                       <button
                         type="button"
                         onClick={() => {
@@ -3533,7 +3548,7 @@ export default function CRMTab({
                           <div className="space-y-2 pt-2 border-t border-stone-200/80">
                             <div className="flex items-center justify-between">
                               <label className="font-bold text-stone-700 text-xs flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
-                                <Image size={14} className="text-[#593622]" /> Upload Product Photos
+                                <ImageIcon size={14} className="text-[#593622]" /> Upload Product Photos
                               </label>
                               <span className="text-[10px] text-stone-500 font-bold">
                                 {item.images && item.images.length > 0
@@ -3847,6 +3862,7 @@ export default function CRMTab({
                           ₹{quoteSubtotal.toLocaleString('en-IN')}.00
                         </span>
                       </div>
+
 
                       {/* Transportation Charges row */}
                       {(quoteTransportationAmt > 0 || showTransportationInput) && (
@@ -4495,8 +4511,7 @@ export default function CRMTab({
                               {customer.address && (
                                 <p className="leading-snug">
                                   Address: {customer.address}{'city' in customer && customer.city ? `, ${customer.city}` : ''}
-                                </p>
-                              )}
+                                </p>                              )}
                             </div>
                           )}
                         </div>
@@ -4894,7 +4909,7 @@ export default function CRMTab({
           >
             <div className="w-full flex items-center justify-between p-2.5 border-b border-stone-800">
               <span className="text-xs font-bold font-mono text-stone-300 flex items-center gap-2">
-                <Image size={14} className="text-amber-400" />
+                <ImageIcon size={14} className="text-amber-400" />
                 Quotation Product Photo Inspection
               </span>
               <div className="flex items-center gap-2">
