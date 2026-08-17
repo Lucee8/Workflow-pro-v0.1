@@ -31,6 +31,95 @@ interface DashboardTabProps {
   onQuickCrmAction?: (action: 'add-customer' | 'new-quotation') => void;
 }
 
+// Helpers for robust order financial filtering
+export function isOrderDeleted(order: any): boolean {
+  if (!order) return true;
+  if (order.isDeleted === true || order.is_deleted === true || order.deleted === true) return true;
+  if (order.deletedAt !== undefined && order.deletedAt !== null && order.deletedAt !== '' && order.deletedAt !== false) return true;
+  if (order.is_archived === true || order.archived === true) return true;
+  
+  const s = String(order.status || '').trim().toLowerCase();
+  if (s === 'deleted' || s === 'cancelled' || s === 'canceled' || s === 'trash') return true;
+  
+  const cs = String(order.current_status || '').trim().toLowerCase();
+  if (cs === 'deleted' || cs === 'cancelled' || cs === 'canceled') return true;
+  
+  return false;
+}
+
+export function isOrderApproved(order: any): boolean {
+  if (!order) return false;
+  if (isOrderDeleted(order)) return false;
+
+  // 1. Explicit status field check (e.g. 'approved', 'draft', 'sent', 'rejected', 'expired', 'pending')
+  if (order.status !== undefined && order.status !== null && String(order.status).trim() !== '') {
+    const s = String(order.status).trim().toLowerCase();
+    if (s === 'approved') return true;
+    return false; // Any other explicit status (sent, draft, rejected, expired, pending, etc.) is strictly excluded
+  }
+
+  // 2. Explicit order_status field check
+  if (order.order_status !== undefined && order.order_status !== null && String(order.order_status).trim() !== '') {
+    const s = String(order.order_status).trim().toLowerCase();
+    if (s === 'approved') return true;
+    return false;
+  }
+
+  // 3. Explicit approval_status field check
+  if (order.approval_status !== undefined && order.approval_status !== null && String(order.approval_status).trim() !== '') {
+    const s = String(order.approval_status).trim().toLowerCase();
+    if (s === 'approved') return true;
+    return false;
+  }
+
+  // 4. Default active workshop order (no explicit status field set):
+  // Must not be in pending approval/review, draft, or rejected stage
+  if (order.current_status) {
+    const cs = String(order.current_status).trim().toLowerCase();
+    if (cs === 'pending' || cs === 'draft' || cs === 'rejected' || cs === 'cancelled' || cs === 'canceled') {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+export function isPaymentDeleted(payment: any): boolean {
+  if (!payment) return true;
+  if (payment.isDeleted === true || payment.is_deleted === true || payment.deleted === true) return true;
+  if (payment.deletedAt !== undefined && payment.deletedAt !== null && payment.deletedAt !== '' && payment.deletedAt !== false) return true;
+  const s = String(payment.status || '').trim().toLowerCase();
+  if (s === 'deleted' || s === 'cancelled' || s === 'canceled' || s === 'failed' || s === 'void') return true;
+  return false;
+}
+
+export function getOrderGrandTotal(order: any): number {
+  if (!order) return 0;
+  const val = order.grandTotal ?? order.grand_total ?? order.total_amount ?? order.totalAmount ?? order.total ?? order.amount;
+  if (typeof val === 'number' && !isNaN(val)) {
+    return Math.max(0, val);
+  }
+  if (typeof val === 'string') {
+    const parsed = parseFloat(val);
+    if (!isNaN(parsed)) return Math.max(0, parsed);
+  }
+  return 0;
+}
+
+export function getOrderAmountReceived(order: any): number {
+  if (!order) return 0;
+  const val = order.amountReceived ?? order.amount_received ?? order.received_amount ?? order.receivedAmount ?? order.advance_paid ?? order.advancePaid ?? order.advance ?? order.paid_amount;
+  if (typeof val === 'number' && !isNaN(val)) {
+    return Math.max(0, val);
+  }
+  if (typeof val === 'string') {
+    const parsed = parseFloat(val);
+    if (!isNaN(parsed)) return Math.max(0, parsed);
+  }
+  return 0;
+}
+
 export default function DashboardTab({
   orders,
   users,
@@ -122,7 +211,7 @@ export default function DashboardTab({
     startMs?: number | null,
     endMs?: number | null
   ): boolean => {
-    if (startMs == null && endMs == null) return true;
+    if (startMs === null && endMs === null) return true;
     if (!dateStr) return false;
 
     let time: number | null = null;
@@ -153,12 +242,28 @@ export default function DashboardTab({
     [datePreset, customStartDate, customEndDate]
   );
 
+  // Valid, non-deleted orders (ignoring soft-deleted or deleted records)
+  const nonDeletedOrders = React.useMemo(() => {
+    return orders.filter((o) => !isOrderDeleted(o));
+  }, [orders]);
+
+  // Approved, non-deleted orders (single source of truth for financial eligibility)
+  const approvedOrders = React.useMemo(() => {
+    return orders.filter((o) => isOrderApproved(o) && !isOrderDeleted(o));
+  }, [orders]);
+
+  // Date-filtered approved orders
+  const filteredApprovedOrders = React.useMemo(() => {
+    return approvedOrders.filter((o) => isDateInBounds(o.order_date || o.created_at || (o as any).date, startMs, endMs));
+  }, [approvedOrders, startMs, endMs]);
+
+  // Date-filtered non-deleted orders for operational pipeline views
   const filteredOrders = React.useMemo(() => {
-    return orders.filter((o) => isDateInBounds(o.created_at || (o as any).date, startMs, endMs));
-  }, [orders, startMs, endMs]);
+    return nonDeletedOrders.filter((o) => isDateInBounds(o.order_date || o.created_at || (o as any).date, startMs, endMs));
+  }, [nonDeletedOrders, startMs, endMs]);
 
   const filteredPayments = React.useMemo(() => {
-    return payments.filter((p) => isDateInBounds(p.payment_date || p.created_at, startMs, endMs));
+    return payments.filter((p) => !isPaymentDeleted(p) && isDateInBounds(p.payment_date || p.created_at, startMs, endMs));
   }, [payments, startMs, endMs]);
 
   const filteredCrmQuotations = React.useMemo(() => {
@@ -166,13 +271,13 @@ export default function DashboardTab({
   }, [crmQuotations, startMs, endMs]);
 
   const filteredCrmPayments = React.useMemo(() => {
-    return (crmPayments || []).filter((cp) => isDateInBounds(cp.payment_date || (cp as any).date || (cp as any).created_at, startMs, endMs));
+    return (crmPayments || []).filter((cp) => !isPaymentDeleted(cp) && isDateInBounds(cp.payment_date || (cp as any).date || (cp as any).created_at, startMs, endMs));
   }, [crmPayments, startMs, endMs]);
 
-  // 1. Group orders by Invoice / Parent Order key (to enforce order-level payment rule)
-  const invoiceGroups = React.useMemo<Record<string, Order[]>>(() => {
+  // 1. Group approved, non-deleted orders by Invoice / Parent Order key
+  const approvedInvoiceGroups = React.useMemo<Record<string, Order[]>>(() => {
     const groups: Record<string, Order[]> = {};
-    filteredOrders.forEach((o) => {
+    filteredApprovedOrders.forEach((o) => {
       const groupKey = o.parent_order_id || o.id;
       if (!groups[groupKey]) {
         groups[groupKey] = [];
@@ -180,21 +285,22 @@ export default function DashboardTab({
       groups[groupKey].push(o);
     });
     return groups;
-  }, [filteredOrders]);
+  }, [filteredApprovedOrders]);
 
-  // 2. Financial calculation strictly adhering to ORDER-LEVEL payments & comprehensive payment resolution
+  // 2. Financial calculation strictly from APPROVED + NON-DELETED orders
   const { totalFurnitureBusiness, moneyReceived, moneyDue, finalizedOrdersCount } = React.useMemo(() => {
     let totalBusiness = 0;
     let totalReceived = 0;
-
-    const matchedPaymentIds = new Set<string>();
-    const matchedCrmPaymentIds = new Set<string>();
+    let totalDue = 0;
 
     // Helper to normalize strings for comparison
     const norm = (s?: string) => (s ? String(s).trim().toLowerCase() : '');
 
-    // Process all invoice order groups
-    Object.entries(invoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
+    const validPayments = (payments || []).filter((p) => !isPaymentDeleted(p));
+    const validCrmPayments = (crmPayments || []).filter((cp) => !isPaymentDeleted(cp));
+
+    // Process all approved, non-deleted invoice groups
+    Object.entries(approvedInvoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
       // Build lookup identifiers: IDs, parent IDs, article numbers, and customer IDs
       const relatedIds = new Set<string>();
       relatedIds.add(invoiceKey);
@@ -215,132 +321,57 @@ export default function DashboardTab({
         }
       });
 
-      // Find all matching workshop payment records
-      const matchingPayments = (filteredPayments || []).filter((p) => {
+      // Find all matching non-deleted workshop payment records
+      const matchingPayments = validPayments.filter((p) => {
         if (!p || !p.order_id) return false;
         return relatedIds.has(p.order_id) || relatedIds.has(norm(p.order_id));
       });
 
-      matchingPayments.forEach((p) => {
-        if (p.id) matchedPaymentIds.add(p.id);
+      // Find all matching non-deleted CRM payment records
+      const matchingCrmPayments = validCrmPayments.filter((cp) => {
+        if (!cp || !cp.order_id) return false;
+        return relatedIds.has(cp.order_id) || relatedIds.has(norm(cp.order_id));
       });
 
-      // Find all matching CRM payment records
-      const matchingCrmPayments = (filteredCrmPayments || []).filter((cp) => {
-        if (!cp) return false;
-        if (cp.order_id && (relatedIds.has(cp.order_id) || relatedIds.has(norm(cp.order_id)))) {
-          return true;
-        }
-        return false;
-      });
-
-      matchingCrmPayments.forEach((cp) => {
-        if (cp.id) matchedCrmPaymentIds.add(cp.id);
-      });
-
-      // Calculate invoice grand total
-      let invoiceTotal = 0;
+      // 1. Calculate invoice grand total (SUM of grandTotal from approved orders)
       const explicitTotalFromPayment = matchingPayments.find((p) => typeof p.total_amount === 'number' && p.total_amount > 0)?.total_amount;
       const explicitTotalFromCrm = matchingCrmPayments.find((cp) => typeof cp.total_amount === 'number' && cp.total_amount > 0)?.total_amount;
+      const sumOfOrderItems = groupOrders.reduce((sum, ord) => sum + getOrderGrandTotal(ord), 0);
 
-      if (explicitTotalFromPayment) {
-        invoiceTotal = explicitTotalFromPayment;
-      } else if (explicitTotalFromCrm) {
-        invoiceTotal = explicitTotalFromCrm;
-      } else {
-        // Sum total_amount of each product in the invoice
-        invoiceTotal = groupOrders.reduce((sum, ord) => {
-          if (ord.total_amount !== undefined && ord.total_amount !== null && Number(ord.total_amount) > 0) {
-            return sum + Number(ord.total_amount);
-          }
-          const qty = ord.no_of_units || 1;
-          const fallbackFinalRate = 15000;
-          return sum + fallbackFinalRate * qty;
-        }, 0);
-      }
+      const groupGrandTotal = Math.max(sumOfOrderItems, explicitTotalFromPayment || 0, explicitTotalFromCrm || 0);
 
-      // Calculate invoice received amount across all payment sources for this order
-      let invoiceReceived = 0;
-
+      // 2. Calculate invoice received amount (SUM of payments for approved orders)
       const paymentSum = matchingPayments.reduce((acc, p) => {
-        const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
+        const val = Number(p.advance_paid) || Number((p as any).amount) || Number((p as any).amountReceived) || 0;
         return acc + Math.max(0, val);
       }, 0);
 
       const crmPaymentSum = matchingCrmPayments.reduce((acc, cp) => {
-        const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
+        const val = Number(cp.advance_paid) || Number((cp as any).amount) || Number((cp as any).amountReceived) || 0;
         return acc + Math.max(0, val);
       }, 0);
 
       const directOrderAdvanceSum = groupOrders.reduce((acc, o) => {
-        const adv = Number(o.advance_paid) || Number((o as any).advance) || Number((o as any).received_amount) || Number((o as any).advancePaid) || 0;
-        return acc + Math.max(0, adv);
+        return acc + getOrderAmountReceived(o);
       }, 0);
 
+      let groupAmountReceived = 0;
       if (paymentSum > 0 || crmPaymentSum > 0) {
-        // Use highest or sum of formal payment records
-        invoiceReceived = Math.max(paymentSum, crmPaymentSum);
+        groupAmountReceived = Math.max(paymentSum, crmPaymentSum);
       } else if (directOrderAdvanceSum > 0) {
-        invoiceReceived = directOrderAdvanceSum;
+        groupAmountReceived = directOrderAdvanceSum;
       }
+      groupAmountReceived = Math.max(0, groupAmountReceived);
 
-      // Cap received amount at invoice total unless overpaid
-      invoiceReceived = Math.max(0, invoiceReceived);
+      // 3. Calculate invoice due amount (orderBalance = MAX(0, grandTotal - amountReceived))
+      const groupBalanceDue = Math.max(0, groupGrandTotal - groupAmountReceived);
 
-      totalBusiness += invoiceTotal;
-      totalReceived += invoiceReceived;
+      totalBusiness += groupGrandTotal;
+      totalReceived += groupAmountReceived;
+      totalDue += groupBalanceDue;
     });
 
-    // Check for any standalone workshop payments not tied to the order IDs
-    (filteredPayments || []).forEach((p) => {
-      if (p && p.id && !matchedPaymentIds.has(p.id)) {
-        const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
-        if (val > 0) {
-          totalReceived += val;
-          const pTotal = Number(p.total_amount) || 0;
-          if (pTotal > val) {
-            totalBusiness += pTotal;
-          } else {
-            totalBusiness += val;
-          }
-        }
-      }
-    });
-
-    // Check for any standalone CRM payments not tied to the order IDs
-    (filteredCrmPayments || []).forEach((cp) => {
-      if (cp && cp.id && !matchedCrmPaymentIds.has(cp.id)) {
-        const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
-        if (val > 0) {
-          totalReceived += val;
-          const cpTotal = Number(cp.total_amount) || 0;
-          if (cpTotal > val) {
-            totalBusiness += cpTotal;
-          } else {
-            totalBusiness += val;
-          }
-        }
-      }
-    });
-
-    // Include any approved CRM quotations that have advance received
-    (filteredCrmQuotations || []).forEach((q) => {
-      const qReceived = Number(q.received_amount) || Number((q as any).receivedAmount) || 0;
-      if (qReceived > 0) {
-        // Check if this quotation was already converted to an order or tracked
-        const isMatchedToOrder = filteredOrders.some(
-          (o) => o.id === q.id || (o.special_notes && o.special_notes.includes(q.id))
-        );
-        if (!isMatchedToOrder) {
-          totalReceived += qReceived;
-          const qTotal = Number(q.totalAmount) || qReceived;
-          totalBusiness += Math.max(qTotal, qReceived);
-        }
-      }
-    });
-
-    const totalDue = Math.max(0, totalBusiness - totalReceived);
-    const finalizedCount = filteredOrders.length;
+    const finalizedCount = filteredApprovedOrders.length;
 
     return {
       totalFurnitureBusiness: totalBusiness,
@@ -348,7 +379,7 @@ export default function DashboardTab({
       moneyDue: totalDue,
       finalizedOrdersCount: finalizedCount,
     };
-  }, [invoiceGroups, filteredOrders, filteredPayments, filteredCrmPayments, filteredCrmQuotations]);
+  }, [approvedInvoiceGroups, filteredApprovedOrders, payments, crmPayments]);
 
   // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {

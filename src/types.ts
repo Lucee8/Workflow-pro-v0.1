@@ -13,6 +13,7 @@ export interface QCFailureInfo {
   acknowledged?: boolean;
   resolved?: boolean;
 }
+
 export interface User {
   id: string; // Firebase Auth UID equivalent
   name: string;
@@ -49,21 +50,21 @@ export type OrderStage =
   | 'Polish'
   | 'QC 2'
   | 'Ready to Dispatch'
+  | 'Ready To Dispatch'
   | 'Dispatched'
   // Legacy aliases
   | 'Design'
   | 'Carpentry'
   | 'QC Check 1'
-  | 'QC Check 2'
-  | 'Ready To Dispatch';
+  | 'QC Check 2';
 
 export function normalizeStage(stage: string): OrderStage {
   if (stage === 'Design') return 'Designing';
   if (stage === 'Carpentry') return 'Making Started';
   if (stage === 'QC Check 1') return 'QC 1';
   if (stage === 'QC Check 2') return 'QC 2';
-  if (stage === 'Ready To Dispatch') return 'Ready to Dispatch';
   if (stage === 'Dispatched') return 'Dispatched';
+  if (stage === 'Ready To Dispatch') return 'Ready to Dispatch';
   return stage as OrderStage;
 }
 
@@ -85,15 +86,13 @@ export interface WoodSchedule {
   sqft: number;
   image_link?: string;
   parts: WoodPart[];
-  status?: WoodScheduleStatus;
+  status?: 'Pending' | 'Pending Review' | 'Approved' | 'Rejected';
   qc_check_1_details?: {
     measurement: boolean;
     finishing: boolean;
     buffer: boolean;
   };
 }
-
-export type WoodScheduleStatus = 'Pending' | 'Pending Review' | 'Approved' | 'Rejected';
 
 export interface Order {
   id: string; // UUID
@@ -164,6 +163,23 @@ export interface Order {
   deliveryPersonName?: string;
   deliveryPersonContact?: string;
   vehicleNumber?: string;
+  status?: string;
+  order_status?: string;
+  approval_status?: string;
+  isDeleted?: boolean;
+  is_deleted?: boolean;
+  deleted?: boolean;
+  deletedAt?: string | number | null;
+  grandTotal?: number;
+  grand_total?: number;
+  amountReceived?: number;
+  amount_received?: number;
+  received_amount?: number;
+  receivedAmount?: number;
+  advancePaid?: number;
+  advance?: number;
+  paid_amount?: number;
+  balance_due?: number;
 }
 
 export interface StatusLog {
@@ -386,4 +402,5 @@ export interface CRMTimelineEvent {
   timestamp: string;
   operator: string;
 }
+
 
