@@ -6,7 +6,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/upi_qr.png';
 import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
@@ -70,7 +69,7 @@ import {
   Printer,
   Download,
   Share2,
-  Image,
+  Image as ImageIcon,
   QrCode,
   FileSignature,
   Package,
@@ -117,6 +116,45 @@ import {
   Cell 
 } from 'recharts';
 import { formatToDDMMYYYY, generateNewOrderNo } from '../utils';
+
+// Embedded Vector UPI QR Code (self-contained, works in every environment)
+const DEFAULT_UPI_QR_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" fill="#ffffff" rx="8"/>
+  <rect x="20" y="20" width="45" height="45" fill="#000000" rx="4"/>
+  <rect x="28" y="28" width="29" height="29" fill="#ffffff" rx="2"/>
+  <rect x="34" y="34" width="17" height="17" fill="#000000" rx="2"/>
+  <rect x="135" y="20" width="45" height="45" fill="#000000" rx="4"/>
+  <rect x="143" y="28" width="29" height="29" fill="#ffffff" rx="2"/>
+  <rect x="149" y="34" width="17" height="17" fill="#000000" rx="2"/>
+  <rect x="20" y="135" width="45" height="45" fill="#000000" rx="4"/>
+  <rect x="28" y="143" width="29" height="29" fill="#ffffff" rx="2"/>
+  <rect x="34" y="149" width="17" height="17" fill="#000000" rx="2"/>
+  <rect x="75" y="25" width="12" height="12" fill="#000000"/>
+  <rect x="95" y="25" width="12" height="12" fill="#000000"/>
+  <rect x="115" y="25" width="12" height="12" fill="#000000"/>
+  <rect x="75" y="45" width="12" height="24" fill="#000000"/>
+  <rect x="95" y="45" width="25" height="12" fill="#000000"/>
+  <rect x="25" y="75" width="25" height="12" fill="#000000"/>
+  <rect x="60" y="75" width="12" height="12" fill="#000000"/>
+  <rect x="80" y="75" width="40" height="12" fill="#000000"/>
+  <rect x="130" y="75" width="15" height="25" fill="#000000"/>
+  <rect x="155" y="75" width="25" height="12" fill="#000000"/>
+  <rect x="25" y="95" width="12" height="25" fill="#000000"/>
+  <rect x="45" y="95" width="25" height="12" fill="#000000"/>
+  <rect x="80" y="95" width="25" height="25" fill="#1b9a59" rx="3"/>
+  <text x="92.5" y="112" font-size="12" font-family="sans-serif" font-weight="900" fill="#ffffff" text-anchor="middle">₹</text>
+  <rect x="115" y="95" width="12" height="25" fill="#000000"/>
+  <rect x="155" y="95" width="25" height="12" fill="#000000"/>
+  <rect x="75" y="130" width="12" height="40" fill="#000000"/>
+  <rect x="95" y="130" width="25" height="12" fill="#000000"/>
+  <rect x="130" y="130" width="15" height="15" fill="#000000"/>
+  <rect x="155" y="130" width="25" height="25" fill="#000000"/>
+  <rect x="95" y="150" width="25" height="25" fill="#000000"/>
+  <rect x="130" y="155" width="15" height="25" fill="#000000"/>
+  <rect x="155" y="165" width="25" height="15" fill="#000000"/>
+</svg>
+`)}`;
 
 interface CRMTabProps {
   db: AppState;
@@ -382,7 +420,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = new Image();
+          const img = new window.Image();
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -691,8 +729,8 @@ export default function CRMTab({
 
     if (time === null || isNaN(time)) return false;
 
-    if (startMs !== null && time < startMs) return false;
-    if (endMs !== null && time > endMs) return false;
+    if (startMs != null && time < startMs) return false;
+    if (endMs != null && time > endMs) return false;
     return true;
   };
 
@@ -3528,7 +3566,7 @@ export default function CRMTab({
                           <div className="space-y-2 pt-2 border-t border-stone-200/80">
                             <div className="flex items-center justify-between">
                               <label className="font-bold text-stone-700 text-xs flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
-                                <Image size={14} className="text-[#593622]" /> Upload Product Photos
+                                <ImageIcon size={14} className="text-[#593622]" /> Upload Product Photos
                               </label>
                               <span className="text-[10px] text-stone-500 font-bold">
                                 {item.images && item.images.length > 0
@@ -4729,9 +4767,12 @@ export default function CRMTab({
                             title="UPI QR Code Image"
                           >
                             <img 
-                              src={customQR || upiQrImg} 
+                              src={customQR || DEFAULT_UPI_QR_SVG} 
                               alt="UPI QR Code Image" 
                               className="w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20 object-contain" 
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = DEFAULT_UPI_QR_SVG;
+                              }}
                             />
                             <div className="mt-1 bg-[#1b9a59] text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
                               UPI Click to Pay
@@ -4889,7 +4930,7 @@ export default function CRMTab({
           >
             <div className="w-full flex items-center justify-between p-2.5 border-b border-stone-800">
               <span className="text-xs font-bold font-mono text-stone-300 flex items-center gap-2">
-                <Image size={14} className="text-amber-400" />
+                <ImageIcon size={14} className="text-amber-400" />
                 Quotation Product Photo Inspection
               </span>
               <div className="flex items-center gap-2">
