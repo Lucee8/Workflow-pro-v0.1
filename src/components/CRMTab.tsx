@@ -6,7 +6,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
@@ -153,6 +152,15 @@ const DEFAULT_UPI_QR_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
   <rect x="95" y="150" width="25" height="25" fill="#000000"/>
   <rect x="130" y="155" width="15" height="25" fill="#000000"/>
   <rect x="155" y="165" width="25" height="15" fill="#000000"/>
+</svg>
+`)}`;
+
+// Embedded Vector Authorized Signatory Signature (self-contained, works in every environment)
+const DEFAULT_SIGNATURE_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 80" width="240" height="80">
+  <path d="M 20 55 C 35 30, 45 20, 60 45 C 75 70, 85 25, 100 40 C 115 55, 130 30, 150 45 C 170 60, 185 35, 200 40 C 215 45, 225 50, 230 48" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 45 48 C 70 48, 120 46, 180 50" fill="none" stroke="#334155" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M 120 30 Q 135 15 145 35 Q 155 55 170 40" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/>
 </svg>
 `)}`;
 
@@ -1841,7 +1849,12 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
+                          <Tooltip
+                            formatter={(value: number | string | Array<number | string> | readonly (number | string)[] | undefined) => {
+                              const leadCount = Number(Array.isArray(value) ? value[0] ?? 0 : value ?? 0);
+                              return [`${leadCount} lead(s)`, 'Count'];
+                            }}
+                          />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1953,7 +1966,6 @@ export default function CRMTab({
               </div>
             </div>
 
-            {/* Revenue trend line/bar */}
             <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Revenue Trend (INR)</span>
@@ -1964,7 +1976,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip formatter={(value) => value !== undefined ? `₹${value.toLocaleString()}` : ''} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -4791,9 +4803,12 @@ export default function CRMTab({
                         >
                           <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
                             <img 
-                              src={customSignature || signatureImg} 
+                              src={customSignature || DEFAULT_SIGNATURE_SVG} 
                               alt="Authorized Signatory Signature" 
                               className="max-w-full max-h-full object-contain" 
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = DEFAULT_SIGNATURE_SVG;
+                              }}
                             />
                           </div>
                           <span className="text-[10px] text-slate-500 font-bold mt-1 font-sans">Authorized Signatory</span>
