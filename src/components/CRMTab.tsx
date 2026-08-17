@@ -382,7 +382,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = new (window.Image as any)();
+          const img = new Image();
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -691,8 +691,8 @@ export default function CRMTab({
 
     if (time === null || isNaN(time)) return false;
 
-    if (startMs !== null && startMs !== undefined && time < startMs) return false;
-    if (endMs !== null && endMs !== undefined && time > endMs) return false;
+    if (startMs !== null && time < startMs) return false;
+    if (endMs !== null && time > endMs) return false;
     return true;
   };
 
@@ -1803,7 +1803,7 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val: any) => [`${val || 0} lead(s)`, 'Count']} />
+                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1926,7 +1926,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value: any) => `₹${(value || 0).toLocaleString()}`} />
+                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
