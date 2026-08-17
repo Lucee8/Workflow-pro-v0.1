@@ -163,23 +163,6 @@ export interface Order {
   deliveryPersonName?: string;
   deliveryPersonContact?: string;
   vehicleNumber?: string;
-  status?: string;
-  order_status?: string;
-  approval_status?: string;
-  isDeleted?: boolean;
-  is_deleted?: boolean;
-  deleted?: boolean;
-  deletedAt?: string | number | null;
-  grandTotal?: number;
-  grand_total?: number;
-  amountReceived?: number;
-  amount_received?: number;
-  received_amount?: number;
-  receivedAmount?: number;
-  advancePaid?: number;
-  advance?: number;
-  paid_amount?: number;
-  balance_due?: number;
 }
 
 export interface StatusLog {
