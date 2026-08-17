@@ -1966,6 +1966,7 @@ export default function CRMTab({
               </div>
             </div>
 
+            {/* Revenue trend line/bar */}
             <div className="bg-white border border-stone-200/80 p-5 rounded-2xl shadow-xs">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-xs font-black uppercase text-stone-700 tracking-wider font-display">Revenue Trend (INR)</span>
@@ -4976,7 +4977,6 @@ export default function CRMTab({
           </div>
         </div>
       )}
-
     </div>
   );
 }
