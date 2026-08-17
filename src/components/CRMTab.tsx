@@ -6,6 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
+import upiQrImg from '../assets/images/UPI QR code.jpeg';
+import signatureImg from '../assets/images/Authorized Signatory.png';
 import { 
   AppState,
   generateArticleNumber
@@ -115,54 +117,6 @@ import {
   Cell 
 } from 'recharts';
 import { formatToDDMMYYYY, generateNewOrderNo } from '../utils';
-
-// Embedded Vector UPI QR Code (self-contained, works in every environment)
-const DEFAULT_UPI_QR_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
-  <rect width="200" height="200" fill="#ffffff" rx="8"/>
-  <rect x="20" y="20" width="45" height="45" fill="#000000" rx="4"/>
-  <rect x="28" y="28" width="29" height="29" fill="#ffffff" rx="2"/>
-  <rect x="34" y="34" width="17" height="17" fill="#000000" rx="2"/>
-  <rect x="135" y="20" width="45" height="45" fill="#000000" rx="4"/>
-  <rect x="143" y="28" width="29" height="29" fill="#ffffff" rx="2"/>
-  <rect x="149" y="34" width="17" height="17" fill="#000000" rx="2"/>
-  <rect x="20" y="135" width="45" height="45" fill="#000000" rx="4"/>
-  <rect x="28" y="143" width="29" height="29" fill="#ffffff" rx="2"/>
-  <rect x="34" y="149" width="17" height="17" fill="#000000" rx="2"/>
-  <rect x="75" y="25" width="12" height="12" fill="#000000"/>
-  <rect x="95" y="25" width="12" height="12" fill="#000000"/>
-  <rect x="115" y="25" width="12" height="12" fill="#000000"/>
-  <rect x="75" y="45" width="12" height="24" fill="#000000"/>
-  <rect x="95" y="45" width="25" height="12" fill="#000000"/>
-  <rect x="25" y="75" width="25" height="12" fill="#000000"/>
-  <rect x="60" y="75" width="12" height="12" fill="#000000"/>
-  <rect x="80" y="75" width="40" height="12" fill="#000000"/>
-  <rect x="130" y="75" width="15" height="25" fill="#000000"/>
-  <rect x="155" y="75" width="25" height="12" fill="#000000"/>
-  <rect x="25" y="95" width="12" height="25" fill="#000000"/>
-  <rect x="45" y="95" width="25" height="12" fill="#000000"/>
-  <rect x="80" y="95" width="25" height="25" fill="#1b9a59" rx="3"/>
-  <text x="92.5" y="112" font-size="12" font-family="sans-serif" font-weight="900" fill="#ffffff" text-anchor="middle">₹</text>
-  <rect x="115" y="95" width="12" height="25" fill="#000000"/>
-  <rect x="155" y="95" width="25" height="12" fill="#000000"/>
-  <rect x="75" y="130" width="12" height="40" fill="#000000"/>
-  <rect x="95" y="130" width="25" height="12" fill="#000000"/>
-  <rect x="130" y="130" width="15" height="15" fill="#000000"/>
-  <rect x="155" y="130" width="25" height="25" fill="#000000"/>
-  <rect x="95" y="150" width="25" height="25" fill="#000000"/>
-  <rect x="130" y="155" width="15" height="25" fill="#000000"/>
-  <rect x="155" y="165" width="25" height="15" fill="#000000"/>
-</svg>
-`)}`;
-
-// Embedded Vector Authorized Signatory Signature (self-contained, works in every environment)
-const DEFAULT_SIGNATURE_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 80" width="240" height="80">
-  <path d="M 20 55 C 35 30, 45 20, 60 45 C 75 70, 85 25, 100 40 C 115 55, 130 30, 150 45 C 170 60, 185 35, 200 40 C 215 45, 225 50, 230 48" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 45 48 C 70 48, 120 46, 180 50" fill="none" stroke="#334155" stroke-width="1.8" stroke-linecap="round"/>
-  <path d="M 120 30 Q 135 15 145 35 Q 155 55 170 40" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/>
-</svg>
-`)}`;
 
 interface CRMTabProps {
   db: AppState;
@@ -428,7 +382,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = new window.Image();
+          const img = new Image();
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -690,11 +644,6 @@ export default function CRMTab({
       return { startMs: start.getTime(), endMs: todayEnd.getTime() };
     }
 
-    if (preset === 'currentmonth') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      return { startMs: start.getTime(), endMs: todayEnd.getTime() };
-    }
-
     if (preset === 'custom') {
       let startMs: number | null = null;
       let endMs: number | null = null;
@@ -717,7 +666,7 @@ export default function CRMTab({
     startMs?: number | null,
     endMs?: number | null
   ): boolean => {
-    if (startMs === null && endMs === null) return true;
+    if (startMs == null && endMs == null) return true;
     if (!dateStr) return false;
 
     let time: number | null = null;
@@ -1810,6 +1759,26 @@ export default function CRMTab({
               </div>
             </div>
 
+            {/* <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
+                <DollarSign size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
+                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
+              </div>
+            </div> */}
+
+            {/* <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
+              <div className="h-10 w-10 bg-green-100 rounded-xl flex items-center justify-center text-green-700 shrink-0">
+                <DollarSign size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-bold block uppercase tracking-wider">Total Revenue</span>
+                <strong className="text-lg font-black text-stone-900 font-display">₹{totalRevenue.toLocaleString('en-IN')}</strong>
+              </div>
+            </div> */}
+
             <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center gap-3">
               <div className="h-10 w-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-700 shrink-0">
                 <Award size={18} />
@@ -1849,12 +1818,12 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip
-                            formatter={(value: number | string | Array<number | string> | readonly (number | string)[] | undefined) => {
-                              const leadCount = Number(Array.isArray(value) ? value[0] ?? 0 : value ?? 0);
-                              return [`${leadCount} lead(s)`, 'Count'];
-                            }}
-                          />
+                            <Tooltip
+                              formatter={(value: number | string | Array<number | string> | readonly (number | string)[] | undefined) => {
+                                const leadCount = Number(Array.isArray(value) ? value[0] ?? 0 : value ?? 0);
+                                return [`${leadCount} lead(s)`, 'Count'];
+                              }}
+                            />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -3354,9 +3323,9 @@ export default function CRMTab({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
-                        Select Customer Lead <span className="text-rose-500">*</span>
-                      </label>
+                    <label className="font-bold text-stone-700 text-xs flex items-center gap-1">
+                      Select Customer Lead <span className="text-rose-500">*</span>
+                    </label>
                       <button
                         type="button"
                         onClick={() => {
@@ -3893,6 +3862,7 @@ export default function CRMTab({
                           ₹{quoteSubtotal.toLocaleString('en-IN')}.00
                         </span>
                       </div>
+
 
                       {/* Transportation Charges row */}
                       {(quoteTransportationAmt > 0 || showTransportationInput) && (
@@ -4541,8 +4511,7 @@ export default function CRMTab({
                               {customer.address && (
                                 <p className="leading-snug">
                                   Address: {customer.address}{'city' in customer && customer.city ? `, ${customer.city}` : ''}
-                                </p>
-                              )}
+                                </p>                              )}
                             </div>
                           )}
                         </div>
@@ -4780,12 +4749,9 @@ export default function CRMTab({
                             title="UPI QR Code Image"
                           >
                             <img 
-                              src={customQR || DEFAULT_UPI_QR_SVG} 
+                              src={customQR || upiQrImg} 
                               alt="UPI QR Code Image" 
                               className="w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20 object-contain" 
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).src = DEFAULT_UPI_QR_SVG;
-                              }}
                             />
                             <div className="mt-1 bg-[#1b9a59] text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
                               UPI Click to Pay
@@ -4804,12 +4770,9 @@ export default function CRMTab({
                         >
                           <div className="relative w-44 sm:w-52 h-16 sm:h-20 print:w-48 print:h-18 flex items-center justify-center">
                             <img 
-                              src={customSignature || DEFAULT_SIGNATURE_SVG} 
+                              src={customSignature || signatureImg} 
                               alt="Authorized Signatory Signature" 
                               className="max-w-full max-h-full object-contain" 
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).src = DEFAULT_SIGNATURE_SVG;
-                              }}
                             />
                           </div>
                           <span className="text-[10px] text-slate-500 font-bold mt-1 font-sans">Authorized Signatory</span>
@@ -4977,6 +4940,7 @@ export default function CRMTab({
           </div>
         </div>
       )}
+
     </div>
   );
 }
