@@ -91,6 +91,49 @@ export function isPaymentDeleted(payment: any): boolean {
   return false;
 }
 
+export function getQuotationAmount(q: any): number {
+  if (!q) return 0;
+  
+  const directCandidates = [
+    q.totalAmount,
+    q.total_amount,
+    q.grandTotal,
+    q.grand_total,
+    q.final_amount,
+    q.finalAmount,
+    q.total,
+    q.amount,
+  ];
+
+  for (const c of directCandidates) {
+    if (typeof c === 'number' && !isNaN(c) && c > 0) return c;
+    if (typeof c === 'string') {
+      const p = parseFloat(c.replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(p) && p > 0) return p;
+    }
+  }
+
+  // Calculate from items if direct amount is not set
+  if (Array.isArray(q.items) && q.items.length > 0) {
+    let subtotal = 0;
+    q.items.forEach((it: any) => {
+      const uPrice = Number(it.unitPrice ?? it.unit_price ?? it.price ?? 0);
+      const qty = Number(it.quantity ?? it.qty ?? 1);
+      const disc = Number(it.discount ?? 0);
+      const lineTotal = uPrice * (qty > 0 ? qty : 1);
+      const discounted = disc > 0 ? lineTotal - (lineTotal * disc) / 100 : lineTotal;
+      subtotal += discounted;
+    });
+
+    const taxPercent = Number(q.tax ?? q.tax_percent ?? 0);
+    const taxAmount = taxPercent > 0 ? (subtotal * taxPercent) / 100 : 0;
+    const calcTotal = subtotal + taxAmount;
+    if (calcTotal > 0) return Math.round(calcTotal);
+  }
+
+  return 0;
+}
+
 export function getOrderGrandTotal(
   order: any,
   crmQuotations?: any[],
@@ -147,7 +190,7 @@ export function getOrderGrandTotal(
     if (quoteId) {
       const q = crmQuotations.find((item: any) => item.id === quoteId);
       if (q) {
-        const qVal = Number(q.totalAmount ?? q.grandTotal ?? q.total ?? 0);
+        const qVal = getQuotationAmount(q);
         if (qVal > 0) return qVal;
       }
     }
@@ -306,12 +349,28 @@ export default function DashboardTab({
     [datePreset, customStartDate, customEndDate]
   );
 
+  // Exact same database records shown in the quotation list with status APPROVED
+  const approvedQuotations = React.useMemo(() => {
+    return (crmQuotations || []).filter((q) => {
+      if (!q) return false;
+      if ((q as any).deleted || (q as any).is_deleted || (q as any).isDeleted) return false;
+      if (!q.customer_name?.trim() && (!q.items || q.items.length === 0) && !q.id?.trim()) return false;
+      const st = String(q.status || '').trim().toUpperCase();
+      return st === 'APPROVED';
+    });
+  }, [crmQuotations]);
+
+  // Date-filtered approved quotation/order records
+  const filteredApprovedQuotations = React.useMemo(() => {
+    return approvedQuotations.filter((q) => isDateInBounds(q.created_at || (q as any).date || q.validUntil, startMs, endMs));
+  }, [approvedQuotations, startMs, endMs]);
+
   // Valid, non-deleted orders (ignoring soft-deleted or deleted records)
   const nonDeletedOrders = React.useMemo(() => {
     return orders.filter((o) => !isOrderDeleted(o));
   }, [orders]);
 
-  // Approved, non-deleted orders (single source of truth for financial eligibility)
+  // Approved, non-deleted orders
   const approvedOrders = React.useMemo(() => {
     return orders.filter((o) => isOrderApproved(o) && !isOrderDeleted(o));
   }, [orders]);
@@ -338,73 +397,38 @@ export default function DashboardTab({
     return (crmPayments || []).filter((cp) => !isPaymentDeleted(cp) && isDateInBounds(cp.payment_date || (cp as any).date || (cp as any).created_at, startMs, endMs));
   }, [crmPayments, startMs, endMs]);
 
-  // 1. Group approved, non-deleted orders by Invoice / Parent Order key
-  const approvedInvoiceGroups = React.useMemo<Record<string, Order[]>>(() => {
-    const groups: Record<string, Order[]> = {};
-    filteredApprovedOrders.forEach((o) => {
-      const groupKey = o.parent_order_id || o.id;
-      if (!groups[groupKey]) {
-        groups[groupKey] = [];
-      }
-      groups[groupKey].push(o);
-    });
-    return groups;
-  }, [filteredApprovedOrders]);
-
-  // 2. Financial calculation strictly from APPROVED + NON-DELETED orders
+  // Financial calculation strictly from active, non-deleted records where status is APPROVED
   const { totalFurnitureBusiness, moneyReceived, moneyDue, finalizedOrdersCount } = React.useMemo(() => {
     let totalBusiness = 0;
     let totalReceived = 0;
     let totalDue = 0;
 
-    // Helper to normalize strings for comparison
-    const norm = (s?: string) => (s ? String(s).trim().toLowerCase() : '');
-
     const validPayments = (payments || []).filter((p) => !isPaymentDeleted(p));
     const validCrmPayments = (crmPayments || []).filter((cp) => !isPaymentDeleted(cp));
 
-    // Process all approved, non-deleted invoice groups
-    Object.entries(approvedInvoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
-      // Build lookup identifiers: IDs, parent IDs, article numbers, and customer IDs
+    filteredApprovedQuotations.forEach((q) => {
+      const qAmount = getQuotationAmount(q);
+
+      // Lookup matching payments for this approved record
       const relatedIds = new Set<string>();
-      relatedIds.add(invoiceKey);
-      relatedIds.add(norm(invoiceKey));
+      if (q.id) {
+        relatedIds.add(q.id);
+        relatedIds.add(q.id.toLowerCase().trim());
+      }
+      if (q.customer_id) {
+        relatedIds.add(q.customer_id);
+      }
 
-      groupOrders.forEach((o) => {
-        if (o.id) {
-          relatedIds.add(o.id);
-          relatedIds.add(norm(o.id));
-        }
-        if (o.parent_order_id) {
-          relatedIds.add(o.parent_order_id);
-          relatedIds.add(norm(o.parent_order_id));
-        }
-        if (o.article_no) {
-          relatedIds.add(o.article_no);
-          relatedIds.add(norm(o.article_no));
-        }
-      });
-
-      // Find all matching non-deleted workshop payment records
       const matchingPayments = validPayments.filter((p) => {
         if (!p || !p.order_id) return false;
-        return relatedIds.has(p.order_id) || relatedIds.has(norm(p.order_id));
+        return relatedIds.has(p.order_id) || relatedIds.has(p.order_id.toLowerCase().trim());
       });
 
-      // Find all matching non-deleted CRM payment records
       const matchingCrmPayments = validCrmPayments.filter((cp) => {
         if (!cp || !cp.order_id) return false;
-        return relatedIds.has(cp.order_id) || relatedIds.has(norm(cp.order_id));
+        return relatedIds.has(cp.order_id) || relatedIds.has(cp.order_id.toLowerCase().trim());
       });
 
-      // 1. Calculate invoice grand total (SUM of grandTotal from approved orders)
-      const explicitTotalFromPayment = matchingPayments.find((p) => typeof p.total_amount === 'number' && p.total_amount > 0)?.total_amount;
-      const explicitTotalFromCrm = matchingCrmPayments.find((cp) => typeof cp.total_amount === 'number' && cp.total_amount > 0)?.total_amount;
-      const sumOfOrderItems = groupOrders.reduce((sum, ord) => sum + getOrderGrandTotal(ord, crmQuotations, payments, crmPayments), 0);
-
-      const groupGrandTotal = Math.max(sumOfOrderItems, explicitTotalFromPayment || 0, explicitTotalFromCrm || 0);
-
-      // 2. Calculate invoice received amount (SUM of payments for approved orders)
       const paymentSum = matchingPayments.reduce((acc, p) => {
         const val = Number(p.advance_paid) || Number((p as any).amount) || Number((p as any).amountReceived) || 0;
         return acc + Math.max(0, val);
@@ -415,27 +439,24 @@ export default function DashboardTab({
         return acc + Math.max(0, val);
       }, 0);
 
-      const directOrderAdvanceSum = groupOrders.reduce((acc, o) => {
-        return acc + getOrderAmountReceived(o);
-      }, 0);
+      const directAdvance = Number((q as any).advance_paid || 0);
 
-      let groupAmountReceived = 0;
+      let qReceived = 0;
       if (paymentSum > 0 || crmPaymentSum > 0) {
-        groupAmountReceived = Math.max(paymentSum, crmPaymentSum);
-      } else if (directOrderAdvanceSum > 0) {
-        groupAmountReceived = directOrderAdvanceSum;
+        qReceived = Math.max(paymentSum, crmPaymentSum);
+      } else if (directAdvance > 0) {
+        qReceived = directAdvance;
       }
-      groupAmountReceived = Math.max(0, groupAmountReceived);
+      qReceived = Math.min(qAmount, Math.max(0, qReceived));
 
-      // 3. Calculate invoice due amount (orderBalance = MAX(0, grandTotal - amountReceived))
-      const groupBalanceDue = Math.max(0, groupGrandTotal - groupAmountReceived);
+      const qDue = Math.max(0, qAmount - qReceived);
 
-      totalBusiness += groupGrandTotal;
-      totalReceived += groupAmountReceived;
-      totalDue += groupBalanceDue;
+      totalBusiness += qAmount;
+      totalReceived += qReceived;
+      totalDue += qDue;
     });
 
-    const finalizedCount = filteredApprovedOrders.length;
+    const finalizedCount = filteredApprovedQuotations.length;
 
     return {
       totalFurnitureBusiness: totalBusiness,
@@ -443,7 +464,7 @@ export default function DashboardTab({
       moneyDue: totalDue,
       finalizedOrdersCount: finalizedCount,
     };
-  }, [approvedInvoiceGroups, filteredApprovedOrders, payments, crmPayments, crmQuotations]);
+  }, [filteredApprovedQuotations, payments, crmPayments]);
 
   // 3. Ongoing in factory: Count of APPROVED orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
