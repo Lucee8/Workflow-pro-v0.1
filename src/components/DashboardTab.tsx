@@ -381,15 +381,15 @@ export default function DashboardTab({
     };
   }, [approvedInvoiceGroups, filteredApprovedOrders, payments, crmPayments]);
 
-  // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
+  // 3. Ongoing in factory: Count of APPROVED orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
-    return filteredOrders.filter((o) => {
+    return filteredApprovedOrders.filter((o) => {
       const stage = normalizeStage(o.current_status);
       return stage !== 'Pending';
     }).length;
-  }, [filteredOrders]);
+  }, [filteredApprovedOrders]);
 
-  // 4. Quotation Pipeline breakdown & conversion rate
+  // 4. Quotation Pipeline breakdown & conversion rate (Unchanged: Quotation pipeline retains all quotation statuses)
   const quotationStats = React.useMemo(() => {
     const quotes = filteredCrmQuotations || [];
     const total = quotes.length;
@@ -426,9 +426,9 @@ export default function DashboardTab({
     };
   }, [filteredCrmQuotations]);
 
-  // 5. Production stages counts
+  // 5. Production stages counts (Strictly APPROVED orders)
   const getStageCount = (stage: OrderStage) =>
-    filteredOrders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
+    filteredApprovedOrders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
 
   const productionStages: {
     name: OrderStage;
@@ -449,14 +449,14 @@ export default function DashboardTab({
     { name: 'Dispatched', label: 'DISPATCHED', count: getStageCount('Dispatched'), badgeBg: 'bg-[#059669]', activeText: 'text-emerald-700' },
   ];
 
-  // 6. Upcoming Deliveries (sorted by delivery date ascending)
+  // 6. Upcoming Deliveries (Strictly APPROVED orders, sorted by delivery date ascending)
   const upcomingDeliveries = React.useMemo(() => {
-    const list = filteredOrders.length > 0 ? filteredOrders : orders;
+    const list = filteredApprovedOrders.length > 0 ? filteredApprovedOrders : approvedOrders;
     return [...list]
       .filter((o) => !['Dispatched'].includes(normalizeStage(o.current_status)))
       .sort((a, b) => new Date(a.delivery_date || '').getTime() - new Date(b.delivery_date || '').getTime())
       .slice(0, 3);
-  }, [filteredOrders, orders]);
+  }, [filteredApprovedOrders, approvedOrders]);
 
   // Currency formatters
   const formatINR = (val: number) => '₹' + val.toLocaleString('en-IN');
@@ -1035,7 +1035,7 @@ export default function DashboardTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {[...(filteredOrders.length > 0 ? filteredOrders : orders)]
+                  {[...(filteredApprovedOrders.length > 0 ? filteredApprovedOrders : approvedOrders)]
                     .sort(compareOrdersByArticleSerialDesc)
                     .slice(0, 4)
                     .map((ord) => {
