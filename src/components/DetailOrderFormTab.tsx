@@ -557,7 +557,6 @@ export default function DetailOrderFormTab({
 
     setOrderDate(formatToDDMMYYYY(quoteDate));
     setDeliveryDate(formatToDDMMYYYY(first.validUntil ? first.validUntil.split('T')[0] : ''));
-
     const allExtractedImages: Array<{ id: string; url: string; type: 'Design Reference' }> = [];
 
     const mappedItems: AgreementItem[] = selectedItems.map((selected, itemIdx) => {
@@ -567,18 +566,19 @@ export default function DetailOrderFormTab({
       // Extract reference images uploaded during quotation stage for this specific item
       const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
       
-      const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> = rawItemImages.map((imgUrl: string, imgIdx: number) => {
+      const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> = rawItemImages.map((img: any, imgIdx: number) => {
+        const urlStr = typeof img === 'string' ? img : (img?.url || '');
         const imgObj = {
           id: `ref_q_${item.id || itemIdx}_${imgIdx}_${Math.random().toString(36).substring(2, 6)}`,
-          url: imgUrl,
+          url: urlStr,
           type: 'Design Reference' as const,
         };
-        if (!allExtractedImages.some((existing) => existing.url === imgUrl)) {
+        if (urlStr && !allExtractedImages.some((existing) => existing.url === urlStr)) {
           allExtractedImages.push(imgObj);
         }
         return imgObj;
-      });
-      
+      }).filter(img => Boolean(img.url));
+
       let matchedCat = 'Beds';
       for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
         if (subs.some((s) => (item.furnitureItem || '').toLowerCase().includes(s.toLowerCase()))) {
@@ -675,15 +675,6 @@ export default function DetailOrderFormTab({
         isUpdatingRef.current = false;
       }, 50);
     }
-
-    // Prefill advance payment from unique quotation(s) recorded received_amount at ORDER-LEVEL
-    const totalQuoteAdvance = uniqueQuoteIds.reduce((sum, qId) => {
-      const itemWithQuote = selectedItems.find((s) => s.quoteId === qId);
-      const quote = itemWithQuote?.quoteObj || crmQuotations?.find((q) => q.id === qId);
-      const recAmt = quote?.received_amount !== undefined ? quote.received_amount : (quote?.receivedAmount || 0);
-      return sum + Math.max(0, Number(recAmt) || 0);
-    }, 0);
-    setAdvance(totalQuoteAdvance);
 
     // Prefill transportation charges from quotation if available
     const totalQuoteTransportation = uniqueQuoteIds.reduce((sum, qId) => {
@@ -1500,7 +1491,6 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 className="w-full px-2.5 py-1.5 bg-stone-100 border border-stone-200 text-stone-500 rounded-lg text-xs focus:outline-none focus:ring-0 font-mono"
               />
             </div>
-
             {/* Reference Images for Active Product */}
             {items[activeItemIndex] && (
               <div className="md:col-span-12 border border-amber-200/80 bg-amber-50/40 rounded-xl p-3.5 space-y-2 mt-2">
@@ -1513,7 +1503,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                     {(items[activeItemIndex].images || []).length} Image(s) Preserved
                   </span>
                 </div>
-                
+
                 {(items[activeItemIndex].images && items[activeItemIndex].images!.length > 0) ? (
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 pt-1">
                     {items[activeItemIndex].images!.map((img) => (
@@ -1891,10 +1881,16 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                         <div className="flex justify-between items-center border-b-2 border-black pb-3 mb-4">
                           <div className="flex items-center">
                             <img
-                              src={logoImg}
+                              src="src/assets/images/logo.png"
                               alt="Bhise'z Wood Workshop Logo"
                               className="h-12 md:h-14 max-w-[240px] object-contain"
                               referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                if (target.src !== logoImg) {
+                                  target.src = logoImg;
+                                }
+                              }}
                             />
                           </div>
                           <div className="text-right shrink-0">
@@ -2356,10 +2352,16 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   <div className="flex justify-between items-center border-b-2 border-black pb-3 mb-4">
                     <div className="flex items-center">
                       <img
-                        src={logoImg}
+                        src="src/assets/images/logo.png"
                         alt="Bhise'z Wood Workshop Logo"
                         className="h-12 max-w-[240px] object-contain"
                         referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (target.src !== logoImg) {
+                            target.src = logoImg;
+                          }
+                        }}
                       />
                     </div>
                     <div className="text-right shrink-0">
@@ -2473,7 +2475,7 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                                     <strong>{language === 'mr' ? 'विशेष नोंद:' : 'Special/Mfg Notes:'}</strong> {item.specialNotes}
                                   </div>
                                 )}
-                                {item.images && item.images.length > 0 && (
+                                                                {item.images && item.images.length > 0 && (
                                   <div className="mt-1 pl-2 flex items-center gap-1.5 font-sans">
                                     <span className="text-[8px] font-bold text-stone-700 uppercase">{language === 'mr' ? 'संदर्भ चित्रे:' : 'Ref Photos:'}</span>
                                     <div className="flex items-center gap-1">
