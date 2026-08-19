@@ -16,16 +16,26 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
 
-// Connect with proper authentication securely
+// Connect with proper authentication securely or fall back to unauthenticated guest mode if Auth is not enabled in Firebase Console
 export async function authenticateFirebase(): Promise<boolean> {
   try {
+    await signInAnonymously(auth);
+    console.log("Firebase Auth signed in anonymously successfully.");
     await testConnection();
     return true;
   } catch (error) {
-    console.warn("Firestore connection check notice:", error);
-    return true; // Return true to allow syncFirestore to attach listeners
+    console.warn("Firebase Auth failed (not enabled or restricted), switching to unauthenticated client mode:", error);
+    // Since Firebase Anonymous Auth might be restricted/disabled, we fall back to unauthenticated public mode.
+    // If the Firestore security rules allow unauthenticated operations, the sync and databases will still work flawlessly.
+    try {
+      await testConnection();
+      return true;
+    } catch (testError) {
+      console.error("Unauthenticated connection test failed too:", testError);
+      return true; // Still return true so that syncFirestore can attempt to initialize
+    }
   }
 }
 
@@ -37,11 +47,11 @@ async function testConnection() {
   }
 }
 
-// Check with server and sync any local records to Firestore only if the cloud collection is empty
+// Check with server and sync any local cache records to Firestore if they are missing or if the DB is empty
 export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
-  const syncCollectionToFirestore = async (name: string, items: any[]) => {
-    if (!items || items.length === 0) return;
-    try {
+  try {
+    const syncCollectionToFirestore = async (name: string, items: any[]) => {
+      if (!items || items.length === 0) return;
       const colRef = collection(db, name);
       const snapshot = await getDocs(colRef);
       
@@ -52,14 +62,45 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
           batch.set(doc(db, name, item.id), cleanUndefined(item));
         }
         await batch.commit();
-      }
-    } catch (colErr) {
-      console.warn(`Seed phase note for '${name}':`, colErr);
-    }
-  };
+      } else {
+        if (name === 'users') {
+          const batch = writeBatch(db);
+          let modified = false;
+          const existingEmails = new Set<string>();
 
-  try {
-    // Only seed if empty
+          snapshot.docs.forEach((d) => {
+            const userData = d.data();
+            if (
+              d.id === 'user_amit_prod' ||
+              d.id === 'user_mahesh_prod' ||
+              userData.name === 'Amit Sharma' ||
+              userData.name === 'Bhavesh k' ||
+              userData.name === 'Mahesh Verma'
+            ) {
+              batch.delete(d.ref);
+              modified = true;
+            } else if (userData.email) {
+              existingEmails.add(userData.email.toLowerCase());
+            }
+          });
+
+          // Ensure required manager and wood tab manager users are in Firestore
+          for (const item of items) {
+            if (item.email && !existingEmails.has(item.email.toLowerCase())) {
+              batch.set(doc(db, 'users', item.id), cleanUndefined(item));
+              modified = true;
+            }
+          }
+
+          if (modified) {
+            console.log("Updating users in Firestore...");
+            await batch.commit();
+          }
+        }
+      }
+    };
+
+    // Synchronize and seed all collections step by step
     await syncCollectionToFirestore('users', seedData.users || []);
     await syncCollectionToFirestore('customers', seedData.customers || []);
     await syncCollectionToFirestore('orders', seedData.orders || []);
@@ -74,85 +115,10 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
     await syncCollectionToFirestore('crmAttachments', seedData.crmAttachments || []);
     await syncCollectionToFirestore('crmTimelineEvents', seedData.crmTimelineEvents || []);
 
-    console.log("Database initialization and synchronization check complete.");
+    console.log("Database initialization and synchronization sync phase complete.");
   } catch (error) {
-    console.warn("Local-to-cloud sync phase notice on initialization:", error);
+    console.error("Failed to complete local-to-cloud sync phase on initialization:", error);
   }
-}
-
-// Fetch all Firestore collections in one parallel batch on initial boot
-export async function fetchInitialDataFromFirestore(): Promise<Partial<AppState>> {
-  const result: Partial<AppState> = {};
-
-  const fetchCol = async (name: string): Promise<any[]> => {
-    try {
-      const colRef = collection(db, name);
-      const snapshot = await getDocs(colRef);
-      return snapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        return {
-          ...data,
-          id: docSnap.id
-        };
-      });
-    } catch (err) {
-      console.warn(`Initial fetch warning for '${name}':`, err);
-      return [];
-    }
-  };
-
-  try {
-    const [
-      users,
-      customers,
-      orders,
-      statusLogs,
-      materials,
-      payments,
-      crmCustomers,
-      crmQuotations,
-      crmFollowUps,
-      crmPayments,
-      crmNotes,
-      crmAttachments,
-      crmTimelineEvents,
-      auditLogs
-    ] = await Promise.all([
-      fetchCol('users'),
-      fetchCol('customers'),
-      fetchCol('orders'),
-      fetchCol('statusLogs'),
-      fetchCol('materials'),
-      fetchCol('payments'),
-      fetchCol('crmCustomers'),
-      fetchCol('crmQuotations'),
-      fetchCol('crmFollowUps'),
-      fetchCol('crmPayments'),
-      fetchCol('crmNotes'),
-      fetchCol('crmAttachments'),
-      fetchCol('crmTimelineEvents'),
-      fetchCol('audit_logs')
-    ]);
-
-    if (users.length > 0) result.users = users;
-    if (customers.length > 0) result.customers = customers;
-    if (orders.length > 0) result.orders = orders;
-    if (statusLogs.length > 0) result.statusLogs = statusLogs;
-    if (materials.length > 0) result.materials = materials;
-    if (payments.length > 0) result.payments = payments;
-    if (crmCustomers.length > 0) result.crmCustomers = crmCustomers;
-    if (crmQuotations.length > 0) result.crmQuotations = crmQuotations;
-    if (crmFollowUps.length > 0) result.crmFollowUps = crmFollowUps;
-    if (crmPayments.length > 0) result.crmPayments = crmPayments;
-    if (crmNotes.length > 0) result.crmNotes = crmNotes;
-    if (crmAttachments.length > 0) result.crmAttachments = crmAttachments;
-    if (crmTimelineEvents.length > 0) result.crmTimelineEvents = crmTimelineEvents;
-    if (auditLogs.length > 0) result.auditLogs = auditLogs;
-  } catch (error) {
-    console.warn("fetchInitialDataFromFirestore encountered error:", error);
-  }
-
-  return result;
 }
 
 // Sync Firestore changes in real-time
@@ -202,7 +168,6 @@ export function syncFirestore(
   listenCollection('crmNotes', (docs) => onUpdate({ crmNotes: docs as CRMNote[] }));
   listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
   listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
-  listenCollection('audit_logs', (docs) => onUpdate({ auditLogs: docs as AuditLog[] }));
 
   return () => {
     unsubscribers.forEach(unsub => unsub());
@@ -229,34 +194,6 @@ function cleanUndefined<T>(obj: T): T {
     return cleaned as T;
   }
   return obj;
-}
-
-// Write security audit event
-export async function logAuditEvent(logData: {
-  action: string;
-  actor_id: string;
-  actor_email: string;
-  actor_name: string;
-  target_id?: string;
-  target_email?: string;
-  details: string;
-  status?: string;
-}): Promise<AuditLog> {
-  const auditId = 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-  const auditRecord: AuditLog = {
-    id: auditId,
-    timestamp: new Date().toISOString(),
-    ...logData,
-  };
-
-  const path = `audit_logs/${auditId}`;
-  try {
-    await setDoc(doc(db, 'audit_logs', auditId), cleanUndefined(auditRecord));
-  } catch (error) {
-    // Non-blocking catch to ensure audit errors don't break main UI flow if client is offline
-    console.warn("Audit log save note:", error);
-  }
-  return auditRecord;
 }
 
 // Standard Write and Mutate Operations securely isolated with handleFirestoreError

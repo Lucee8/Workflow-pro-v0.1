@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
+import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
 
 // Helper to generate UUIDs
 export function generateUUID(): string {
@@ -23,9 +23,9 @@ export const SEED_USERS: User[] = [
     role: 'admin',
     initials: 'AD',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Just now',
     created_at: '2026-06-02T18:22:29Z',
+    password: 'admin',
     google_linked: false,
   },
   {
@@ -35,9 +35,9 @@ export const SEED_USERS: User[] = [
     role: 'admin',
     initials: 'LC',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Just now',
     created_at: '2026-06-02T18:22:29Z',
+    password: 'admin',
     google_linked: true,
   },
   {
@@ -47,9 +47,9 @@ export const SEED_USERS: User[] = [
     role: 'manager',
     initials: 'YG',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'manager123',
     google_linked: true,
     phone: '9876543230',
   },
@@ -60,9 +60,9 @@ export const SEED_USERS: User[] = [
     role: 'manager',
     initials: 'SM',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'manager123',
     google_linked: true,
     phone: '9876543231',
   },
@@ -73,9 +73,9 @@ export const SEED_USERS: User[] = [
     role: 'wood_tab_manager',
     initials: 'WT',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'woodtab123',
     google_linked: true,
     phone: '9876543232',
   },
@@ -86,9 +86,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'RV',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'carpenter123',
     google_linked: false,
     phone: '9876543221',
   },
@@ -99,9 +99,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'IK',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'carpenter123',
     google_linked: false,
     phone: '9876543222',
   },
@@ -112,9 +112,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'VK',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'carpenter123',
     google_linked: false,
     phone: '9876543223',
   },
@@ -125,9 +125,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'DM',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'carpenter123',
     google_linked: false,
     phone: '9876543224',
   },
@@ -138,9 +138,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'DV',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'carpenter123',
     google_linked: false,
     phone: '9876543225',
   },
@@ -151,9 +151,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'SM',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'carpenter123',
     google_linked: false,
     phone: '9876543226',
   },
@@ -164,9 +164,9 @@ export const SEED_USERS: User[] = [
     role: 'polish_person',
     initials: 'PC',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'polish123',
     google_linked: false,
     phone: '9876543227',
   },
@@ -177,9 +177,9 @@ export const SEED_USERS: User[] = [
     role: 'polish_person',
     initials: 'SK',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'polish123',
     google_linked: false,
     phone: '9876543228',
   },
@@ -190,9 +190,9 @@ export const SEED_USERS: User[] = [
     role: 'qc_staff',
     initials: 'QC',
     is_active: true,
-    status: 'ACTIVE',
     last_seen: 'Just now',
     created_at: '2026-07-04T02:00:00Z',
+    password: 'qc123',
     google_linked: false,
     phone: '9876543229',
   }
@@ -235,7 +235,6 @@ export interface AppState {
   crmNotes: CRMNote[];
   crmAttachments: CRMAttachment[];
   crmTimelineEvents: CRMTimelineEvent[];
-  auditLogs: AuditLog[];
 }
 
 export function loadState(): AppState {
@@ -243,48 +242,104 @@ export function loadState(): AppState {
     const data = localStorage.getItem('bhise_workshop_tracker_db');
     if (data) {
       const parsed = JSON.parse(data);
-      if (parsed && typeof parsed === 'object') {
-        const existingUsers: User[] = Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : SEED_USERS;
-        const requiredUsers: User[] = [
-          SEED_USERS.find(u => u.email === 'yogesh@gmail.com')!,
-          SEED_USERS.find(u => u.email === 'suresh@gmail.com')!,
-          SEED_USERS.find(u => u.email === 'woodtab@gmail.com')!,
-        ].filter(Boolean);
+      if (parsed.users && parsed.orders && parsed.customers) {
+        // Detect old legacy mock records and purge them to force a clean start
+        const isDemo = parsed.users.some((u: any) => u.id === 'user_amit_gmail' || u.id === 'user_amit_prod' || u.name === 'Amit Sharma' || u.name === 'Bhavesh k' || u.name === 'Mahesh Verma' || u.id === 'user_sagar' || u.email === 'admin@bhises@gmail.com') ||
+                       parsed.orders.some((o: any) => o.id === 'order_1');
+        if (isDemo) {
+          localStorage.removeItem('bhise_workshop_tracker_db');
+          localStorage.removeItem('mrp_hardware_v2');
+          localStorage.removeItem('mrp_wood_v2');
+          localStorage.removeItem('mrp_consumption_logs');
+        } else {
+          // Fix any duplicate or out-of-series article_no in existing orders
+          if (Array.isArray(parsed.orders) && parsed.orders.length > 0) {
+            const seen = new Set<string>();
+            let maxSerialSeen = 0;
+            let hasOutlier = false;
 
-        requiredUsers.forEach(reqUser => {
-          const idx = existingUsers.findIndex(u => u.email.toLowerCase() === reqUser.email.toLowerCase());
-          if (idx === -1) {
-            existingUsers.push(reqUser);
+            parsed.orders.forEach((o: any) => {
+              if (o.article_no) {
+                const parts = o.article_no.split('/');
+                const num = parseInt(parts[parts.length - 1], 10);
+                if (!isNaN(num)) {
+                  if (num > maxSerialSeen) maxSerialSeen = num;
+                  if (num > parsed.orders.length + 5) hasOutlier = true;
+                }
+              }
+            });
+
+            // If there are duplicate article numbers, missing numbers, or outlier jump numbers (> count + 5), re-sequence chronologically
+            if (hasOutlier || parsed.orders.some((o: any) => !o.article_no || seen.has(o.article_no))) {
+              // Sort orders by created_at / order_date ascending to preserve historical sequence
+              const sortedOrders = [...parsed.orders].sort((a: any, b: any) => {
+                const dateA = new Date(a.created_at || a.order_date || 0).getTime();
+                const dateB = new Date(b.created_at || b.order_date || 0).getTime();
+                return dateA - dateB;
+              });
+
+              let serialCounter = 0;
+              parsed.orders = sortedOrders.map((o: any) => {
+                serialCounter++;
+                const parts = o.article_no ? o.article_no.split('/') : [];
+                let datePart = parts.length >= 2 ? `${parts[0]}/${parts[1]}` : '';
+                if (!datePart || datePart.length < 5) {
+                  const date = new Date(o.created_at || o.order_date || Date.now());
+                  const dd = String(date.getDate()).padStart(2, '0');
+                  const mm = String(date.getMonth() + 1).padStart(2, '0');
+                  datePart = `${dd}/${mm}`;
+                }
+                const carpenterPart = parts.length >= 3 ? parts[2] : 'XX';
+                const newArtNo = `${datePart}/${carpenterPart}/${String(serialCounter).padStart(4, '0')}`;
+                return { ...o, article_no: newArtNo };
+              });
+            }
           }
-        });
 
-        return {
-          users: existingUsers.map(u => ({
-            ...u,
-            status: u.status || (u.is_active ? 'ACTIVE' : 'INACTIVE'),
-          })),
-          customers: Array.isArray(parsed.customers) ? parsed.customers : [],
-          orders: Array.isArray(parsed.orders) ? parsed.orders : [],
-          statusLogs: Array.isArray(parsed.statusLogs) ? parsed.statusLogs : [],
-          materials: Array.isArray(parsed.materials) ? parsed.materials : [],
-          payments: Array.isArray(parsed.payments) ? parsed.payments : [],
-          currentUser: null,
-          crmCustomers: Array.isArray(parsed.crmCustomers) ? parsed.crmCustomers : [],
-          crmQuotations: Array.isArray(parsed.crmQuotations) ? parsed.crmQuotations : [],
-          crmFollowUps: Array.isArray(parsed.crmFollowUps) ? parsed.crmFollowUps : [],
-          crmPayments: Array.isArray(parsed.crmPayments) ? parsed.crmPayments : [],
-          crmNotes: Array.isArray(parsed.crmNotes) ? parsed.crmNotes : [],
-          crmAttachments: Array.isArray(parsed.crmAttachments) ? parsed.crmAttachments : [],
-          crmTimelineEvents: Array.isArray(parsed.crmTimelineEvents) ? parsed.crmTimelineEvents : [],
-          auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
-        };
+          // Ensure required manager and wood_tab_manager users exist
+          const existingUsers: User[] = Array.isArray(parsed.users) ? parsed.users : [];
+          const requiredUsers: User[] = [
+            SEED_USERS.find(u => u.email === 'yogesh@gmail.com')!,
+            SEED_USERS.find(u => u.email === 'suresh@gmail.com')!,
+            SEED_USERS.find(u => u.email === 'woodtab@gmail.com')!,
+          ].filter(Boolean);
+
+          requiredUsers.forEach(reqUser => {
+            const idx = existingUsers.findIndex(u => u.email.toLowerCase() === reqUser.email.toLowerCase());
+            if (idx === -1) {
+              existingUsers.push(reqUser);
+            } else {
+              // Ensure role and active status match requirements
+              existingUsers[idx] = {
+                ...existingUsers[idx],
+                role: reqUser.role,
+                is_active: true,
+                name: reqUser.name,
+              };
+            }
+          });
+
+          return {
+            ...parsed,
+            users: existingUsers,
+            payments: parsed.payments || [],
+            materials: parsed.materials || [],
+            crmCustomers: parsed.crmCustomers || [],
+            crmQuotations: parsed.crmQuotations || [],
+            crmFollowUps: parsed.crmFollowUps || [],
+            crmPayments: parsed.crmPayments || [],
+            crmNotes: parsed.crmNotes || [],
+            crmAttachments: parsed.crmAttachments || [],
+            crmTimelineEvents: parsed.crmTimelineEvents || [],
+          };
+        }
       }
     }
   } catch (error) {
     console.error('Failed reading localStorage database', error);
   }
 
-  // Fallback to initial data structure
+  // Fallback to seeded data
   const state: AppState = {
     users: SEED_USERS,
     customers: SEED_CUSTOMERS,
@@ -292,7 +347,7 @@ export function loadState(): AppState {
     statusLogs: SEED_LOGS,
     materials: SEED_MATERIALS,
     payments: SEED_PAYMENTS,
-    currentUser: null,
+    currentUser: SEED_USERS[0], // Start as Admin for convenience, login allows changes
     crmCustomers: [],
     crmQuotations: [],
     crmFollowUps: [],
@@ -300,7 +355,6 @@ export function loadState(): AppState {
     crmNotes: [],
     crmAttachments: [],
     crmTimelineEvents: [],
-    auditLogs: [],
   };
   saveState(state);
   return state;

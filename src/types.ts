@@ -5,20 +5,6 @@
 
 export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'carpenter' | 'polish_person' | 'qc_staff';
 
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOCKED';
-
-export interface AuditLog {
-  id: string;
-  timestamp: string;
-  action: string;
-  actor_id: string;
-  actor_email: string;
-  actor_name: string;
-  target_id?: string;
-  target_email?: string;
-  details: string;
-  status?: string;
-}
 export interface QCFailureInfo {
   stage: string;
   failed_by: string;
@@ -35,11 +21,11 @@ export interface User {
   role: UserRole;
   initials: string; // 2 Chars uppercase, e.g. "SG"
   is_active: boolean;
-  status?: UserStatus; // 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOCKED'
   last_seen?: string;
   created_at: string;
   created_by?: string;
   phone?: string;
+  password?: string; // Mapped password/passcode
   google_linked?: boolean; // If linked to Google single-sign-on
 }
 

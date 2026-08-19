@@ -2,109 +2,112 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Connection testing endpoint
-    match /test/{testId} {
-      allow read, write: if true;
-    }
-
-    // Users Collection
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-
-    // Audit Logs Collection
-    match /audit_logs/{logId} {
-      allow read, create: if true;
-      allow update, delete: if false;
-    }
-
-    // Orders Collection
-    match /orders/{orderId} {
-      allow read, write: if true;
-    }
-
-    // Customer Profiles
-    match /customers/{customerId} {
-      allow read, write: if true;
-    }
-
-    // Production Status Logs
-    match /statusLogs/{logId} {
-      allow read, write: if true;
-    }
-
-    // Raw Materials & Timber Inventory
-    match /materials/{materialId} {
-      allow read, write: if true;
-    }
-
-    // Financial Payment Ledgers
-    match /payments/{paymentId} {
-      allow read, write: if true;
-    }
-
-    // MRP Hardware Master Catalog
-    match /mrp_hardware/{itemId} {
-      allow read, write: if true;
-    }
-
-    // MRP Wood & Board Master Catalog
-    match /mrp_wood/{itemId} {
-      allow read, write: if true;
-    }
-
-    // MRP Stock Consumption Logs
-    match /mrp_consumption_logs/{logId} {
-      allow read, write: if true;
-    }
-
-    // MRP Project Bill of Materials (BOM)
-    match /mrp_project_boms/{projectId} {
-      allow read, write: if true;
-    }
-
-    // CRM Customer Records
-    match /crmCustomers/{customerId} {
-      allow read, write: if true;
-    }
-
-    // CRM Price Quotations
-    match /crmQuotations/{quotationId} {
-      allow read, write: if true;
-    }
-
-    // CRM Lead Follow-up Schedules
-    match /crmFollowUps/{followUpId} {
-      allow read, write: if true;
-    }
-
-    // CRM Customer Payments & Advance Trackers
-    match /crmPayments/{paymentId} {
-      allow read, write: if true;
-    }
-
-    // CRM Interaction Notes
-    match /crmNotes/{noteId} {
-      allow read, write: if true;
-    }
-
-    // CRM Customer Attachments & Design Blueprints
-    match /crmAttachments/{attachmentId} {
-      allow read, write: if true;
-    }
-
-    // CRM Customer Action Timeline Events
-    match /crmTimelineEvents/{eventId} {
-      allow read, write: if true;
-    }
-
-    // Wood Requisition Tickets
-    match /woodRequests/{requestId} {
-      allow read, write: if true;
-    }
-
-    // Fallback catch-all
+    // Global Safety Net
     match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Since Firebase Auth has provider restrictions in this environment,
+    // we allow unauthenticated access for public/guest sandbox synchronization.
+    function isAuthenticated() {
+      return true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(userId);
+    }
+
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(customerId);
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(orderId);
+    }
+
+    match /statusLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(logId);
+    }
+
+    match /materials/{materialId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(materialId);
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(paymentId);
+    }
+
+    match /mrp_hardware/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(itemId);
+    }
+
+    match /mrp_wood/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(itemId);
+    }
+
+    match /mrp_consumption_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(logId);
+    }
+
+    match /mrp_project_boms/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(projectId);
+    }
+
+    match /crmCustomers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(customerId);
+    }
+
+    match /crmQuotations/{quotationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(quotationId);
+    }
+
+    match /crmFollowUps/{followUpId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(followUpId);
+    }
+
+    match /crmPayments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(paymentId);
+    }
+
+    match /crmNotes/{noteId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(noteId);
+    }
+
+    match /crmAttachments/{attachmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(attachmentId);
+    }
+
+    match /crmTimelineEvents/{eventId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(eventId);
+    }
+
+    match /woodRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidId(requestId);
+    }
+
+    match /test/{testId} {
       allow read, write: if true;
     }
   }

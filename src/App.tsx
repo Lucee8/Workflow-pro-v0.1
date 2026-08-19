@@ -11,7 +11,6 @@ import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
   syncFirestore,
-  fetchInitialDataFromFirestore,
   saveOrderToFirebase,
   deleteOrderFromFirebase,
   fetchOrdersFromFirestore,
@@ -60,9 +59,7 @@ import CRMTab from './components/CRMTab';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
 import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
-import { hasPermission, getDefaultTabForRole, getRoleDisplayName, isAccountActive } from './permissions';
-import { auth } from './db/firebase';
-import { signOut } from 'firebase/auth';
+import { hasPermission, getDefaultTabForRole, getRoleDisplayName } from './permissions';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2, ShieldAlert } from 'lucide-react';
@@ -76,21 +73,8 @@ export default function App() {
   const [crmAction, setCrmAction] = React.useState<'add-customer' | 'new-quotation' | null>(null);
   const [workOrderDraft, setWorkOrderDraft] = React.useState<any>(null);
 
-  // Active user session with local cache recovery
-  const [currentUser, setCurrentUser] = React.useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('bhise_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.email && isAccountActive(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn("Could not load stored user session:", e);
-    }
-    return null;
-  });
+  // Active simulated user session (start as null to show login page by default)
+  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
 
   // Firebase connection and sync states
   const [firebaseConnected, setFirebaseConnected] = React.useState<boolean>(false);
@@ -102,68 +86,30 @@ export default function App() {
     let unsubscribe: (() => void) | null = null;
 
     async function initializeSync() {
-      try {
-        const authenticated = await authenticateFirebase();
-        if (authenticated) {
-          setFirebaseConnected(true);
+      const authenticated = await authenticateFirebase();
+      if (authenticated) {
+        setFirebaseConnected(true);
+        setFirebaseSeeding(true);
+        // Seed if first time setup (empty)
+        await seedFirestoreIfEmpty(db);
+        setFirebaseSeeding(false);
 
-          // Fast-fetch real Firestore data into memory immediately
-          const initialCloudData = await fetchInitialDataFromFirestore();
-          if (Object.keys(initialCloudData).length > 0) {
+        // Subscribes to snapshotted real-time database updates
+        unsubscribe = syncFirestore(
+          (updatedState) => {
             setDb((currentDb) => {
               const nextDb = {
                 ...currentDb,
-                ...initialCloudData,
+                ...updatedState,
               };
               saveState(nextDb);
               return nextDb;
             });
+          },
+          (error) => {
+            console.error("Firestore sync subscription error:", error);
           }
-
-          setFirebaseSeeding(true);
-          // Seed if first time setup (empty)
-          await seedFirestoreIfEmpty(db);
-          setFirebaseSeeding(false);
-
-          // Subscribes to snapshotted real-time database updates
-          unsubscribe = syncFirestore(
-            (updatedState) => {
-              setDb((currentDb) => {
-                const nextDb = {
-                  ...currentDb,
-                  ...updatedState,
-                };
-                saveState(nextDb);
-                return nextDb;
-              });
-
-              // Keep current user state synchronized with latest permissions/role
-              if (updatedState.users) {
-                setCurrentUser((activeUser) => {
-                  if (!activeUser) return null;
-                  const freshUser = updatedState.users?.find(
-                    (u) => u.email.toLowerCase() === activeUser.email.toLowerCase() || u.id === activeUser.id
-                  );
-                  if (freshUser) {
-                    if (!isAccountActive(freshUser)) {
-                      localStorage.removeItem('bhise_current_user');
-                      return null;
-                    }
-                    const synced = { ...activeUser, ...freshUser };
-                    localStorage.setItem('bhise_current_user', JSON.stringify(synced));
-                    return synced;
-                  }
-                  return activeUser;
-                });
-              }
-            },
-            (error) => {
-              console.warn("Firestore sync subscription notice:", error);
-            }
-          );
-        }
-      } catch (err) {
-        console.warn("Firestore sync initialization note:", err);
+        );
       }
     }
 
@@ -239,12 +185,8 @@ export default function App() {
     saveState(newDb);
   };
 
-  // Wire automatic login bypasses when role-swapping in HUD with status check
+  // Wire automatic login bypasses when role-swapping in HUD
   const handleHUDUserSwitch = (user: User) => {
-    if (!isAccountActive(user)) {
-      alert(`Access Denied: Account status for ${user.name} is ${user.status || 'INACTIVE'}. Only active accounts can sign in.`);
-      return;
-    }
     setCurrentUser(user);
     const defaultTab = getDefaultTabForRole(user.role);
     setCurrentTab(defaultTab);
@@ -296,19 +238,12 @@ export default function App() {
       console.error("Failed to update last_seen in Firestore:", err);
     });
 
-    localStorage.setItem('bhise_current_user', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser);
     const defaultTab = getDefaultTabForRole(matched.role);
     setCurrentTab(defaultTab);
   };
 
-  const handleLogout = async () => {
-    localStorage.removeItem('bhise_current_user');
-    try {
-      await signOut(auth);
-    } catch (e) {
-      console.warn("Sign out note:", e);
-    }
+  const handleLogout = () => {
     setCurrentUser(null);
     setCurrentTab('dashboard');
   };
@@ -1043,7 +978,6 @@ export default function App() {
             >
               <UsersTab
                 users={db.users}
-                auditLogs={db.auditLogs || []}
                 onAddUser={handleAddUser}
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}

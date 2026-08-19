@@ -9,7 +9,6 @@
         "name": { "type": "string", "description": "Display name of the artisan or manager" },
         "email": { "type": "string", "description": "Email address for login" },
         "role": { "type": "string", "enum": ["admin", "manager", "wood_tab_manager", "carpenter", "polish_person", "qc_staff"], "description": "System access control level" },
-        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "LOCKED"], "description": "Strict account authorization status" },
         "initials": { "type": "string", "description": "Uppercase abbreviation initials" },
         "is_active": { "type": "boolean", "description": "Active status of the workspace staff" },
         "last_seen": { "type": "string" },
@@ -319,34 +318,12 @@
         "operator": { "type": "string" }
       },
       "required": ["id", "customer_id", "type", "title", "description", "timestamp", "operator"]
-    },
-    "audit_log": {
-      "title": "AuditLog",
-      "description": "Security audit logs for authentication, access control denials, and sensitive management actions",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "action": { "type": "string" },
-        "actor_id": { "type": "string" },
-        "actor_email": { "type": "string" },
-        "actor_name": { "type": "string" },
-        "target_id": { "type": "string" },
-        "target_email": { "type": "string" },
-        "details": { "type": "string" },
-        "status": { "type": "string" }
-      },
-      "required": ["id", "timestamp", "action", "actor_id", "actor_email", "details"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "user",
       "description": "Internal staff roster directory"
-    },
-    "/audit_logs/{logId}": {
-      "schema": "audit_log",
-      "description": "Security audit ledger recording logins, access denials, user administration, and role/status changes"
     },
     "/customers/{customerId}": {
       "schema": "customer",
