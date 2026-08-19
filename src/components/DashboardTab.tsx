@@ -31,202 +31,6 @@ interface DashboardTabProps {
   onQuickCrmAction?: (action: 'add-customer' | 'new-quotation') => void;
 }
 
-// Helpers for robust order financial filtering
-export function isOrderDeleted(order: any): boolean {
-  if (!order) return true;
-  if (order.isDeleted === true || order.is_deleted === true || order.deleted === true) return true;
-  if (order.deletedAt !== undefined && order.deletedAt !== null && order.deletedAt !== '' && order.deletedAt !== false) return true;
-  if (order.is_archived === true || order.archived === true) return true;
-  
-  const s = String(order.status || '').trim().toLowerCase();
-  if (s === 'deleted' || s === 'cancelled' || s === 'canceled' || s === 'trash') return true;
-  
-  const cs = String(order.current_status || '').trim().toLowerCase();
-  if (cs === 'deleted' || cs === 'cancelled' || cs === 'canceled') return true;
-  
-  return false;
-}
-
-export function isOrderApproved(order: any): boolean {
-  if (!order) return false;
-  if (isOrderDeleted(order)) return false;
-
-  const rawStatus = String(order.status || '').trim().toUpperCase();
-  const rawOrderStatus = String(order.order_status || '').trim().toUpperCase();
-  const rawApprovalStatus = String(order.approval_status || '').trim().toUpperCase();
-
-  // Exclude explicit unapproved/rejected/draft/sent/expired/deleted statuses
-  const excludedStatuses = ['SENT', 'DRAFT', 'REJECTED', 'EXPIRED', 'PENDING', 'CANCELLED', 'CANCELED', 'DELETED', 'TRASH'];
-  if (
-    (rawStatus && excludedStatuses.includes(rawStatus)) ||
-    (rawOrderStatus && excludedStatuses.includes(rawOrderStatus)) ||
-    (rawApprovalStatus && excludedStatuses.includes(rawApprovalStatus))
-  ) {
-    return false;
-  }
-
-  // Include explicit approved status
-  if (rawStatus === 'APPROVED' || rawOrderStatus === 'APPROVED' || rawApprovalStatus === 'APPROVED') {
-    return true;
-  }
-
-  // Default active production workshop orders (where status was not explicitly specified as Draft/Sent/Rejected)
-  if (order.current_status) {
-    const cs = String(order.current_status).trim().toUpperCase();
-    if (['PENDING', 'DRAFT', 'REJECTED', 'CANCELLED', 'CANCELED', 'EXPIRED'].includes(cs)) {
-      return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
-export function isPaymentDeleted(payment: any): boolean {
-  if (!payment) return true;
-  if (payment.isDeleted === true || payment.is_deleted === true || payment.deleted === true) return true;
-  if (payment.deletedAt !== undefined && payment.deletedAt !== null && payment.deletedAt !== '' && payment.deletedAt !== false) return true;
-  const s = String(payment.status || '').trim().toLowerCase();
-  if (s === 'deleted' || s === 'cancelled' || s === 'canceled' || s === 'failed' || s === 'void') return true;
-  return false;
-}
-
-export function getQuotationAmount(q: any): number {
-  if (!q) return 0;
-  
-  const directCandidates = [
-    q.totalAmount,
-    q.total_amount,
-    q.grandTotal,
-    q.grand_total,
-    q.final_amount,
-    q.finalAmount,
-    q.total,
-    q.amount,
-  ];
-
-  for (const c of directCandidates) {
-    if (typeof c === 'number' && !isNaN(c) && c > 0) return c;
-    if (typeof c === 'string') {
-      const p = parseFloat(c.replace(/[^0-9.-]+/g, ''));
-      if (!isNaN(p) && p > 0) return p;
-    }
-  }
-
-  // Calculate from items if direct amount is not set
-  if (Array.isArray(q.items) && q.items.length > 0) {
-    let subtotal = 0;
-    q.items.forEach((it: any) => {
-      const uPrice = Number(it.unitPrice ?? it.unit_price ?? it.price ?? 0);
-      const qty = Number(it.quantity ?? it.qty ?? 1);
-      const disc = Number(it.discount ?? 0);
-      const lineTotal = uPrice * (qty > 0 ? qty : 1);
-      const discounted = disc > 0 ? lineTotal - (lineTotal * disc) / 100 : lineTotal;
-      subtotal += discounted;
-    });
-
-    const taxPercent = Number(q.tax ?? q.tax_percent ?? 0);
-    const taxAmount = taxPercent > 0 ? (subtotal * taxPercent) / 100 : 0;
-    const calcTotal = subtotal + taxAmount;
-    if (calcTotal > 0) return Math.round(calcTotal);
-  }
-
-  return 0;
-}
-
-export function getOrderGrandTotal(
-  order: any,
-  crmQuotations?: any[],
-  payments?: any[],
-  crmPayments?: any[]
-): number {
-  if (!order) return 0;
-  
-  // 1. Direct candidate fields on the order
-  const candidates = [
-    order.grandTotal,
-    order.grand_total,
-    order.total_amount,
-    order.totalAmount,
-    order.final_amount,
-    order.finalAmount,
-    order.total,
-    order.amount,
-    order.price,
-    order.estimated_value,
-    order.estimatedValue,
-    order.estimate_amount,
-    order.budget,
-  ];
-
-  for (const c of candidates) {
-    if (typeof c === 'number' && !isNaN(c) && c > 0) return c;
-    if (typeof c === 'string') {
-      const p = parseFloat(c.replace(/[^0-9.-]+/g, ''));
-      if (!isNaN(p) && p > 0) return p;
-    }
-  }
-
-  // 2. If order has items array (e.g. multi-item order or converted quotation items)
-  if (Array.isArray(order.items) && order.items.length > 0) {
-    const itemsSum = order.items.reduce((sum: number, it: any) => {
-      const price = Number(it.unitPrice ?? it.unit_price ?? it.price ?? it.amount ?? it.total ?? 0);
-      const qty = Number(it.quantity ?? it.qty ?? it.no_of_units ?? 1);
-      return sum + (price * (qty > 0 ? qty : 1));
-    }, 0);
-    if (itemsSum > 0) return itemsSum;
-  }
-
-  // 3. If unit_price * no_of_units
-  const unitPrice = Number(order.unit_price ?? order.unitPrice ?? 0);
-  const units = Number(order.no_of_units ?? order.quantity ?? 1);
-  if (unitPrice > 0) {
-    return unitPrice * (units > 0 ? units : 1);
-  }
-
-  // 4. Linked Quotation lookup
-  if (crmQuotations && crmQuotations.length > 0) {
-    const quoteId = order.quotation_id || order.quotationId || (order.special_notes ? order.special_notes.match(/CRM-QT-[\w-]+|QT-[\w-]+/)?.[0] : null);
-    if (quoteId) {
-      const q = crmQuotations.find((item: any) => item.id === quoteId);
-      if (q) {
-        const qVal = getQuotationAmount(q);
-        if (qVal > 0) return qVal;
-      }
-    }
-  }
-
-  // 5. Linked Payment lookup
-  if (crmPayments && crmPayments.length > 0) {
-    const cp = crmPayments.find((p: any) => p.order_id === order.id || (order.parent_order_id && p.order_id === order.parent_order_id));
-    if (cp && typeof cp.total_amount === 'number' && cp.total_amount > 0) {
-      return cp.total_amount;
-    }
-  }
-
-  if (payments && payments.length > 0) {
-    const p = payments.find((pay: any) => pay.order_id === order.id || (order.parent_order_id && pay.order_id === order.parent_order_id));
-    if (p && typeof p.total_amount === 'number' && p.total_amount > 0) {
-      return p.total_amount;
-    }
-  }
-
-  return 0;
-}
-
-export function getOrderAmountReceived(order: any): number {
-  if (!order) return 0;
-  const val = order.amountReceived ?? order.amount_received ?? order.received_amount ?? order.receivedAmount ?? order.advance_paid ?? order.advancePaid ?? order.advance ?? order.paid_amount;
-  if (typeof val === 'number' && !isNaN(val)) {
-    return Math.max(0, val);
-  }
-  if (typeof val === 'string') {
-    const parsed = parseFloat(val);
-    if (!isNaN(parsed)) return Math.max(0, parsed);
-  }
-  return 0;
-}
-
 export default function DashboardTab({
   orders,
   users,
@@ -238,9 +42,9 @@ export default function DashboardTab({
   onNavigateTab,
   onQuickCrmAction,
 }: DashboardTabProps) {
-  // Date Range Filter State - defaults to 'all' to show all active approved records unless user selects a specific range
+  // Date Range Filter State
   type DateRangePreset = 'today' | '7days' | '30days' | '4months' | 'currentmonth' | 'all' | 'custom';
-  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('all');
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('currentmonth');
   const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -349,44 +153,12 @@ export default function DashboardTab({
     [datePreset, customStartDate, customEndDate]
   );
 
-  // Exact same database records shown in the quotation list with status APPROVED
-  const approvedQuotations = React.useMemo(() => {
-    return (crmQuotations || []).filter((q) => {
-      if (!q) return false;
-      if ((q as any).deleted || (q as any).is_deleted || (q as any).isDeleted) return false;
-      if (!q.customer_name?.trim() && (!q.items || q.items.length === 0) && !q.id?.trim()) return false;
-      const st = String(q.status || '').trim().toUpperCase();
-      return st === 'APPROVED';
-    });
-  }, [crmQuotations]);
-
-  // Date-filtered approved quotation/order records
-  const filteredApprovedQuotations = React.useMemo(() => {
-    return approvedQuotations.filter((q) => isDateInBounds(q.created_at || (q as any).date || q.validUntil, startMs, endMs));
-  }, [approvedQuotations, startMs, endMs]);
-
-  // Valid, non-deleted orders (ignoring soft-deleted or deleted records)
-  const nonDeletedOrders = React.useMemo(() => {
-    return orders.filter((o) => !isOrderDeleted(o));
-  }, [orders]);
-
-  // Approved, non-deleted orders
-  const approvedOrders = React.useMemo(() => {
-    return orders.filter((o) => isOrderApproved(o) && !isOrderDeleted(o));
-  }, [orders]);
-
-  // Date-filtered approved orders
-  const filteredApprovedOrders = React.useMemo(() => {
-    return approvedOrders.filter((o) => isDateInBounds(o.order_date || o.created_at || (o as any).date, startMs, endMs));
-  }, [approvedOrders, startMs, endMs]);
-
-  // Date-filtered non-deleted orders for operational pipeline views
   const filteredOrders = React.useMemo(() => {
-    return nonDeletedOrders.filter((o) => isDateInBounds(o.order_date || o.created_at || (o as any).date, startMs, endMs));
-  }, [nonDeletedOrders, startMs, endMs]);
+    return orders.filter((o) => isDateInBounds(o.created_at || (o as any).date, startMs, endMs));
+  }, [orders, startMs, endMs]);
 
   const filteredPayments = React.useMemo(() => {
-    return payments.filter((p) => !isPaymentDeleted(p) && isDateInBounds(p.payment_date || p.created_at, startMs, endMs));
+    return payments.filter((p) => isDateInBounds(p.payment_date || p.created_at, startMs, endMs));
   }, [payments, startMs, endMs]);
 
   const filteredCrmQuotations = React.useMemo(() => {
@@ -394,69 +166,181 @@ export default function DashboardTab({
   }, [crmQuotations, startMs, endMs]);
 
   const filteredCrmPayments = React.useMemo(() => {
-    return (crmPayments || []).filter((cp) => !isPaymentDeleted(cp) && isDateInBounds(cp.payment_date || (cp as any).date || (cp as any).created_at, startMs, endMs));
+    return (crmPayments || []).filter((cp) => isDateInBounds(cp.payment_date || (cp as any).date || (cp as any).created_at, startMs, endMs));
   }, [crmPayments, startMs, endMs]);
 
-  // Financial calculation strictly from active, non-deleted records where status is APPROVED
+  // 1. Group orders by Invoice / Parent Order key (to enforce order-level payment rule)
+  const invoiceGroups = React.useMemo<Record<string, Order[]>>(() => {
+    const groups: Record<string, Order[]> = {};
+    filteredOrders.forEach((o) => {
+      const groupKey = o.parent_order_id || o.id;
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(o);
+    });
+    return groups;
+  }, [filteredOrders]);
+
+  // 2. Financial calculation strictly adhering to ORDER-LEVEL payments & comprehensive payment resolution
   const { totalFurnitureBusiness, moneyReceived, moneyDue, finalizedOrdersCount } = React.useMemo(() => {
     let totalBusiness = 0;
     let totalReceived = 0;
-    let totalDue = 0;
 
-    const validPayments = (payments || []).filter((p) => !isPaymentDeleted(p));
-    const validCrmPayments = (crmPayments || []).filter((cp) => !isPaymentDeleted(cp));
+    const matchedPaymentIds = new Set<string>();
+    const matchedCrmPaymentIds = new Set<string>();
 
-    filteredApprovedQuotations.forEach((q) => {
-      const qAmount = getQuotationAmount(q);
+    // Helper to normalize strings for comparison
+    const norm = (s?: string) => (s ? String(s).trim().toLowerCase() : '');
 
-      // Lookup matching payments for this approved record
+    // Process all invoice order groups
+    Object.entries(invoiceGroups).forEach(([invoiceKey, groupOrders]: [string, Order[]]) => {
+      // Build lookup identifiers: IDs, parent IDs, article numbers, and customer IDs
       const relatedIds = new Set<string>();
-      if (q.id) {
-        relatedIds.add(q.id);
-        relatedIds.add(q.id.toLowerCase().trim());
-      }
-      if (q.customer_id) {
-        relatedIds.add(q.customer_id);
-      }
+      relatedIds.add(invoiceKey);
+      relatedIds.add(norm(invoiceKey));
 
-      const matchingPayments = validPayments.filter((p) => {
+      groupOrders.forEach((o) => {
+        if (o.id) {
+          relatedIds.add(o.id);
+          relatedIds.add(norm(o.id));
+        }
+        if (o.parent_order_id) {
+          relatedIds.add(o.parent_order_id);
+          relatedIds.add(norm(o.parent_order_id));
+        }
+        if (o.article_no) {
+          relatedIds.add(o.article_no);
+          relatedIds.add(norm(o.article_no));
+        }
+      });
+
+      // Find all matching workshop payment records
+      const matchingPayments = (filteredPayments || []).filter((p) => {
         if (!p || !p.order_id) return false;
-        return relatedIds.has(p.order_id) || relatedIds.has(p.order_id.toLowerCase().trim());
+        return relatedIds.has(p.order_id) || relatedIds.has(norm(p.order_id));
       });
 
-      const matchingCrmPayments = validCrmPayments.filter((cp) => {
-        if (!cp || !cp.order_id) return false;
-        return relatedIds.has(cp.order_id) || relatedIds.has(cp.order_id.toLowerCase().trim());
+      matchingPayments.forEach((p) => {
+        if (p.id) matchedPaymentIds.add(p.id);
       });
+
+      // Find all matching CRM payment records
+      const matchingCrmPayments = (filteredCrmPayments || []).filter((cp) => {
+        if (!cp) return false;
+        if (cp.order_id && (relatedIds.has(cp.order_id) || relatedIds.has(norm(cp.order_id)))) {
+          return true;
+        }
+        return false;
+      });
+
+      matchingCrmPayments.forEach((cp) => {
+        if (cp.id) matchedCrmPaymentIds.add(cp.id);
+      });
+
+      // Calculate invoice grand total
+      let invoiceTotal = 0;
+      const explicitTotalFromPayment = matchingPayments.find((p) => typeof p.total_amount === 'number' && p.total_amount > 0)?.total_amount;
+      const explicitTotalFromCrm = matchingCrmPayments.find((cp) => typeof cp.total_amount === 'number' && cp.total_amount > 0)?.total_amount;
+
+      if (explicitTotalFromPayment) {
+        invoiceTotal = explicitTotalFromPayment;
+      } else if (explicitTotalFromCrm) {
+        invoiceTotal = explicitTotalFromCrm;
+      } else {
+        // Sum total_amount of each product in the invoice
+        invoiceTotal = groupOrders.reduce((sum, ord) => {
+          if (ord.total_amount !== undefined && ord.total_amount !== null && Number(ord.total_amount) > 0) {
+            return sum + Number(ord.total_amount);
+          }
+          const qty = ord.no_of_units || 1;
+          const fallbackFinalRate = 15000;
+          return sum + fallbackFinalRate * qty;
+        }, 0);
+      }
+
+      // Calculate invoice received amount across all payment sources for this order
+      let invoiceReceived = 0;
 
       const paymentSum = matchingPayments.reduce((acc, p) => {
-        const val = Number(p.advance_paid) || Number((p as any).amount) || Number((p as any).amountReceived) || 0;
+        const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
         return acc + Math.max(0, val);
       }, 0);
 
       const crmPaymentSum = matchingCrmPayments.reduce((acc, cp) => {
-        const val = Number(cp.advance_paid) || Number((cp as any).amount) || Number((cp as any).amountReceived) || 0;
+        const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
         return acc + Math.max(0, val);
       }, 0);
 
-      const directAdvance = Number((q as any).advance_paid || 0);
+      const directOrderAdvanceSum = groupOrders.reduce((acc, o) => {
+        const adv = Number(o.advance_paid) || Number((o as any).advance) || Number((o as any).received_amount) || Number((o as any).advancePaid) || 0;
+        return acc + Math.max(0, adv);
+      }, 0);
 
-      let qReceived = 0;
       if (paymentSum > 0 || crmPaymentSum > 0) {
-        qReceived = Math.max(paymentSum, crmPaymentSum);
-      } else if (directAdvance > 0) {
-        qReceived = directAdvance;
+        // Use highest or sum of formal payment records
+        invoiceReceived = Math.max(paymentSum, crmPaymentSum);
+      } else if (directOrderAdvanceSum > 0) {
+        invoiceReceived = directOrderAdvanceSum;
       }
-      qReceived = Math.min(qAmount, Math.max(0, qReceived));
 
-      const qDue = Math.max(0, qAmount - qReceived);
+      // Cap received amount at invoice total unless overpaid
+      invoiceReceived = Math.max(0, invoiceReceived);
 
-      totalBusiness += qAmount;
-      totalReceived += qReceived;
-      totalDue += qDue;
+      totalBusiness += invoiceTotal;
+      totalReceived += invoiceReceived;
     });
 
-    const finalizedCount = filteredApprovedQuotations.length;
+    // Check for any standalone workshop payments not tied to the order IDs
+    (filteredPayments || []).forEach((p) => {
+      if (p && p.id && !matchedPaymentIds.has(p.id)) {
+        const val = Number(p.advance_paid) || Number((p as any).amount) || 0;
+        if (val > 0) {
+          totalReceived += val;
+          const pTotal = Number(p.total_amount) || 0;
+          if (pTotal > val) {
+            totalBusiness += pTotal;
+          } else {
+            totalBusiness += val;
+          }
+        }
+      }
+    });
+
+    // Check for any standalone CRM payments not tied to the order IDs
+    (filteredCrmPayments || []).forEach((cp) => {
+      if (cp && cp.id && !matchedCrmPaymentIds.has(cp.id)) {
+        const val = Number(cp.advance_paid) || Number((cp as any).amount) || 0;
+        if (val > 0) {
+          totalReceived += val;
+          const cpTotal = Number(cp.total_amount) || 0;
+          if (cpTotal > val) {
+            totalBusiness += cpTotal;
+          } else {
+            totalBusiness += val;
+          }
+        }
+      }
+    });
+
+    // Include any approved CRM quotations that have advance received
+    (filteredCrmQuotations || []).forEach((q) => {
+      const qReceived = Number(q.received_amount) || Number((q as any).receivedAmount) || 0;
+      if (qReceived > 0) {
+        // Check if this quotation was already converted to an order or tracked
+        const isMatchedToOrder = filteredOrders.some(
+          (o) => o.id === q.id || (o.special_notes && o.special_notes.includes(q.id))
+        );
+        if (!isMatchedToOrder) {
+          totalReceived += qReceived;
+          const qTotal = Number(q.totalAmount) || qReceived;
+          totalBusiness += Math.max(qTotal, qReceived);
+        }
+      }
+    });
+
+    const totalDue = Math.max(0, totalBusiness - totalReceived);
+    const finalizedCount = filteredOrders.length;
 
     return {
       totalFurnitureBusiness: totalBusiness,
@@ -464,17 +348,17 @@ export default function DashboardTab({
       moneyDue: totalDue,
       finalizedOrdersCount: finalizedCount,
     };
-  }, [filteredApprovedQuotations, payments, crmPayments]);
+  }, [invoiceGroups, filteredOrders, filteredPayments, filteredCrmPayments, filteredCrmQuotations]);
 
-  // 3. Ongoing in factory: Count of APPROVED orders whose current stage is not 'Pending'
+  // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
-    return filteredApprovedOrders.filter((o) => {
+    return filteredOrders.filter((o) => {
       const stage = normalizeStage(o.current_status);
       return stage !== 'Pending';
     }).length;
-  }, [filteredApprovedOrders]);
+  }, [filteredOrders]);
 
-  // 4. Quotation Pipeline breakdown & conversion rate (Unchanged: Quotation pipeline retains all quotation statuses)
+  // 4. Quotation Pipeline breakdown & conversion rate
   const quotationStats = React.useMemo(() => {
     const quotes = filteredCrmQuotations || [];
     const total = quotes.length;
@@ -511,9 +395,9 @@ export default function DashboardTab({
     };
   }, [filteredCrmQuotations]);
 
-  // 5. Production stages counts (Strictly APPROVED orders)
+  // 5. Production stages counts
   const getStageCount = (stage: OrderStage) =>
-    filteredApprovedOrders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
+    filteredOrders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
 
   const productionStages: {
     name: OrderStage;
@@ -534,14 +418,14 @@ export default function DashboardTab({
     { name: 'Dispatched', label: 'DISPATCHED', count: getStageCount('Dispatched'), badgeBg: 'bg-[#059669]', activeText: 'text-emerald-700' },
   ];
 
-  // 6. Upcoming Deliveries (Strictly APPROVED orders, sorted by delivery date ascending)
+  // 6. Upcoming Deliveries (sorted by delivery date ascending)
   const upcomingDeliveries = React.useMemo(() => {
-    const list = filteredApprovedOrders.length > 0 ? filteredApprovedOrders : approvedOrders;
+    const list = filteredOrders.length > 0 ? filteredOrders : orders;
     return [...list]
       .filter((o) => !['Dispatched'].includes(normalizeStage(o.current_status)))
       .sort((a, b) => new Date(a.delivery_date || '').getTime() - new Date(b.delivery_date || '').getTime())
       .slice(0, 3);
-  }, [filteredApprovedOrders, approvedOrders]);
+  }, [filteredOrders, orders]);
 
   // Currency formatters
   const formatINR = (val: number) => '₹' + val.toLocaleString('en-IN');
@@ -1120,7 +1004,7 @@ export default function DashboardTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {[...(filteredApprovedOrders.length > 0 ? filteredApprovedOrders : approvedOrders)]
+                  {[...(filteredOrders.length > 0 ? filteredOrders : orders)]
                     .sort(compareOrdersByArticleSerialDesc)
                     .slice(0, 4)
                     .map((ord) => {

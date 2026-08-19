@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { User } from '../types';
-import { Shield, Hammer, Sparkles, RefreshCw, CheckSquare } from 'lucide-react';
+import { Shield, Hammer, Sparkles, RefreshCw, CheckSquare, Briefcase, Trees } from 'lucide-react';
 
 interface SimulationHUDProps {
   users: User[];
@@ -38,11 +38,13 @@ export default function SimulationHUD({
           {currentUser ? (
             <div className="flex items-center gap-1.5 bg-stone-800 px-2 py-0.5 rounded border border-stone-700">
               {currentUser.role === 'admin' && <Shield size={12} className="text-rose-400 shrink-0" />}
+              {currentUser.role === 'manager' && <Briefcase size={12} className="text-indigo-400 shrink-0" />}
+              {currentUser.role === 'wood_tab_manager' && <Trees size={12} className="text-amber-400 shrink-0" />}
               {currentUser.role === 'carpenter' && <Hammer size={12} className="text-amber-400 shrink-0" />}
               {currentUser.role === 'polish_person' && <Sparkles size={12} className="text-teal-400 shrink-0" />}
               {currentUser.role === 'qc_staff' && <CheckSquare size={12} className="text-purple-400 shrink-0" />}
               <span className="font-semibold text-stone-200 text-[11px]">
-                Logged in as <strong className="text-white">{currentUser.name}</strong> ({currentUser.role.replace('_', ' ').toUpperCase()})
+                Logged in as <strong className="text-white">{currentUser.name}</strong> ({currentUser.role.replace(/_/g, ' ').toUpperCase()})
               </span>
             </div>
           ) : (
@@ -62,6 +64,8 @@ export default function SimulationHUD({
                 let colorClass = 'text-stone-400 hover:bg-stone-800 hover:text-white border border-transparent';
                 if (isActive) {
                   if (u.role === 'admin') colorClass = 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold';
+                  else if (u.role === 'manager') colorClass = 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold';
+                  else if (u.role === 'wood_tab_manager') colorClass = 'bg-orange-500/20 text-orange-300 border border-orange-500/30 font-bold';
                   else if (u.role === 'carpenter') colorClass = 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold';
                   else if (u.role === 'qc_staff') colorClass = 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold';
                   else colorClass = 'bg-teal-500/20 text-teal-300 border border-teal-500/30 font-bold';

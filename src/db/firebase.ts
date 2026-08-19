@@ -16,21 +16,15 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Use custom database ID in the platform environment but fallback to default database ID when run locally 
-const databaseId = firebaseConfig.projectId === "adroit-acronym-78gvj" 
-  ? firebaseConfig.firestoreDatabaseId 
-  : (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.startsWith("ai-studio-") ? firebaseConfig.firestoreDatabaseId : undefined);
-
+// Your project only has the (default) Firestore database — no custom database ID needed
 function getOrInitFirestore() {
+  const settings = {
+    experimentalAutoDetectLongPolling: true,
+  };
   try {
-    const settings = {
-      experimentalAutoDetectLongPolling: true,
-    };
-    return databaseId 
-      ? initializeFirestore(app, settings, databaseId) 
-      : initializeFirestore(app, settings);
+    return initializeFirestore(app, settings);
   } catch {
-    return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+    return getFirestore(app);
   }
 }
 

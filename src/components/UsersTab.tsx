@@ -64,7 +64,7 @@ export default function UsersTab({ users, onAddUser, onUpdateUser, onDeleteUser,
   const totalUsers = users.length;
   const activeUsersCount = users.filter((u) => u.is_active).length;
   const inactiveUsersCount = users.filter((u) => !u.is_active).length;
-  const rolesCount = 3; // admin, carpenter, polish_person
+  const rolesCount = new Set(users.map((u) => u.role)).size;
 
   // Filter lists
   const filteredUsers = users.filter((user) => {
@@ -72,7 +72,7 @@ export default function UsersTab({ users, onAddUser, onUpdateUser, onDeleteUser,
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesRole = roleFilter === 'All Roles' || user.role === roleFilter.toLowerCase().replace(' ', '_');
+    const matchesRole = roleFilter === 'All Roles' || user.role === roleFilter;
 
     let matchesStatus = true;
     if (statusFilter !== 'All Statuses') {
@@ -240,12 +240,14 @@ export default function UsersTab({ users, onAddUser, onUpdateUser, onDeleteUser,
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:border-[#593622] transition shrink-0 min-w-[125px]"
+            className="px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:border-[#593622] transition shrink-0 min-w-[140px]"
           >
-            <option>All Roles</option>
-            <option>Admin</option>
-            <option>Carpenter</option>
-            <option>Polish Person</option>
+            <option value="All Roles">All Roles</option>
+            <option value="admin">Administrator</option>
+            <option value="manager">Manager</option>
+            <option value="wood_tab_manager">Wood Tab Manager</option>
+            <option value="carpenter">Carpenter</option>
+            <option value="polish_person">Polish Person</option>
           </select>
 
           <select
@@ -299,12 +301,16 @@ export default function UsersTab({ users, onAddUser, onUpdateUser, onDeleteUser,
                       className={`px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wider ${
                         user.role === 'admin'
                           ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : user.role === 'manager'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : user.role === 'wood_tab_manager'
+                          ? 'bg-orange-50 text-orange-800 border-orange-200'
                           : user.role === 'carpenter'
                           ? 'bg-amber-50 text-amber-800 border-amber-250'
                           : 'bg-teal-50 text-teal-800 border-teal-200'
                       }`}
                     >
-                      {user.role.replace('_', ' ')}
+                      {user.role.replace(/_/g, ' ')}
                     </span>
                   </td>
                   <td className="py-3.5 px-4 font-mono font-bold text-stone-800 text-center">{user.initials}</td>
@@ -425,6 +431,8 @@ export default function UsersTab({ users, onAddUser, onUpdateUser, onDeleteUser,
                     className="w-full p-2.5 bg-stone-50 border border-stone-250 focus:outline-none rounded-xl font-bold text-stone-700"
                   >
                     <option value="admin">Administrator</option>
+                    <option value="manager">Manager</option>
+                    <option value="wood_tab_manager">Wood Tab Manager</option>
                     <option value="carpenter">Carpenter</option>
                     <option value="polish_person">Polish Person</option>
                   </select>

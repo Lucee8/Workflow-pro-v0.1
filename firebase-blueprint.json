@@ -8,7 +8,7 @@
         "id": { "type": "string", "description": "Auth UID and unique internal key" },
         "name": { "type": "string", "description": "Display name of the artisan or manager" },
         "email": { "type": "string", "description": "Email address for login" },
-        "role": { "type": "string", "enum": ["admin", "carpenter", "polish_person"], "description": "System access control level" },
+        "role": { "type": "string", "enum": ["admin", "manager", "wood_tab_manager", "carpenter", "polish_person", "qc_staff"], "description": "System access control level" },
         "initials": { "type": "string", "description": "Uppercase abbreviation initials" },
         "is_active": { "type": "boolean", "description": "Active status of the workspace staff" },
         "last_seen": { "type": "string" },

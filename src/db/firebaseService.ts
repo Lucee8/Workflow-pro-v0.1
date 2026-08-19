@@ -65,7 +65,8 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
       } else {
         if (name === 'users') {
           const batch = writeBatch(db);
-          let deletedAny = false;
+          let modified = false;
+          const existingEmails = new Set<string>();
           snapshot.docs.forEach((d) => {
             const userData = d.data();
             if (
@@ -76,11 +77,21 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
               userData.name === 'Mahesh Verma'
             ) {
               batch.delete(d.ref);
-              deletedAny = true;
-            }
+              modified = true;
+            } else if (userData.email) {
+              existingEmails.add(userData.email.toLowerCase());            }
           });
-          if (deletedAny) {
-            console.log("Deleting old legacy users from Firestore...");
+
+          // Ensure required manager and wood tab manager users are in Firestore
+          for (const item of items) {
+            if (item.email && !existingEmails.has(item.email.toLowerCase())) {
+              batch.set(doc(db, 'users', item.id), cleanUndefined(item));
+              modified = true;
+            }
+          }
+
+          if (modified) {
+            console.log("Updating users in Firestore...");
             await batch.commit();
           }
         }

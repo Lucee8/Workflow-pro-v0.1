@@ -15,7 +15,7 @@ export function generateUUID(): string {
 }
 
 /// Initial Seed Users
-const SEED_USERS: User[] = [
+export const SEED_USERS: User[] = [
   {
     id: 'user_admin',
     name: 'Admin Manager',
@@ -39,6 +39,45 @@ const SEED_USERS: User[] = [
     created_at: '2026-06-02T18:22:29Z',
     password: 'admin',
     google_linked: true,
+  },
+    {
+    id: 'user_yogesh_mgr',
+    name: 'Yogesh',
+    email: 'yogesh@gmail.com',
+    role: 'manager',
+    initials: 'YG',
+    is_active: true,
+    last_seen: 'Never active yet',
+    created_at: '2026-07-04T02:00:00Z',
+    password: 'manager123',
+    google_linked: true,
+    phone: '9876543230',
+  },
+  {
+    id: 'user_suresh_mgr',
+    name: 'Suresh',
+    email: 'suresh@gmail.com',
+    role: 'manager',
+    initials: 'SM',
+    is_active: true,
+    last_seen: 'Never active yet',
+    created_at: '2026-07-04T02:00:00Z',
+    password: 'manager123',
+    google_linked: true,
+    phone: '9876543231',
+  },
+  {
+    id: 'user_woodtab_mgr',
+    name: 'Wood Tab Manager',
+    email: 'woodtab@gmail.com',
+    role: 'wood_tab_manager',
+    initials: 'WT',
+    is_active: true,
+    last_seen: 'Never active yet',
+    created_at: '2026-07-04T02:00:00Z',
+    password: 'woodtab123',
+    google_linked: true,
+    phone: '9876543232',
   },
   {
     id: 'user_rinku_v_prod',
@@ -257,8 +296,32 @@ export function loadState(): AppState {
             }
           }
 
+          // Ensure required manager and wood_tab_manager users exist
+          const existingUsers: User[] = Array.isArray(parsed.users) ? parsed.users : [];
+          const requiredUsers: User[] = [
+            SEED_USERS.find(u => u.email === 'yogesh@gmail.com')!,
+            SEED_USERS.find(u => u.email === 'suresh@gmail.com')!,
+            SEED_USERS.find(u => u.email === 'woodtab@gmail.com')!,
+          ].filter(Boolean);
+
+          requiredUsers.forEach(reqUser => {
+            const idx = existingUsers.findIndex(u => u.email.toLowerCase() === reqUser.email.toLowerCase());
+            if (idx === -1) {
+              existingUsers.push(reqUser);
+            } else {
+              // Ensure role and active status match requirements
+              existingUsers[idx] = {
+                ...existingUsers[idx],
+                role: reqUser.role,
+                is_active: true,
+                name: reqUser.name,
+              };
+            }
+          });
+
           return {
             ...parsed,
+            users: existingUsers,
             payments: parsed.payments || [],
             materials: parsed.materials || [],
             crmCustomers: parsed.crmCustomers || [],

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'carpenter' | 'polish_person' | 'qc_staff';
+export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'carpenter' | 'polish_person' | 'qc_staff';
 
 export interface QCFailureInfo {
   stage: string;

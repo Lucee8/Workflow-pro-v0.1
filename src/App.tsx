@@ -59,9 +59,10 @@ import CRMTab from './components/CRMTab';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
 import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
+import { hasPermission, getDefaultTabForRole, getRoleDisplayName } from './permissions.ts';
 
 // Utility icons
-import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2 } from 'lucide-react';
+import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   // Database store loader state (with local cache load)
@@ -121,18 +122,62 @@ export default function App() {
     };
   }, []);
 
-  // Handle direct url access for /carpenter-reports
+  // Handle direct url access with centralized RBAC route protection
   React.useEffect(() => {
     const handlePathname = () => {
-      const path = window.location.pathname;
-      if (path === '/carpenter-reports') {
-        setCurrentTab('carpenter-reports');
+      const rawPath = window.location.pathname.replace(/^\//, '').toLowerCase().replace(/[-_]/g, '');
+      if (!rawPath) return;
+
+      const tabMap: Record<string, string> = {
+        carpenterreports: 'carpenter-reports',
+        carpenterreport: 'carpenter-reports',
+        orders: 'orders',
+        detailorderform: 'detail_order_form',
+        detailorder: 'detail_order_form',
+        woodmanagement: 'wood_management',
+        wood: 'wood_management',
+        mrp: 'mrp',
+        users: 'users',
+        settings: 'settings',
+        crm: 'crm',
+        customers: 'customers',
+        createorder: 'create_order',
+        calendar: 'calendar',
+        dashboard: 'dashboard',
+        myorders: 'my_orders',
+        profile: 'profile',
+      };
+
+      const targetTab = tabMap[rawPath];
+      if (targetTab) {
+        if (currentUser) {
+          if (hasPermission(currentUser.role, targetTab)) {
+            setCurrentTab(targetTab);
+          } else {
+            console.warn(`Direct URL access to ${targetTab} blocked for role ${currentUser.role}`);
+            setCurrentTab(getDefaultTabForRole(currentUser.role));
+          }
+        } else {
+          setCurrentTab(targetTab);
+        }
       }
     };
     handlePathname();
     window.addEventListener('popstate', handlePathname);
     return () => window.removeEventListener('popstate', handlePathname);
-  }, []);
+  }, [currentUser]);
+
+  // Enforce route-level and tab-level access control on any state change
+  React.useEffect(() => {
+    if (currentUser) {
+      if (!hasPermission(currentUser.role, currentTab)) {
+        console.warn(`Unauthorized tab access '${currentTab}' for role '${currentUser.role}'. Enforcing redirect.`);
+        const defaultTab = getDefaultTabForRole(currentUser.role);
+        setCurrentTab(defaultTab);
+        setSelectedOrderId(null);
+      }
+    }
+  }, [currentUser, currentTab]);
 
   // Save database shifts on mutations
   const updateDbState = (newDb: AppState) => {
@@ -143,12 +188,8 @@ export default function App() {
   // Wire automatic login bypasses when role-swapping in HUD
   const handleHUDUserSwitch = (user: User) => {
     setCurrentUser(user);
-    // Automatically navigate to correct tab
-    if (user.role === 'admin') {
-      setCurrentTab('dashboard');
-    } else {
-      setCurrentTab('my_orders');
-    }
+    const defaultTab = getDefaultTabForRole(user.role);
+    setCurrentTab(defaultTab);
     setSelectedOrderId(null);
   };
 
@@ -198,11 +239,8 @@ export default function App() {
     });
 
     setCurrentUser(updatedUser);
-    if (matched.role === 'admin') {
-      setCurrentTab('dashboard');
-    } else {
-      setCurrentTab('my_orders');
-    }
+    const defaultTab = getDefaultTabForRole(matched.role);
+    setCurrentTab(defaultTab);
   };
 
   const handleLogout = () => {
@@ -766,7 +804,7 @@ export default function App() {
           )}
 
           {/* TAB: DASHBOARD VIEW (Admin Only) */}
-          {currentTab === 'dashboard' && isAdmin && (
+          {currentTab === 'dashboard' && hasPermission(currentUser.role, 'dashboard') && (
             <motion.div
               key="dashboard"
               initial={{ opacity: 0, y: 15 }}
@@ -790,8 +828,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: CRM MODULE TAB (Admin & Manager Only) */}
-          {currentTab === 'crm' && (isAdmin || isManager) && (
+          {/* TAB: CRM MODULE TAB (Admin Only) */}
+          {currentTab === 'crm' && hasPermission(currentUser.role, 'crm') && (
             <motion.div
               key="crm"
               initial={{ opacity: 0, y: 15 }}
@@ -826,8 +864,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: ORDERS DIRECTORY LISTINGS (Admin Only) */}
-          {currentTab === 'orders' && isAdmin && (
+          {/* TAB: ORDERS DIRECTORY LISTINGS (Admin & Manager) */}
+          {currentTab === 'orders' && hasPermission(currentUser.role, 'orders') && (
             <motion.div
               key="orders"
               initial={{ opacity: 0, y: 15 }}
@@ -849,7 +887,7 @@ export default function App() {
           )}
 
           {/* TAB: CUSTOMER PROFILES PIPELINES & HISTORY (Admin Only) */}
-          {currentTab === 'customers' && isAdmin && (
+          {currentTab === 'customers' && hasPermission(currentUser.role, 'customers') && (
             <motion.div
               key="customers"
               initial={{ opacity: 0, y: 15 }}
@@ -870,9 +908,8 @@ export default function App() {
               />
             </motion.div>
           )}
-
-          {/* TAB: WOOD MANAGEMENT REQUIREMENT REQUESTS (Admin / Manager) */}
-          {currentTab === 'wood_management' && (isAdmin || isManager) && (
+          {/* TAB: WOOD MANAGEMENT REQUIREMENT REQUESTS (Admin & Wood Tab Manager) */}
+          {currentTab === 'wood_management' && hasPermission(currentUser.role, 'wood_management') && (
             <motion.div
               key="wood_management"
               initial={{ opacity: 0, y: 15 }}
@@ -888,7 +925,7 @@ export default function App() {
           )}
 
           {/* TAB: CREATE NEW CUSTOM SERIAL ORDER (Wizard Form, Admin Only) */}
-          {currentTab === 'create_order' && isAdmin && (
+          {currentTab === 'create_order' && hasPermission(currentUser.role, 'create_order') && (
             <motion.div
               key="create_order"
               initial={{ opacity: 0, y: 15 }}
@@ -914,7 +951,7 @@ export default function App() {
           )}
 
           {/* TAB: CALENDAR DEADLINES TRACKING (Admin Only) */}
-          {currentTab === 'calendar' && isAdmin && (
+          {currentTab === 'calendar' && hasPermission(currentUser.role, 'calendar') && (
             <motion.div
               key="calendar"
               initial={{ opacity: 0, y: 15 }}
@@ -931,7 +968,7 @@ export default function App() {
           )}
 
           {/* TAB: TEAM MEMBERS DIRECTORY ROSTERS (Admin Only) */}
-          {currentTab === 'users' && isAdmin && (
+          {currentTab === 'users' && hasPermission(currentUser.role, 'users') && (
             <motion.div
               key="users"
               initial={{ opacity: 0, y: 15 }}
@@ -948,8 +985,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: CARPENTER REPORTS VIEW (Admin / Manager Only) */}
-          {currentTab === 'carpenter-reports' && (isAdmin || isManager) && (
+          {/* TAB: CARPENTER REPORTS VIEW (Admin & Manager) */}
+          {currentTab === 'carpenter-reports' && hasPermission(currentUser.role, 'carpenter-reports') && (
             <motion.div
               key="carpenter-reports"
               initial={{ opacity: 0, y: 15 }}
@@ -962,7 +999,7 @@ export default function App() {
           )}
 
           {/* TAB: SETTINGS & PARAMETERS (Simulated, Admin Only) */}
-          {currentTab === 'settings' && isAdmin && (
+          {currentTab === 'settings' && hasPermission(currentUser.role, 'settings') && (
             <motion.div
               key="settings"
               initial={{ opacity: 0, y: 15 }}
@@ -1012,8 +1049,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: DETAIL ORDER FORM (Admin Only) */}
-          {currentTab === 'detail_order_form' && isAdmin && (
+          {/* TAB: DETAIL ORDER FORM (Admin & Manager) */}
+          {currentTab === 'detail_order_form' && hasPermission(currentUser.role, 'detail_order_form') && (
             <motion.div
               key="detail_order_form"
               initial={{ opacity: 0, y: 15 }}
@@ -1039,7 +1076,7 @@ export default function App() {
           )}
 
           {/* TAB: MATERIAL REQUIREMENT PLANNING (MRP) (Admin Only) */}
-          {currentTab === 'mrp' && isAdmin && (
+          {currentTab === 'mrp' && hasPermission(currentUser.role, 'mrp') && (
             <motion.div
               key="mrp"
               initial={{ opacity: 0, y: 15 }}
@@ -1055,8 +1092,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: WORKER ASSIGNED WORKBENCH (Carpenter or Polish Person Only) */}
-          {currentTab === 'my_orders' && !isAdmin && (
+          {/* TAB: WORKER ASSIGNED WORKBENCH (Carpenter, Polish Person, QC Staff) */}
+          {currentTab === 'my_orders' && hasPermission(currentUser.role, 'my_orders') && (
             <motion.div
               key="my_orders"
               initial={{ opacity: 0, y: 15 }}
@@ -1073,8 +1110,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: PROFILE PAGE (Carpenter Profile Dashboard) */}
-          {currentTab === 'profile' && (
+          {/* TAB: PROFILE PAGE (Carpenter / Worker Profile Dashboard) */}
+          {currentTab === 'profile' && hasPermission(currentUser.role, 'profile') && (
             <motion.div
               key="profile"
               initial={{ opacity: 0, y: 15 }}
@@ -1099,8 +1136,8 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* SUB-VIEW TAB (Admin Only / Deep view): FULL SPEC SHEET & DETAILS */}
-          {currentTab === 'order_details' && selectedOrderId && (
+          {/* SUB-VIEW TAB: FULL SPEC SHEET & DETAILS */}
+          {currentTab === 'order_details' && selectedOrderId && hasPermission(currentUser.role, 'order_details') && (
             <motion.div
               key="order_details"
               initial={{ opacity: 0, y: 15 }}
@@ -1116,12 +1153,38 @@ export default function App() {
                 payments={db.payments}
                 onBack={() => {
                   setSelectedOrderId(null);
-                  setCurrentTab(isAdmin ? 'orders' : 'my_orders');
+                  setCurrentTab(getDefaultTabForRole(currentUser.role));
                 }}
                 onUpdateOrder={handleUpdateOrder}
                 onAddPayment={handleAddPayment}
                 currentUser={currentUser}
               />
+            </motion.div>
+          )}
+
+          {/* FALLBACK / ACCESS DENIED SCREEN */}
+          {!hasPermission(currentUser.role, currentTab) && currentTab !== 'order_details' && (
+            <motion.div
+              key="access_denied"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-2xl border border-rose-200 p-8 text-center space-y-4 max-w-lg mx-auto my-12 shadow-sm"
+            >
+              <div className="h-14 w-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-100">
+                <ShieldAlert size={28} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-stone-900 font-display">Access Restricted</h3>
+                <p className="text-stone-500 text-xs mt-1">
+                  Your role (<strong className="text-stone-800 uppercase">{getRoleDisplayName(currentUser.role)}</strong>) does not have permission to access the requested module.
+                </p>
+              </div>
+              <button
+                onClick={() => setCurrentTab(getDefaultTabForRole(currentUser.role))}
+                className="bg-[#593622] hover:bg-[#402414] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow transition cursor-pointer"
+              >
+                Go to Authorized Workspace
+              </button>
             </motion.div>
           )}
 

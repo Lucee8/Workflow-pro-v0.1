@@ -71,7 +71,7 @@ import {
   Printer,
   Download,
   Share2,
-  Image,
+  Image as ImageIcon,
   QrCode,
   FileSignature,
   Package,
@@ -2616,7 +2616,10 @@ export default function CRMTab({
                           <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                             {selectedCustQuotes.length > 0 ? (
                               selectedCustQuotes.map(q => {
-                                const qImages = (q.items || []).flatMap(i => i.images || []).filter(Boolean);
+                                const qImages = (q.items || [])
+                                  .flatMap(i => i.images || [])
+                                  .map((img) => typeof img === 'string' ? img : (img?.url || ''))
+                                  .filter((url): url is string => Boolean(url));
                                 return (
                                   <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                     <div>
@@ -3570,7 +3573,7 @@ export default function CRMTab({
                           <div className="space-y-2 pt-2 border-t border-stone-200/80">
                             <div className="flex items-center justify-between">
                               <label className="font-bold text-stone-700 text-xs flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
-                                <Image size={14} className="text-[#593622]" /> Upload Product Photos
+                                <ImageIcon size={14} className="text-[#593622]" /> Upload Product Photos
                               </label>
                               <span className="text-[10px] text-stone-500 font-bold">
                                 {item.images && item.images.length > 0
@@ -4965,7 +4968,7 @@ export default function CRMTab({
           >
             <div className="w-full flex items-center justify-between p-2.5 border-b border-stone-800">
               <span className="text-xs font-bold font-mono text-stone-300 flex items-center gap-2">
-                <Image size={14} className="text-amber-400" />
+                <ImageIcon size={14} className="text-amber-400" />
                 Quotation Product Photo Inspection
               </span>
               <div className="flex items-center gap-2">

@@ -4,6 +4,7 @@
  */
 
 import { User } from '../types';
+import { hasPermission, getRoleDisplayName } from '../permissions.ts';
 import logoImg from '../assets/images/logo.png';
 import { motion } from 'motion/react';
 import {
@@ -39,6 +40,23 @@ interface SidebarProps {
   notificationsCount?: number;
 }
 
+const ALL_NAV_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'crm', label: 'CRM', icon: Contact },
+  { id: 'orders', label: 'Orders', icon: ClipboardList },
+  { id: 'customers', label: 'Customers', icon: Contact },
+  { id: 'wood_management', label: 'Wood Management', icon: Trees },
+  { id: 'create_order', label: 'Work Order', icon: HardHat },
+  { id: 'calendar', label: 'Calendar', icon: Calendar },
+  { id: 'users', label: 'Users', icon: Users },
+  { id: 'carpenter-reports', label: 'Carpenter Reports', icon: LineChart },
+  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'detail_order_form', label: 'Detail Order Form', icon: FileText },
+  { id: 'mrp', label: 'Material Planning (MRP)', icon: Boxes },
+  { id: 'my_orders', label: 'My Orders', icon: ClipboardList },
+  { id: 'profile', label: 'Profile', icon: Users },
+];
+
 export default function Sidebar({
   currentUser,
   currentTab,
@@ -50,7 +68,6 @@ export default function Sidebar({
   const [confirmLogout, setConfirmLogout] = React.useState(false);
   const [switcherExpanded, setSwitcherExpanded] = React.useState(true);
   const isAdmin = currentUser.role === 'admin';
-  const isManager = currentUser.role === 'manager';
 
   // Auto-reset logout confirmation banner after 3.5 seconds
   React.useEffect(() => {
@@ -60,26 +77,16 @@ export default function Sidebar({
     }
   }, [confirmLogout]);
 
-  // Define nav links per role
-  const navItems = (isAdmin || isManager)
-    ? [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'crm', label: 'CRM', icon: Contact },
-        { id: 'orders', label: 'Orders', icon: ClipboardList },
-        { id: 'customers', label: 'Customers', icon: Contact },
-        { id: 'wood_management', label: 'Wood Management', icon: Trees },
-        { id: 'create_order', label: 'Work Order', icon: HardHat },
-        { id: 'calendar', label: 'Calendar', icon: Calendar },
-        { id: 'users', label: 'Users', icon: Users },
-        { id: 'carpenter-reports', label: 'Carpenter Reports', icon: LineChart },
-        { id: 'settings', label: 'Settings', icon: Settings },
-        { id: 'detail_order_form', label: 'Detail Order Form', icon: FileText },
-        { id: 'mrp', label: 'Material Planning (MRP)', icon: Boxes },
-      ]
-    : [
-        { id: 'my_orders', label: 'My Orders', icon: ClipboardList },
-        { id: 'profile', label: 'Profile', icon: Users },
-      ];
+  // Dynamically filter navigation links based on centralized RBAC permissions
+  const navItems = ALL_NAV_ITEMS.filter((item) => {
+    // For workers (carpenter, polish_person, qc_staff), show their worker items
+    if (['carpenter', 'polish_person', 'qc_staff'].includes(currentUser.role)) {
+      return ['my_orders', 'profile'].includes(item.id);
+    }
+    // For admin, manager, wood_tab_manager, filter by permission
+    if (item.id === 'my_orders' || item.id === 'profile') return false;
+    return hasPermission(currentUser.role, item.id);
+  });
 
   const handleLinkClick = (tabId: string) => {
     onTabChange(tabId);
@@ -159,8 +166,8 @@ export default function Sidebar({
               <span className="font-bold text-stone-100 text-xs block truncate">
                 {currentUser.name} {currentUser.id === 'user_admin' ? '(You)' : ''}
               </span>
-              <span className="text-[10px] text-stone-400 font-medium block uppercase tracking-wider">
-                {currentUser.role.replace('_', ' ')}
+              <span className="text-[10px] text-amber-400/90 font-bold block uppercase tracking-wider">
+                {getRoleDisplayName(currentUser.role)}
               </span>
             </div>
           </div>
