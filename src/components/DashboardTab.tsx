@@ -44,7 +44,7 @@ export default function DashboardTab({
 }: DashboardTabProps) {
   // Date Range Filter State
   type DateRangePreset = 'today' | '7days' | '30days' | '4months' | 'currentmonth' | 'all' | 'custom';
-  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('currentmonth');
+  const [datePreset, setDatePreset] = React.useState<DateRangePreset>('all');
   const [customStartDate, setCustomStartDate] = React.useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -154,15 +154,15 @@ export default function DashboardTab({
   );
 
   const filteredOrders = React.useMemo(() => {
-    return orders.filter((o) => isDateInBounds(o.created_at || (o as any).date, startMs, endMs));
+    return orders.filter((o) => isDateInBounds(o.order_date || o.created_at || (o as any).date || (o as any).createdAt, startMs, endMs));
   }, [orders, startMs, endMs]);
 
   const filteredPayments = React.useMemo(() => {
-    return payments.filter((p) => isDateInBounds(p.payment_date || p.created_at, startMs, endMs));
+    return payments.filter((p) => isDateInBounds(p.payment_date || p.created_at || (p as any).date, startMs, endMs));
   }, [payments, startMs, endMs]);
 
   const filteredCrmQuotations = React.useMemo(() => {
-    return (crmQuotations || []).filter((q) => isDateInBounds(q.created_at || (q as any).date, startMs, endMs));
+    return (crmQuotations || []).filter((q) => isDateInBounds(q.created_at || (q as any).date || (q as any).validUntil, startMs, endMs));
   }, [crmQuotations, startMs, endMs]);
 
   const filteredCrmPayments = React.useMemo(() => {

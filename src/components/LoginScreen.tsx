@@ -69,7 +69,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
       
       // Strict verification against authorized management database
       const matched = users.find(
-        (u) => u.email.trim().toLowerCase() === emailLower || u.id === `user_${googleUser.uid}`
+        (u) => u.email.trim().toLowerCase() === emailLower || u.id === `user_${googleUser.uid}` || (u as any).google_uid === googleUser.uid
       );
 
       // 1. Check if user exists in pre-approved database
@@ -113,7 +113,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
         return;
       }
 
-      // 3. User is valid and active! Update last_seen and google_linked if needed
+      // 3. User is valid and active! Update last_seen and google_linked
       const updatedUser: User = {
         ...matched,
         google_linked: true,
@@ -220,7 +220,32 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
       return;
     }
 
-    // Fast, instant authorization for authorized management personnel
+    // If password provided, attempt Firebase Email/Password auth check
+    if (password && password.trim()) {
+      try {
+        await signInWithEmailAndPassword(auth, emailLower, password);
+      } catch (authErr: any) {
+        const errCode = authErr?.code || '';
+        if (errCode === 'auth/wrong-password' || errCode === 'auth/invalid-credential' || errCode === 'auth/invalid-login-credentials') {
+          logAuditEvent({
+            action: 'ACCESS_DENIED_WRONG_PASSWORD',
+            actor_id: matched.id,
+            actor_email: matched.email,
+            actor_name: matched.name,
+            details: `Failed sign-in: Incorrect password for ${matched.email}`,
+            status: 'DENIED',
+          }).catch(console.warn);
+
+          setIsAccessDenied(true);
+          setErrorMessage('Invalid password for this registered management account. Please re-enter your password or click "Forgot Password" to receive a reset link.');
+          setIsSubmitting(false);
+          return;
+        }
+        console.warn("Firebase Auth email sign-in note:", errCode || authErr?.message);
+      }
+    }
+
+    // Fast authorization for authorized management personnel
     try {
       const updatedUser: User = {
         ...matched,

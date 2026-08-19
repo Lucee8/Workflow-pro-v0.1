@@ -11,6 +11,7 @@ import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
   syncFirestore,
+  fetchInitialDataFromFirestore,
   saveOrderToFirebase,
   deleteOrderFromFirebase,
   fetchOrdersFromFirestore,
@@ -75,8 +76,21 @@ export default function App() {
   const [crmAction, setCrmAction] = React.useState<'add-customer' | 'new-quotation' | null>(null);
   const [workOrderDraft, setWorkOrderDraft] = React.useState<any>(null);
 
-  // Active simulated user session (start as null to show login page by default)
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  // Active user session with local cache recovery
+  const [currentUser, setCurrentUser] = React.useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('bhise_current_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email && isAccountActive(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load stored user session:", e);
+    }
+    return null;
+  });
 
   // Firebase connection and sync states
   const [firebaseConnected, setFirebaseConnected] = React.useState<boolean>(false);
@@ -88,30 +102,68 @@ export default function App() {
     let unsubscribe: (() => void) | null = null;
 
     async function initializeSync() {
-      const authenticated = await authenticateFirebase();
-      if (authenticated) {
-        setFirebaseConnected(true);
-        setFirebaseSeeding(true);
-        // Seed if first time setup (empty)
-        await seedFirestoreIfEmpty(db);
-        setFirebaseSeeding(false);
+      try {
+        const authenticated = await authenticateFirebase();
+        if (authenticated) {
+          setFirebaseConnected(true);
 
-        // Subscribes to snapshotted real-time database updates
-        unsubscribe = syncFirestore(
-          (updatedState) => {
+          // Fast-fetch real Firestore data into memory immediately
+          const initialCloudData = await fetchInitialDataFromFirestore();
+          if (Object.keys(initialCloudData).length > 0) {
             setDb((currentDb) => {
               const nextDb = {
                 ...currentDb,
-                ...updatedState,
+                ...initialCloudData,
               };
               saveState(nextDb);
               return nextDb;
             });
-          },
-          (error) => {
-            console.warn("Firestore sync subscription notice:", error);
           }
-        );
+
+          setFirebaseSeeding(true);
+          // Seed if first time setup (empty)
+          await seedFirestoreIfEmpty(db);
+          setFirebaseSeeding(false);
+
+          // Subscribes to snapshotted real-time database updates
+          unsubscribe = syncFirestore(
+            (updatedState) => {
+              setDb((currentDb) => {
+                const nextDb = {
+                  ...currentDb,
+                  ...updatedState,
+                };
+                saveState(nextDb);
+                return nextDb;
+              });
+
+              // Keep current user state synchronized with latest permissions/role
+              if (updatedState.users) {
+                setCurrentUser((activeUser) => {
+                  if (!activeUser) return null;
+                  const freshUser = updatedState.users?.find(
+                    (u) => u.email.toLowerCase() === activeUser.email.toLowerCase() || u.id === activeUser.id
+                  );
+                  if (freshUser) {
+                    if (!isAccountActive(freshUser)) {
+                      localStorage.removeItem('bhise_current_user');
+                      return null;
+                    }
+                    const synced = { ...activeUser, ...freshUser };
+                    localStorage.setItem('bhise_current_user', JSON.stringify(synced));
+                    return synced;
+                  }
+                  return activeUser;
+                });
+              }
+            },
+            (error) => {
+              console.warn("Firestore sync subscription notice:", error);
+            }
+          );
+        }
+      } catch (err) {
+        console.warn("Firestore sync initialization note:", err);
       }
     }
 
@@ -244,12 +296,14 @@ export default function App() {
       console.error("Failed to update last_seen in Firestore:", err);
     });
 
+    localStorage.setItem('bhise_current_user', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser);
     const defaultTab = getDefaultTabForRole(matched.role);
     setCurrentTab(defaultTab);
   };
 
   const handleLogout = async () => {
+    localStorage.removeItem('bhise_current_user');
     try {
       await signOut(auth);
     } catch (e) {
