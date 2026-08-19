@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/UPI QR code.jpeg';
-import signatureImg from '../assets/images/Authorized Signatory.png';
+import upiQrImg from '../assets/images/upi_qr.png';
+import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
@@ -71,7 +71,7 @@ import {
   Printer,
   Download,
   Share2,
-  Image as ImageIcon,
+  Image,
   QrCode,
   FileSignature,
   Package,
@@ -723,8 +723,8 @@ export default function CRMTab({
 
     if (time === null || isNaN(time)) return false;
 
-    if (startMs != null && time < startMs) return false;
-    if (endMs != null && time > endMs) return false;
+    if (startMs !== null && time < startMs) return false;
+    if (endMs !== null && time > endMs) return false;
     return true;
   };
 
@@ -2616,10 +2616,7 @@ export default function CRMTab({
                           <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                             {selectedCustQuotes.length > 0 ? (
                               selectedCustQuotes.map(q => {
-                                const qImages = (q.items || [])
-                                  .flatMap(i => i.images || [])
-                                  .map((img) => typeof img === 'string' ? img : (img?.url || ''))
-                                  .filter((url): url is string => Boolean(url));
+                                const qImages = (q.items || []).flatMap(i => i.images || []).filter(Boolean);
                                 return (
                                   <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                     <div>
@@ -3573,7 +3570,7 @@ export default function CRMTab({
                           <div className="space-y-2 pt-2 border-t border-stone-200/80">
                             <div className="flex items-center justify-between">
                               <label className="font-bold text-stone-700 text-xs flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
-                                <ImageIcon size={14} className="text-[#593622]" /> Upload Product Photos
+                                <Image size={14} className="text-[#593622]" /> Upload Product Photos
                               </label>
                               <span className="text-[10px] text-stone-500 font-bold">
                                 {item.images && item.images.length > 0
@@ -4968,7 +4965,7 @@ export default function CRMTab({
           >
             <div className="w-full flex items-center justify-between p-2.5 border-b border-stone-800">
               <span className="text-xs font-bold font-mono text-stone-300 flex items-center gap-2">
-                <ImageIcon size={14} className="text-amber-400" />
+                <Image size={14} className="text-amber-400" />
                 Quotation Product Photo Inspection
               </span>
               <div className="flex items-center gap-2">
