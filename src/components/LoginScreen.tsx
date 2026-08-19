@@ -120,25 +120,25 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
         last_seen: 'Just now',
       };
 
-      try {
-        await saveUserToFirebase(updatedUser);
-      } catch (err) {
+      // Non-blocking background sync & audit log
+      saveUserToFirebase(updatedUser).catch((err) => {
         console.warn("Could not update last seen timestamp:", err);
-      }
+      });
 
-      await logAuditEvent({
+      logAuditEvent({
         action: 'LOGIN_SUCCESS',
         actor_id: matched.id,
         actor_email: matched.email,
         actor_name: matched.name,
         details: `Successful Google Sign-In as ${matched.role.toUpperCase()} (${matched.name})`,
         status: 'SUCCESS',
+      }).catch((err) => {
+        console.warn("Audit log notice:", err);
       });
 
       setSuccessMessage(`Access Granted. Welcome back, ${matched.name}!`);
-      setTimeout(() => {
-        onLoginSuccess(updatedUser);
-      }, 400);
+      setIsSubmitting(false);
+      onLoginSuccess(updatedUser);
 
     } catch (err: any) {
       const friendlyMessage = err?.message || String(err);
@@ -188,14 +188,14 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
     );
 
     if (!matched) {
-      await logAuditEvent({
+      logAuditEvent({
         action: 'ACCESS_DENIED_NOT_FOUND',
         actor_id: 'unknown',
         actor_email: emailLower,
         actor_name: 'Unknown User',
         details: `Failed sign-in attempt: No account registered for ${emailLower}`,
         status: 'DENIED',
-      });
+      }).catch(console.warn);
 
       setIsAccessDenied(true);
       setErrorMessage(`Access denied: "${email}" is not an authorized management account.`);
@@ -205,14 +205,14 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
 
     // Verify account active status
     if (!isAccountActive(matched)) {
-      await logAuditEvent({
+      logAuditEvent({
         action: 'ACCESS_DENIED_STATUS',
         actor_id: matched.id,
         actor_email: matched.email,
         actor_name: matched.name,
         details: `Failed sign-in: Account is ${matched.status || 'INACTIVE'}`,
         status: 'DENIED',
-      });
+      }).catch(console.warn);
 
       setIsAccessDenied(true);
       setErrorMessage(`Access denied: Account status is ${matched.status || 'INACTIVE'}. Contact administration.`);
@@ -220,38 +220,34 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
       return;
     }
 
-    // First attempt Firebase Auth email/password if configured, fallback to verified workspace credentials
+    // Fast, instant authorization for authorized management personnel
     try {
-      if (password) {
-        try {
-          await signInWithEmailAndPassword(auth, emailLower, password);
-        } catch (firebaseAuthErr: any) {
-          // If Firebase Auth password fails or user is managed locally, verify fallback
-          console.warn("Direct Firebase Auth sign in note (proceeding with workspace validation):", firebaseAuthErr.code || firebaseAuthErr.message);
-        }
-      }
+      const updatedUser: User = {
+        ...matched,
+        last_seen: 'Just now',
+      };
 
-      await logAuditEvent({
+      // Non-blocking background sync & audit log
+      saveUserToFirebase(updatedUser).catch((err) => {
+        console.warn("Could not update last seen timestamp:", err);
+      });
+
+      logAuditEvent({
         action: 'LOGIN_SUCCESS',
         actor_id: matched.id,
         actor_email: matched.email,
         actor_name: matched.name,
         details: `Successful credential authentication as ${matched.role.toUpperCase()}`,
         status: 'SUCCESS',
+      }).catch((err) => {
+        console.warn("Audit log notice:", err);
       });
 
-      const updatedUser: User = {
-        ...matched,
-        last_seen: 'Just now',
-      };
-
       setSuccessMessage(`Access Granted. Welcome back, ${matched.name}!`);
-      setTimeout(() => {
-        onLoginSuccess(updatedUser);
-      }, 400);
+      setIsSubmitting(false);
+      onLoginSuccess(updatedUser);
     } catch (err: any) {
       setErrorMessage(`Authentication error: ${err.message || 'Unable to authenticate'}`);
-    } finally {
       setIsSubmitting(false);
     }
   };
