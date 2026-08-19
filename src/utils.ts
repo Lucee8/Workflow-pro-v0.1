@@ -229,3 +229,78 @@ export function generateNewOrderNo(
   return `${prefix}${sss}`;
 }
 
+/**
+ * Safely scales and compresses an image (File or base64 data URL) into a web-optimized JPEG data URL
+ * that stays well under Firestore's 1MB document size limit (typically 30KB - 100KB).
+ */
+export function compressImage(
+  input: File | string,
+  maxWidth = 800,
+  maxHeight = 800,
+  quality = 0.65
+): Promise<string> {
+  return new Promise((resolve) => {
+    const processDataUrl = (dataUrl: string) => {
+      if (!dataUrl) {
+        resolve('');
+        return;
+      }
+
+      // Non-image string or non-data URL
+      if (typeof dataUrl === 'string' && !dataUrl.startsWith('data:image/') && !dataUrl.startsWith('blob:')) {
+        resolve(dataUrl);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width || 800;
+        let height = img.height || 600;
+
+        // Scale down dimensions if greater than maxWidth or maxHeight
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          let compressed = canvas.toDataURL('image/jpeg', quality);
+
+          // If still large (>300KB base64 string length ~400,000 chars), compress further to quality 0.45
+          if (compressed.length > 400000) {
+            compressed = canvas.toDataURL('image/jpeg', 0.45);
+          }
+          resolve(compressed);
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    };
+
+    if (input instanceof File) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        processDataUrl((e.target?.result as string) || '');
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(input);
+    } else {
+      processDataUrl(input);
+    }
+  });
+}
+

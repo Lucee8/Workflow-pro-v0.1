@@ -293,6 +293,11 @@ export interface CRMCustomer {
   created_by: string;
 }
 
+export interface CRMQuotationPhoto {
+  url: string;
+  description?: string;
+}
+
 export interface CRMQuotationItem {
   id: string;
   furnitureItem: string;
@@ -303,7 +308,7 @@ export interface CRMQuotationItem {
   discount?: number; // amount or percentage
   gst?: number; // percentage
   totalAmount?: number;
-  images?: string[]; // Array of base64/URL image sources
+  images?: (string | CRMQuotationPhoto)[]; // Array of image URLs or photo objects with descriptions
 }
 
 export interface CRMQuotation {
