@@ -181,8 +181,16 @@ export default function App() {
 
   // Save database shifts on mutations
   const updateDbState = (newDb: AppState) => {
-    setDb(newDb);
-    saveState(newDb);
+    const changedKeys = (Object.keys(newDb) as Array<keyof AppState>).filter((key) => newDb[key] !== db[key]);
+
+    setDb((currentDb) => {
+      const mergedDb = { ...currentDb };
+      changedKeys.forEach((key) => {
+        (mergedDb as any)[key] = newDb[key];
+      });
+      saveState(mergedDb);
+      return mergedDb;
+    });
   };
 
   // Wire automatic login bypasses when role-swapping in HUD
@@ -608,11 +616,15 @@ export default function App() {
   };
 
   const handleSaveCRMTimelineEvent = (item: CRMTimelineEvent) => {
-    const exists = db.crmTimelineEvents.some(e => e.id === item.id);
-    const updated = exists
-      ? db.crmTimelineEvents.map(e => e.id === item.id ? item : e)
-      : [item, ...db.crmTimelineEvents];
-    updateDbState({ ...db, crmTimelineEvents: updated });
+    setDb((currentDb) => {
+      const exists = currentDb.crmTimelineEvents.some(e => e.id === item.id);
+      const updated = exists
+        ? currentDb.crmTimelineEvents.map(e => e.id === item.id ? item : e)
+        : [item, ...currentDb.crmTimelineEvents];
+      const nextDb = { ...currentDb, crmTimelineEvents: updated };
+      saveState(nextDb);
+      return nextDb;
+    });
     saveCRMTimelineEventToFirebase(item);
   };
 

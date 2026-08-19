@@ -134,7 +134,7 @@ interface CRMTabProps {
   onSaveCRMAttachment: (attachment: CRMAttachment) => void;
   onDeleteCRMAttachment: (id: string) => void;
   onSaveCRMTimelineEvent: (event: CRMTimelineEvent) => void;
-  onSaveOrder: (order: Order, customer?: any) => void;
+  onSaveOrder: (order: Order | Order[], customer?: any) => void | Promise<void>;
   currentUser: User;
   users: User[];
   onApproveQuotation?: (quote: CRMQuotation) => void;
@@ -867,12 +867,12 @@ export default function CRMTab({
       const defaultCarp = users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod';
       let primaryArticleNo = '';
 
-      itemsList.forEach((item, idx) => {
+      const createdOrders = itemsList.map((item, idx) => {
         const orderId = itemsList.length > 1 ? `${baseOrderId}-${idx + 1}` : baseOrderId;
         const articleNo = generateArticleNumber('Living Room', defaultCarp, db.orders || [], users, idx);
         if (idx === 0) primaryArticleNo = articleNo;
 
-        const newOrder: Order = {
+        return {
           id: orderId,
           parent_order_id: baseOrderId,
           article_no: articleNo,
@@ -899,10 +899,10 @@ export default function CRMTab({
           created_at: new Date().toISOString(),
           created_by: currentUser.id,
           images: []
-        };
-
-        onSaveOrder(newOrder);
+        } satisfies Order;
       });
+
+      onSaveOrder(createdOrders);
 
       const orderId = baseOrderId;
       const articleNo = primaryArticleNo;
