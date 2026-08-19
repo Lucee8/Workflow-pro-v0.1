@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
+import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
 
 // Helper to generate UUIDs
 export function generateUUID(): string {
@@ -23,9 +23,9 @@ export const SEED_USERS: User[] = [
     role: 'admin',
     initials: 'AD',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Just now',
     created_at: '2026-06-02T18:22:29Z',
-    password: 'admin',
     google_linked: false,
   },
   {
@@ -35,21 +35,21 @@ export const SEED_USERS: User[] = [
     role: 'admin',
     initials: 'LC',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Just now',
     created_at: '2026-06-02T18:22:29Z',
-    password: 'admin',
     google_linked: true,
   },
-    {
+  {
     id: 'user_yogesh_mgr',
     name: 'Yogesh',
     email: 'yogesh@gmail.com',
     role: 'manager',
     initials: 'YG',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'manager123',
     google_linked: true,
     phone: '9876543230',
   },
@@ -60,9 +60,9 @@ export const SEED_USERS: User[] = [
     role: 'manager',
     initials: 'SM',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'manager123',
     google_linked: true,
     phone: '9876543231',
   },
@@ -73,9 +73,9 @@ export const SEED_USERS: User[] = [
     role: 'wood_tab_manager',
     initials: 'WT',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'woodtab123',
     google_linked: true,
     phone: '9876543232',
   },
@@ -86,9 +86,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'RV',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'carpenter123',
     google_linked: false,
     phone: '9876543221',
   },
@@ -99,9 +99,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'IK',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'carpenter123',
     google_linked: false,
     phone: '9876543222',
   },
@@ -112,9 +112,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'VK',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'carpenter123',
     google_linked: false,
     phone: '9876543223',
   },
@@ -125,9 +125,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'DM',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'carpenter123',
     google_linked: false,
     phone: '9876543224',
   },
@@ -138,9 +138,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'DV',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'carpenter123',
     google_linked: false,
     phone: '9876543225',
   },
@@ -151,9 +151,9 @@ export const SEED_USERS: User[] = [
     role: 'carpenter',
     initials: 'SM',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'carpenter123',
     google_linked: false,
     phone: '9876543226',
   },
@@ -164,9 +164,9 @@ export const SEED_USERS: User[] = [
     role: 'polish_person',
     initials: 'PC',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'polish123',
     google_linked: false,
     phone: '9876543227',
   },
@@ -177,9 +177,9 @@ export const SEED_USERS: User[] = [
     role: 'polish_person',
     initials: 'SK',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Never active yet',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'polish123',
     google_linked: false,
     phone: '9876543228',
   },
@@ -190,9 +190,9 @@ export const SEED_USERS: User[] = [
     role: 'qc_staff',
     initials: 'QC',
     is_active: true,
+    status: 'ACTIVE',
     last_seen: 'Just now',
     created_at: '2026-07-04T02:00:00Z',
-    password: 'qc123',
     google_linked: false,
     phone: '9876543229',
   }
@@ -235,6 +235,7 @@ export interface AppState {
   crmNotes: CRMNote[];
   crmAttachments: CRMAttachment[];
   crmTimelineEvents: CRMTimelineEvent[];
+  auditLogs: AuditLog[];
 }
 
 export function loadState(): AppState {
@@ -321,7 +322,10 @@ export function loadState(): AppState {
 
           return {
             ...parsed,
-            users: existingUsers,
+            users: existingUsers.map(u => ({
+              ...u,
+              status: u.status || (u.is_active ? 'ACTIVE' : 'INACTIVE'),
+            })),
             payments: parsed.payments || [],
             materials: parsed.materials || [],
             crmCustomers: parsed.crmCustomers || [],
@@ -331,6 +335,7 @@ export function loadState(): AppState {
             crmNotes: parsed.crmNotes || [],
             crmAttachments: parsed.crmAttachments || [],
             crmTimelineEvents: parsed.crmTimelineEvents || [],
+            auditLogs: parsed.auditLogs || [],
           };
         }
       }
@@ -355,6 +360,7 @@ export function loadState(): AppState {
     crmNotes: [],
     crmAttachments: [],
     crmTimelineEvents: [],
+    auditLogs: [],
   };
   saveState(state);
   return state;

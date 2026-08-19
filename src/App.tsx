@@ -59,7 +59,9 @@ import CRMTab from './components/CRMTab';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
 import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
-import { hasPermission, getDefaultTabForRole, getRoleDisplayName } from './permissions.ts';
+import { hasPermission, getDefaultTabForRole, getRoleDisplayName, isAccountActive } from './permissions';
+import { auth } from './db/firebase';
+import { signOut } from 'firebase/auth';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2, ShieldAlert } from 'lucide-react';
@@ -107,7 +109,7 @@ export default function App() {
             });
           },
           (error) => {
-            console.error("Firestore sync subscription error:", error);
+            console.warn("Firestore sync subscription notice:", error);
           }
         );
       }
@@ -185,8 +187,12 @@ export default function App() {
     saveState(newDb);
   };
 
-  // Wire automatic login bypasses when role-swapping in HUD
+  // Wire automatic login bypasses when role-swapping in HUD with status check
   const handleHUDUserSwitch = (user: User) => {
+    if (!isAccountActive(user)) {
+      alert(`Access Denied: Account status for ${user.name} is ${user.status || 'INACTIVE'}. Only active accounts can sign in.`);
+      return;
+    }
     setCurrentUser(user);
     const defaultTab = getDefaultTabForRole(user.role);
     setCurrentTab(defaultTab);
@@ -243,7 +249,12 @@ export default function App() {
     setCurrentTab(defaultTab);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn("Sign out note:", e);
+    }
     setCurrentUser(null);
     setCurrentTab('dashboard');
   };
@@ -908,6 +919,7 @@ export default function App() {
               />
             </motion.div>
           )}
+
           {/* TAB: WOOD MANAGEMENT REQUIREMENT REQUESTS (Admin & Wood Tab Manager) */}
           {currentTab === 'wood_management' && hasPermission(currentUser.role, 'wood_management') && (
             <motion.div
@@ -977,6 +989,7 @@ export default function App() {
             >
               <UsersTab
                 users={db.users}
+                auditLogs={db.auditLogs || []}
                 onAddUser={handleAddUser}
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}

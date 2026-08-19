@@ -4,49 +4,16 @@
  */
 
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { 
-  initializeAuth, 
-  browserSessionPersistence, 
-  inMemoryPersistence, 
-  getAuth 
-} from 'firebase/auth';
-import { initializeFirestore, getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Your project only has the (default) Firestore database — no custom database ID needed
-function getOrInitFirestore() {
-  const settings = {
-    experimentalAutoDetectLongPolling: true,
-  };
-  try {
-    return initializeFirestore(app, settings);
-  } catch {
-    return getFirestore(app);
-  }
-}
-
-export const db = getOrInitFirestore();
-
-// Safe Auth initialization avoiding IndexedDB issues in iframe environments
-function getOrInitAuth() {
-  try {
-    return getAuth(app);
-  } catch {
-    // Not initialized yet
-  }
-  try {
-    return initializeAuth(app, {
-      persistence: [browserSessionPersistence, inMemoryPersistence]
-    });
-  } catch {
-    return getAuth(app);
-  }
-}
-
-export const auth = getOrInitAuth();
+/* CRITICAL: The app will break without this line */
+export const db = getFirestore(app, firebaseConfig.projectId);
+export const auth = getAuth(app);
 
 export enum OperationType {
   CREATE = 'create',

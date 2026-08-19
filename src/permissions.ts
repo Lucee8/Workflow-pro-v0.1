@@ -66,7 +66,16 @@ export function getDefaultTabForRole(role: UserRole | string | undefined | null)
   if (normalized === 'carpenter' || normalized === 'polish_person' || normalized === 'qc_staff') return 'my_orders';
   return 'dashboard';
 }
-
+/**
+ * Check whether a given user account is active and permitted access.
+ */
+export function isAccountActive(user: { status?: string; is_active?: boolean } | null | undefined): boolean {
+  if (!user) return false;
+  if (user.status) {
+    return user.status === 'ACTIVE';
+  }
+  return user.is_active === true;
+}
 /**
  * Get formatted human-readable display name for any role.
  */
