@@ -828,7 +828,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: CRM MODULE TAB (Admin Only) */}
+          {/* TAB: CRM MODULE TAB (Admin & Manager) */}
           {currentTab === 'crm' && hasPermission(currentUser.role, 'crm') && (
             <motion.div
               key="crm"
@@ -985,7 +985,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* TAB: CARPENTER REPORTS VIEW (Admin & Manager) */}
+          {/* TAB: CARPENTER REPORTS VIEW (Admin Only) */}
           {currentTab === 'carpenter-reports' && hasPermission(currentUser.role, 'carpenter-reports') && (
             <motion.div
               key="carpenter-reports"

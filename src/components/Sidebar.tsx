@@ -78,15 +78,24 @@ export default function Sidebar({
   }, [confirmLogout]);
 
   // Dynamically filter navigation links based on centralized RBAC permissions
-  const navItems = ALL_NAV_ITEMS.filter((item) => {
+  const navItems = React.useMemo(() => {
     // For workers (carpenter, polish_person, qc_staff), show their worker items
     if (['carpenter', 'polish_person', 'qc_staff'].includes(currentUser.role)) {
-      return ['my_orders', 'profile'].includes(item.id);
+      return ALL_NAV_ITEMS.filter((item) => ['my_orders', 'profile'].includes(item.id));
     }
-    // For admin, manager, wood_tab_manager, filter by permission
-    if (item.id === 'my_orders' || item.id === 'profile') return false;
+    // For manager specifically, ensure exact requested order: Orders -> CRM -> Detail Order Form
+    if (currentUser.role === 'manager') {
+      const managerItemIds = ['orders', 'crm', 'detail_order_form'];
+      return managerItemIds
+        .map((id) => ALL_NAV_ITEMS.find((item) => item.id === id))
+        .filter((item): item is typeof ALL_NAV_ITEMS[number] => Boolean(item && hasPermission(currentUser.role, item.id)));
+    }
+    // For admin, wood_tab_manager, and others, filter by permission
+    return ALL_NAV_ITEMS.filter((item) => {    
+      if (item.id === 'my_orders' || item.id === 'profile') return false;
     return hasPermission(currentUser.role, item.id);
   });
+  }, [currentUser.role]);
 
   const handleLinkClick = (tabId: string) => {
     onTabChange(tabId);
@@ -311,7 +320,7 @@ export default function Sidebar({
         {/* Plus Order / drawer fallback button */}
         <button
           onClick={() => {
-            if (isAdmin) {
+            if (hasPermission(currentUser.role, 'crm')) {
               onTabChange('crm');
             } else {
               setMobileMenuOpen(true);
@@ -319,14 +328,14 @@ export default function Sidebar({
           }}
           className="flex flex-col items-center justify-center flex-1 h-full text-stone-500"
         >
-          {isAdmin ? (
+          {hasPermission(currentUser.role, 'crm') ? (
             <div className="bg-amber-500 text-stone-950 p-2 rounded-full -mt-5 shadow-lg border border-stone-900">
               <PlusSquare size={16} />
             </div>
           ) : (
             <Menu size={18} />
           )}
-          <span className="text-[9px] mt-1 font-bold">{isAdmin ? 'Add via CRM' : 'More...'}</span>
+          <span className="text-[9px] mt-1 font-bold">{hasPermission(currentUser.role, 'crm') ? 'Add via CRM' : 'More...'}</span>
         </button>
       </nav>
     </>

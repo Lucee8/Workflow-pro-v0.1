@@ -12,8 +12,7 @@ import { UserRole } from './types';
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ADMIN: ['*'],
   MANAGER: [
-    'carpenter_reports',
-    'carpenter-reports',
+    'crm',
     'orders',
     'detail_order_form',
     'order_details',
