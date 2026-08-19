@@ -152,14 +152,19 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
 
       if (isPopupError) {
         console.warn("Google Auth popup cancelled or blocked by browser:", friendlyMessage);
-        setErrorMessage('Google Authentication popup was closed or blocked. If previewed in an iframe, open the app in a new tab to bypass cookie restrictions.');
+        setErrorMessage('Google Authentication popup was closed or blocked. If previewed in an iframe, open the app in a new tab to bypass browser cookie/COOP restrictions.');
         setIsPopupBlockedError(true);
       } else {
         console.error("Firebase Google Auth exception:", err);
-        if (friendlyMessage.includes('auth/unauthorized-domain')) {
-          setErrorMessage('This domain is currently unauthorized for Google OAuth in Firebase settings.');
+        const code = err?.code || '';
+        if (code === 'auth/unauthorized-domain' || friendlyMessage.includes('auth/unauthorized-domain')) {
+          setErrorMessage(`Domain Authorization Required: "${window.location.hostname}" and "app.bhisezfurniture.com" must be added to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
+        } else if (code === 'auth/operation-not-allowed' || friendlyMessage.includes('operation-not-allowed')) {
+          setErrorMessage('Google Sign-In provider is not enabled in the Firebase Console. Please enable Google provider in Firebase Console -> Authentication -> Sign-in method.');
+        } else if (code === 'auth/invalid-api-key' || friendlyMessage.includes('invalid-api-key')) {
+          setErrorMessage('Invalid Firebase API key. Please check your project credentials.');
         } else {
-          setErrorMessage(`Google Auth Error: ${friendlyMessage}`);
+          setErrorMessage(`Google Auth Error (${code || '400'}): ${friendlyMessage}`);
         }
         setIsPopupBlockedError(false);
       }
