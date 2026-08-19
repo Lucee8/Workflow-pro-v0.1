@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/UPI QR code.jpeg';
-import signatureImg from '../assets/images/Authorized Signatory.png';
+import upiQrImg from '../assets/images/upi_qr.png';
+import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
@@ -723,8 +723,8 @@ export default function CRMTab({
 
     if (time === null || isNaN(time)) return false;
 
-    if (startMs != null && time < startMs) return false;
-    if (endMs != null && time > endMs) return false;
+    if (startMs !== null && time < startMs) return false;
+    if (endMs !== null && time > endMs) return false;
     return true;
   };
 

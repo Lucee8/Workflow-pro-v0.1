@@ -13,21 +13,13 @@ import {
 import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const firebaseConfigWithDatabaseId = firebaseConfig as typeof firebaseConfig & {
-  firestoreDatabaseId?: string;
-};
-
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Use custom database ID in the platform environment but fallback to default database ID when run locally
-const databaseId = firebaseConfigWithDatabaseId.projectId === 'adroit-acronym-78gvj'
-  ? firebaseConfigWithDatabaseId.firestoreDatabaseId
-  : (firebaseConfigWithDatabaseId.firestoreDatabaseId &&
-      !firebaseConfigWithDatabaseId.firestoreDatabaseId.startsWith('ai-studio-')
-      ? firebaseConfigWithDatabaseId.firestoreDatabaseId
-      : undefined);
-
+// Use custom database ID in the platform environment but fallback to default database ID when run locally 
+const databaseId = firebaseConfig.projectId === "adroit-acronym-78gvj" 
+  ? firebaseConfig.firestoreDatabaseId 
+  : (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.startsWith("ai-studio-") ? firebaseConfig.firestoreDatabaseId : undefined);
 
 function getOrInitFirestore() {
   try {
@@ -57,7 +49,7 @@ function getOrInitAuth() {
     });
   } catch {
     return getAuth(app);
-  } 
+  }
 }
 
 export const auth = getOrInitAuth();
