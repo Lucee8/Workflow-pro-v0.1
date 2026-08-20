@@ -4,7 +4,7 @@
  */
 
 import { User } from '../types';
-import { hasPermission, getRoleDisplayName } from '../permissions';
+import { hasPermission, getRoleDisplayName } from '../permissions.ts';
 import logoImg from '../assets/images/logo.png';
 import { motion } from 'motion/react';
 import {
@@ -91,10 +91,10 @@ export default function Sidebar({
         .filter((item): item is typeof ALL_NAV_ITEMS[number] => Boolean(item && hasPermission(currentUser.role, item.id)));
     }
     // For admin, wood_tab_manager, and others, filter by permission
-    return ALL_NAV_ITEMS.filter((item) => {
+    return ALL_NAV_ITEMS.filter((item) => {    
       if (item.id === 'my_orders' || item.id === 'profile') return false;
-      return hasPermission(currentUser.role, item.id);
-    });
+    return hasPermission(currentUser.role, item.id);
+  });
   }, [currentUser.role]);
 
   const handleLinkClick = (tabId: string) => {
@@ -154,18 +154,18 @@ export default function Sidebar({
       >
         {/* Sidebar Brand Header (Desktop only) */}
         <div className="p-0 m-0 bg-[#120803] hidden lg:block overflow-hidden">
-          <div className="flex items-center justify-center p-0 m-0">
+          <div className="flex items-center justify-center">
             <img 
               src={logoImg} 
               alt="Bhisez Logo" 
-              className="w-full h-auto block m-0 p-0"
+              className="h-28 w-auto max-w-full object-contain"
               referrerPolicy="no-referrer"
             />
           </div>
         </div>
 
         {/* User context profile card inside sidebar */}
-        <div className="px-4 py-3.5 bg-[#120803] border-t border-b border-stone-900/40 lg:block">
+        <div className="px-4 py-4 bg-[#23170e]/80 border-b border-stone-900/20 lg:block">
           <div className="flex items-center gap-3">
             {/* Simple User Initials Avatar with custom background */}
             <div className="h-10 w-10 rounded-xl bg-[#593622] text-amber-300 font-bold flex items-center justify-center text-xs shadow border border-stone-800">
@@ -234,26 +234,26 @@ export default function Sidebar({
             {switcherExpanded && (
               <div className="mt-2.5 space-y-1.5">
                 <a
-                  href="https://bhisez-furniture.vercel.app/?view=admin"
+                  href="https://bhisezfurniture.com/?view=admin"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-[13px] shrink-0">🪑</span>
+                    {/* <span className="text-[13px] shrink-0"></span> */}
                     <span className="truncate">Furniture Admin</span>
                   </span>
                   <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
                 </a>
 
                 <a
-                  href="https://geetas-s-masale-v0-1.onrender.com/admin"
+                  href="https://geetasmasale.com/admin"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-[13px] shrink-0">🌶️</span>
+                    {/* <span className="text-[13px] shrink-0"></span> */}
                     <span className="truncate">Masale Admin</span>
                   </span>
                   <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
