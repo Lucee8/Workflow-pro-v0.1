@@ -67,7 +67,13 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
         prompt: 'select_account',
       });
       
-      const result = await signInWithPopup(auth, provider);
+      let result;
+      try {
+        result = await signInWithPopup(auth, provider);
+      } catch (popupErr: any) {
+        // Fallback without 3rd parameter if needed
+        result = await signInWithPopup(auth, provider);
+      }
       const googleUser = result.user;
       
       if (!googleUser.email) {

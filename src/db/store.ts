@@ -405,9 +405,31 @@ export function loadState(): AppState {
 
 export function saveState(state: AppState) {
   try {
-    localStorage.setItem('bhise_workshop_tracker_db', JSON.stringify(state));
+    // Keep local storage cache lightweight to avoid browser 5MB quota limits (Firestore stores full data)
+    const lightweightState: AppState = {
+      ...state,
+      auditLogs: (state.auditLogs || []).slice(0, 30),
+      crmAttachments: (state.crmAttachments || []).map(att => {
+        // Strip heavy base64 strings from local storage cache if larger than 50KB
+        if (att.url && att.url.startsWith('data:') && att.url.length > 50000) {
+          return { ...att, url: '' };
+        }
+        return att;
+      }),
+    };
+    localStorage.setItem('bhise_workshop_tracker_db', JSON.stringify(lightweightState));
   } catch (err) {
-    console.error('Failed writing to localStorage database', err);
+    try {
+      // If quota exceeded, clean obsolete storage items and store critical metadata only
+      localStorage.removeItem('bhise_workshop_tracker_db');
+      const minimalState: Partial<AppState> = {
+        currentUser: state.currentUser,
+        users: state.users,
+      };
+      localStorage.setItem('bhise_workshop_tracker_db', JSON.stringify(minimalState));
+    } catch {
+      // Silently ignore storage quota limits in restricted iframe/browser environments
+    }
   }
 }
 
