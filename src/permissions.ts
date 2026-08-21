@@ -55,6 +55,29 @@ export function hasPermission(role: UserRole | string | undefined | null, permis
 }
 
 /**
+ * Robust authorization validator checking user existence, ACTIVE status, and role/custom permissions.
+ * Fails closed on any invalid status or missing permission.
+ */
+export function isUserAuthorized(
+  user: { role?: UserRole | string; status?: string; is_active?: boolean; permissions?: string[] } | null | undefined,
+  permission: string
+): boolean {
+  if (!user) return false;
+  
+  // Enforce ACTIVE status only
+  const status = (user.status || (user.is_active ? 'ACTIVE' : 'INACTIVE')).toUpperCase();
+  if (status !== 'ACTIVE') return false;
+
+  // Custom assigned permissions override if present
+  if (user.permissions && Array.isArray(user.permissions)) {
+    if (user.permissions.includes('*')) return true;
+    if (user.permissions.includes(permission)) return true;
+  }
+
+  return hasPermission(user.role, permission);
+}
+
+/**
  * Get the initial landing / default tab for any user role upon login or redirect.
  */
 export function getDefaultTabForRole(role: UserRole | string | undefined | null): string {

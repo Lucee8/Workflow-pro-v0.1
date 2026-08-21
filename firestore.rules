@@ -2,113 +2,221 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
+    // Global Safety Net - Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Since Firebase Auth has provider restrictions in this environment,
-    // we allow unauthenticated access for public/guest sandbox synchronization.
-    function isAuthenticated() {
-      return true;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
 
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Lookup user in Firestore /users/{uid} or /users/user_{uid}
+    function hasUserDocDirect() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function hasUserDocPrefixed() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$('user_' + request.auth.uid));
+    }
+
+    function getUserData() {
+      return hasUserDocDirect()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : (hasUserDocPrefixed()
+            ? get(/databases/$(database)/documents/users/$('user_' + request.auth.uid)).data
+            : null);
+    }
+
+    function isApprovedUser() {
+      return isSignedIn() && (
+        (getUserData() != null && (getUserData().status == 'ACTIVE' || getUserData().status == 'active' || getUserData().is_active == true)) ||
+        (request.auth.token.email == 'luceecode@gmail.com') ||
+        (request.auth.token.email == 'admin@bhisesworkshop.com')
+      );
+    }
+
+    function getUserRole() {
+      return getUserData() != null 
+        ? getUserData().role 
+        : (request.auth.token.email == 'luceecode@gmail.com' || request.auth.token.email == 'admin@bhisesworkshop.com' ? 'admin' : 'unknown');
+    }
+
+    function isAdmin() {
+      return isApprovedUser() && (
+        getUserRole() == 'admin' || 
+        getUserRole() == 'ADMIN' ||
+        request.auth.token.email == 'luceecode@gmail.com' ||
+        request.auth.token.email == 'admin@bhisesworkshop.com'
+      );
+    }
+
+    function isManager() {
+      return isApprovedUser() && (
+        getUserRole() == 'manager' || 
+        getUserRole() == 'MANAGER' ||
+        isAdmin()
+      );
+    }
+
+    function isWoodTabManager() {
+      return isApprovedUser() && (
+        getUserRole() == 'wood_tab_manager' || 
+        getUserRole() == 'WOOD_TAB_MANAGER' ||
+        isAdmin()
+      );
+    }
+
+    function isWorker() {
+      return isApprovedUser() && (
+        getUserRole() == 'carpenter' ||
+        getUserRole() == 'CARPENTER' ||
+        getUserRole() == 'polish_person' ||
+        getUserRole() == 'POLISH_PERSON' ||
+        getUserRole() == 'qc_staff' ||
+        getUserRole() == 'QC_STAFF' ||
+        isAdmin() ||
+        isManager()
+      );
+    }
+
+    // USERS COLLECTION
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(userId);
+      // Only approved active users or admins can read user documents (e.g. staff rosters)
+      allow get, list: if isApprovedUser();
+      
+      // ONLY ADMIN can create user records (Strictly blocks self-registration)
+      allow create: if isAdmin() && isValidId(userId);
+
+      // ONLY ADMIN can modify user role, status, permissions, or email.
+      // Non-admin users can ONLY update their own non-sensitive fields (e.g. last_seen, name, initials, phone)
+      allow update: if isAdmin() || (
+        isApprovedUser() && 
+        (request.auth.uid == userId || ('user_' + request.auth.uid) == userId) &&
+        !incoming().diff(existing()).affectedKeys().hasAny(['role', 'status', 'permissions', 'is_active', 'email', 'id'])
+      );
+
+      // ONLY ADMIN can delete user accounts
+      allow delete: if isAdmin();
     }
 
-    match /customers/{customerId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(customerId);
-    }
-
+    // ORDERS & ORDER STATUS LOGS (MANAGERS, WORKERS, ADMINS)
     match /orders/{orderId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(orderId);
+      allow read: if isApprovedUser();
+      allow create, update: if (isManager() || isWorker() || isAdmin()) && isValidId(orderId);
+      allow delete: if isAdmin();
     }
 
     match /statusLogs/{logId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(logId);
+      allow read: if isApprovedUser();
+      allow create, update: if (isManager() || isWorker() || isAdmin()) && isValidId(logId);
+      allow delete: if isAdmin();
     }
 
-    match /materials/{materialId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(materialId);
-    }
-
-    match /payments/{paymentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(paymentId);
-    }
-
-    match /mrp_hardware/{itemId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(itemId);
-    }
-
-    match /mrp_wood/{itemId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(itemId);
-    }
-
-    match /mrp_consumption_logs/{logId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(logId);
-    }
-
-    match /mrp_project_boms/{projectId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(projectId);
+    // CUSTOMERS & CRM DATA (MANAGERS & ADMINS)
+    match /customers/{customerId} {
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(customerId);
     }
 
     match /crmCustomers/{customerId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(customerId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(customerId);
     }
 
     match /crmQuotations/{quotationId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(quotationId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(quotationId);
     }
 
     match /crmFollowUps/{followUpId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(followUpId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(followUpId);
     }
 
     match /crmPayments/{paymentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(paymentId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(paymentId);
     }
 
     match /crmNotes/{noteId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(noteId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(noteId);
     }
 
     match /crmAttachments/{attachmentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(attachmentId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(attachmentId);
     }
 
     match /crmTimelineEvents/{eventId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(eventId);
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(eventId);
     }
 
+    // PAYMENTS & FINANCIAL DATA (MANAGERS & ADMINS)
+    match /payments/{paymentId} {
+      allow read: if isManager() || isAdmin();
+      allow write: if (isManager() || isAdmin()) && isValidId(paymentId);
+    }
+
+    // WOOD MANAGEMENT & MRP INVENTORY (WOOD TAB MANAGERS & ADMINS)
     match /woodRequests/{requestId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidId(requestId);
+      allow read: if isWoodTabManager() || isWorker() || isAdmin();
+      allow write: if (isWoodTabManager() || isWorker() || isAdmin()) && isValidId(requestId);
     }
 
+    match /materials/{materialId} {
+      allow read: if isWoodTabManager() || isWorker() || isAdmin();
+      allow write: if (isWoodTabManager() || isAdmin()) && isValidId(materialId);
+    }
+
+    match /mrp_wood/{itemId} {
+      allow read: if isWoodTabManager() || isAdmin();
+      allow write: if (isWoodTabManager() || isAdmin()) && isValidId(itemId);
+    }
+
+    match /mrp_hardware/{itemId} {
+      allow read: if isWoodTabManager() || isAdmin();
+      allow write: if (isWoodTabManager() || isAdmin()) && isValidId(itemId);
+    }
+
+    match /mrp_consumption_logs/{logId} {
+      allow read: if isWoodTabManager() || isWorker() || isAdmin();
+      allow write: if (isWoodTabManager() || isWorker() || isAdmin()) && isValidId(logId);
+    }
+
+    match /mrp_project_boms/{projectId} {
+      allow read: if isWoodTabManager() || isWorker() || isAdmin();
+      allow write: if (isWoodTabManager() || isAdmin()) && isValidId(projectId);
+    }
+
+    // AUDIT LOGS (IMMUTABLE AUDIT TRAILS)
+    match /auditLogs/{logId} {
+      // Only admins can inspect security audit logs
+      allow read: if isAdmin();
+      // Any signed-in user or auth verification process can append an audit entry
+      allow create: if isSignedIn() && isValidId(logId);
+      // Audit logs are immutable records: NEVER allow update or delete
+      allow update, delete: if false;
+    }
+
+    // System connection probe
     match /test/{testId} {
       allow read, write: if true;
     }
   }
 }
+  

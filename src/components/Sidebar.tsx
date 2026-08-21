@@ -118,7 +118,7 @@ export default function Sidebar({
 
         <div className="flex items-center gap-4">
           {/* Mobile Notification Badge */}
-          <button className="relative p-1 text-stone-300 hover:text-white" onClick={() => alert("Notification center: 3 new staging updates require QA check.")}>
+           <button className="relative p-1 text-stone-300 hover:text-white" onClick={() => alert("Notification center: 3 new staging updates require QA check.")}>
             <Bell size={18} />
             {notificationsCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-rose-600 text-white font-mono text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center">

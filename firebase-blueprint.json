@@ -10,13 +10,30 @@
         "email": { "type": "string", "description": "Email address for login" },
         "role": { "type": "string", "enum": ["admin", "manager", "wood_tab_manager", "carpenter", "polish_person", "qc_staff"], "description": "System access control level" },
         "initials": { "type": "string", "description": "Uppercase abbreviation initials" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "LOCKED"], "description": "Authorization lifecycle status" },
         "is_active": { "type": "boolean", "description": "Active status of the workspace staff" },
         "last_seen": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" },
         "created_by": { "type": "string" },
         "phone": { "type": "string" }
       },
-      "required": ["id", "name", "email", "role", "initials", "is_active", "created_at"]
+      "required": ["id", "name", "email", "role", "initials", "status", "created_at"]
+    },
+    "auditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security audit trails logging authentication attempts, access denials, user administration, and sensitive actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "event_type": { "type": "string", "enum": ["LOGIN_SUCCESS", "LOGIN_DENIED", "ACCESS_DENIED", "USER_CREATED", "USER_UPDATED", "ROLE_CHANGED", "PERMISSION_CHANGED", "STATUS_CHANGED", "SENSITIVE_ACTION", "ORDER_DELETED", "PASSWORD_RESET_REQUESTED"] },
+        "user_id": { "type": "string" },
+        "user_email": { "type": "string" },
+        "user_role": { "type": "string" },
+        "target_resource": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "event_type", "details", "timestamp"]
     },
     "customer": {
       "title": "Customer",
@@ -388,6 +405,10 @@
     "/crmTimelineEvents/{eventId}": {
       "schema": "crmTimelineEvent",
       "description": "Chronological CRM customer action timeline ledger"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "auditLog",
+      "description": "Immutable security and access audit logs"
     }
   }
 }

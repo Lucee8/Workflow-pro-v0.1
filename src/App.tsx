@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -24,6 +24,7 @@ import {
   deletePaymentFromFirebase,
   saveUserToFirebase,
   deleteUserFromFirebase,
+  saveAuditLogToFirebase,
   saveCRMCustomerToFirebase,
   deleteCRMCustomerFromFirebase,
   saveCRMQuotationToFirebase,
@@ -181,16 +182,8 @@ export default function App() {
 
   // Save database shifts on mutations
   const updateDbState = (newDb: AppState) => {
-    const changedKeys = (Object.keys(newDb) as Array<keyof AppState>).filter((key) => newDb[key] !== db[key]);
-
-    setDb((currentDb) => {
-      const mergedDb = { ...currentDb };
-      changedKeys.forEach((key) => {
-        (mergedDb as any)[key] = newDb[key];
-      });
-      saveState(mergedDb);
-      return mergedDb;
-    });
+    setDb(newDb);
+    saveState(newDb);
   };
 
   // Wire automatic login bypasses when role-swapping in HUD
@@ -452,20 +445,41 @@ export default function App() {
 
   const handleAddUser = (newUser: User) => {
     const updatedUsers = [...db.users, newUser];
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'USER_CREATED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `Created authorized user "${newUser.name}" (${newUser.email}) with role ${newUser.role} and status ${newUser.status || 'ACTIVE'}`,
+      timestamp: new Date().toISOString()
+    };
+    const updatedAuditLogs = [auditLog, ...(db.auditLogs || [])];
     updateDbState({
       ...db,
       users: updatedUsers,
+      auditLogs: updatedAuditLogs,
     });
 
     // Write to Firestore asynchronously
     saveUserToFirebase(newUser);
+    saveAuditLogToFirebase(auditLog);
   };
 
   const handleUpdateUser = (updatedUser: User) => {
     const updatedUsers = db.users.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'USER_MODIFIED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `Modified user "${updatedUser.name}" (${updatedUser.email}) - role: ${updatedUser.role}, status: ${updatedUser.status || 'ACTIVE'}`,
+      timestamp: new Date().toISOString()
+    };
+    const updatedAuditLogs = [auditLog, ...(db.auditLogs || [])];
     updateDbState({
       ...db,
       users: updatedUsers,
+      auditLogs: updatedAuditLogs,
     });
 
     // Check if updating currently simulated user
@@ -475,13 +489,25 @@ export default function App() {
 
     // Write to Firestore asynchronously
     saveUserToFirebase(updatedUser);
+    saveAuditLogToFirebase(auditLog);
   };
 
   const handleDeleteUser = (userId: string) => {
+    const targetUser = db.users.find(u => u.id === userId);
     const updatedUsers = db.users.filter((u) => u.id !== userId);
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'USER_DELETED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `Revoked user authorization for "${targetUser?.name || userId}" (${targetUser?.email || 'N/A'})`,
+      timestamp: new Date().toISOString()
+    };
+    const updatedAuditLogs = [auditLog, ...(db.auditLogs || [])];
     updateDbState({
       ...db,
       users: updatedUsers,
+      auditLogs: updatedAuditLogs,
     });
 
     // Logout if user deletes their own current session account
@@ -490,6 +516,7 @@ export default function App() {
     }
 
     deleteUserFromFirebase(userId).catch(console.error);
+    saveAuditLogToFirebase(auditLog);
   };
 
   // CRM CRUD State Handlers
@@ -616,15 +643,11 @@ export default function App() {
   };
 
   const handleSaveCRMTimelineEvent = (item: CRMTimelineEvent) => {
-    setDb((currentDb) => {
-      const exists = currentDb.crmTimelineEvents.some(e => e.id === item.id);
-      const updated = exists
-        ? currentDb.crmTimelineEvents.map(e => e.id === item.id ? item : e)
-        : [item, ...currentDb.crmTimelineEvents];
-      const nextDb = { ...currentDb, crmTimelineEvents: updated };
-      saveState(nextDb);
-      return nextDb;
-    });
+    const exists = db.crmTimelineEvents.some(e => e.id === item.id);
+    const updated = exists
+      ? db.crmTimelineEvents.map(e => e.id === item.id ? item : e)
+      : [item, ...db.crmTimelineEvents];
+    updateDbState({ ...db, crmTimelineEvents: updated });
     saveCRMTimelineEventToFirebase(item);
   };
 
@@ -990,6 +1013,7 @@ export default function App() {
             >
               <UsersTab
                 users={db.users}
+                auditLogs={db.auditLogs || []}
                 onAddUser={handleAddUser}
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}

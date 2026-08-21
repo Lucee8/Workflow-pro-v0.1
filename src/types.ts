@@ -5,6 +5,35 @@
 
 export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'carpenter' | 'polish_person' | 'qc_staff';
 
+export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOCKED';
+
+export type AuditEventType =
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_DENIED'
+  | 'ACCESS_DENIED'
+  | 'USER_CREATED'
+  | 'USER_UPDATED'
+  | 'USER_MODIFIED'
+  | 'USER_DELETED'
+  | 'ROLE_CHANGED'
+  | 'PERMISSION_CHANGED'
+  | 'STATUS_CHANGED'
+  | 'SENSITIVE_ACTION'
+  | 'ORDER_DELETED'
+  | 'PASSWORD_RESET_REQUESTED';
+
+export interface AuditLog {
+  id: string;
+  event_type: AuditEventType;
+  user_id?: string;
+  user_email?: string;
+  user_role?: string;
+  target_resource?: string;
+  details: string;
+  timestamp: string;
+  ip_metadata?: string;
+}
+
 export interface QCFailureInfo {
   stage: string;
   failed_by: string;
@@ -20,12 +49,13 @@ export interface User {
   email: string;
   role: UserRole;
   initials: string; // 2 Chars uppercase, e.g. "SG"
+  status: UserStatus;
   is_active: boolean;
+  permissions?: string[];
   last_seen?: string;
   created_at: string;
   created_by?: string;
   phone?: string;
-  password?: string; // Mapped password/passcode
   google_linked?: boolean; // If linked to Google single-sign-on
 }
 

@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
 
 // Connect with proper authentication securely or fall back to unauthenticated guest mode if Auth is not enabled in Firebase Console
 export async function authenticateFirebase(): Promise<boolean> {
@@ -168,6 +168,7 @@ export function syncFirestore(
   listenCollection('crmNotes', (docs) => onUpdate({ crmNotes: docs as CRMNote[] }));
   listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
   listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
+  listenCollection('auditLogs', (docs) => onUpdate({ auditLogs: docs as AuditLog[] }));
 
   return () => {
     unsubscribers.forEach(unsub => unsub());
@@ -571,6 +572,17 @@ export async function saveCRMTimelineEventToFirebase(item: CRMTimelineEvent): Pr
     await setDoc(doc(db, 'crmTimelineEvents', item.id), cleanUndefined(item));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveAuditLogToFirebase(log: AuditLog): Promise<void> {
+  const path = `auditLogs/${log.id}`;
+  try {
+    await setDoc(doc(db, 'auditLogs', log.id), cleanUndefined(log));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    // Don't crash caller on background audit logging, but log warning
+    console.warn("Audit log save note:", error);
   }
 }
 
