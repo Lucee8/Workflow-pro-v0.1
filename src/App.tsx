@@ -82,7 +82,7 @@ export default function App() {
   const [firebaseSeeding, setFirebaseSeeding] = React.useState<boolean>(false);
   const [isDeletingOrderId, setIsDeletingOrderId] = React.useState<string | null>(null);
 
-  // Sync with Firestore asynchronously on initialization
+  // Sync with Firestore asynchronously on user authentication lifecycle
   React.useEffect(() => {
     let unsubscribe: (() => void) | null = null;
 
@@ -90,10 +90,12 @@ export default function App() {
       const authenticated = await authenticateFirebase();
       if (authenticated) {
         setFirebaseConnected(true);
-        setFirebaseSeeding(true);
-        // Seed if first time setup (empty)
-        await seedFirestoreIfEmpty(db);
-        setFirebaseSeeding(false);
+        if (currentUser) {
+          setFirebaseSeeding(true);
+          // Seed if first time setup (empty)
+          await seedFirestoreIfEmpty(db);
+          setFirebaseSeeding(false);
+        }
 
         // Subscribes to snapshotted real-time database updates
         unsubscribe = syncFirestore(
@@ -108,7 +110,10 @@ export default function App() {
             });
           },
           (error) => {
-            console.error("Firestore sync subscription error:", error);
+            // Only log if authenticated to keep console clean for unauthenticated login screen
+            if (currentUser) {
+              console.warn("Firestore sync subscription warning:", error);
+            }
           }
         );
       }
@@ -121,7 +126,7 @@ export default function App() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [currentUser?.id]);
 
   // Handle direct url access with centralized RBAC route protection
   React.useEffect(() => {

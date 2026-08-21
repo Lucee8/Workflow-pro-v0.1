@@ -63,17 +63,13 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
 
     try {
       const provider = new GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
       provider.setCustomParameters({
         prompt: 'select_account',
       });
       
-      let result;
-      try {
-        result = await signInWithPopup(auth, provider);
-      } catch (popupErr: any) {
-        // Fallback without 3rd parameter if needed
-        result = await signInWithPopup(auth, provider);
-      }
+      const result = await signInWithPopup(auth, provider);
       const googleUser = result.user;
       
       if (!googleUser.email) {
@@ -141,7 +137,9 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
       } else {
         console.error("Firebase Google Auth exception:", err);
         if (friendlyMessage.includes('auth/unauthorized-domain')) {
-          setErrorMessage('Domain unauthorized for Google OAuth in Firebase settings. Please authorize this domain in Firebase Console.');
+          setErrorMessage('Domain unauthorized for Google OAuth. Please add "app.bhisezfurniture.com" to Authorized Domains in Firebase Console > Authentication > Settings.');
+        } else if (friendlyMessage.includes('auth/operation-not-allowed') || friendlyMessage.includes('CONFIGURATION_NOT_FOUND')) {
+          setErrorMessage('Google Sign-In provider is not enabled yet in Firebase Console. Go to Firebase Console > Authentication > Sign-in method and enable Google provider, or use the direct email login below.');
         } else {
           setErrorMessage(`Authentication Error: ${friendlyMessage}`);
         }

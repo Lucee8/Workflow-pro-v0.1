@@ -18,24 +18,18 @@ import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
 import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
 
-// Connect with proper authentication securely or fall back to unauthenticated guest mode if Auth is not enabled in Firebase Console
+// Connect with proper authentication securely or proceed with existing auth session
 export async function authenticateFirebase(): Promise<boolean> {
   try {
-    await signInAnonymously(auth);
-    console.log("Firebase Auth signed in anonymously successfully.");
+    if (auth.currentUser) {
+      return true;
+    }
+    // Test if Firestore is reachable
     await testConnection();
     return true;
   } catch (error) {
-    console.warn("Firebase Auth failed (not enabled or restricted), switching to unauthenticated client mode:", error);
-    // Since Firebase Anonymous Auth might be restricted/disabled, we fall back to unauthenticated public mode.
-    // If the Firestore security rules allow unauthenticated operations, the sync and databases will still work flawlessly.
-    try {
-      await testConnection();
-      return true;
-    } catch (testError) {
-      console.error("Unauthenticated connection test failed too:", testError);
-      return true; // Still return true so that syncFirestore can attempt to initialize
-    }
+    console.warn("Firestore connection check note:", error instanceof Error ? error.message : error);
+    return true;
   }
 }
 

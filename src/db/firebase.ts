@@ -3,32 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { initializeApp, getApp, getApps, type FirebaseOptions } from 'firebase/app';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import { 
   initializeAuth, 
+  browserLocalPersistence,
   browserSessionPersistence, 
   inMemoryPersistence, 
+  browserPopupRedirectResolver,
   getAuth 
 } from 'firebase/auth';
 import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-type FirebaseAppletConfig = FirebaseOptions & {
-  projectId: string;
-  firestoreDatabaseId?: string;
-};
-
-const config = firebaseConfig as FirebaseAppletConfig;
-const configuredDatabaseId = config.firestoreDatabaseId?.trim();
-
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
-const app = getApps().length === 0 ? initializeApp(config) : getApp();
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Use an explicitly configured named database only when one is provided.
-// The normal project uses the default Firestore database.
-const databaseId = configuredDatabaseId && !configuredDatabaseId.startsWith('ai-studio-')
-  ? configuredDatabaseId
-  : undefined;
+// Use custom database ID if specified and not default
+const rawDbId = (firebaseConfig as any).firestoreDatabaseId;
+const databaseId = rawDbId && rawDbId !== "(default)" && !rawDbId.startsWith("ai-studio-") ? rawDbId : undefined;
 
 function getOrInitFirestore() {
   try {
@@ -45,18 +37,8 @@ function getOrInitFirestore() {
 
 export const db = getOrInitFirestore();
 
-// Safe Auth initialization avoiding IndexedDB issues in iframe environments
-function getOrInitAuth() {
-  try {
-    return initializeAuth(app, {
-      persistence: [browserSessionPersistence, inMemoryPersistence]
-    });
-  } catch {
-    return getAuth(app);
-  }
-}
-
-export const auth = getOrInitAuth();
+// Clean Auth initialization
+export const auth = getAuth(app);
 
 export enum OperationType {
   CREATE = 'create',
@@ -91,8 +73,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     authInfo: {
       userId: auth.currentUser?.uid || 'offline-simulated-user',
       email: auth.currentUser?.email || 'admin@bhisesworkshop.com',
-      emailVerified: auth.currentUser?.emailVerified ?? true,
-      isAnonymous: auth.currentUser?.isAnonymous ?? false,
+      emailVerified: auth.currentUser?.emailVerified || true,
+      isAnonymous: auth.currentUser?.isAnonymous || false,
       tenantId: auth.currentUser?.tenantId || null,
       providerInfo: auth.currentUser?.providerData?.map(provider => ({
         providerId: provider.providerId,
