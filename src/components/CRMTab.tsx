@@ -85,6 +85,7 @@ import {
   Compass,
   Loader2,
   Truck,
+  RefreshCw,
   PieChart as PieChartIcon
 } from 'lucide-react';
 
@@ -140,6 +141,7 @@ interface CRMTabProps {
   onApproveQuotation?: (quote: CRMQuotation) => void;
   crmAction?: 'add-customer' | 'new-quotation' | null;
   onResetCrmAction?: () => void;
+  onResequenceCRMCustomers?: () => { changesCount: number; idMapping: Record<string, string> };
 }
 
 export default function CRMTab({
@@ -163,6 +165,7 @@ export default function CRMTab({
   onApproveQuotation,
   crmAction,
   onResetCrmAction,
+  onResequenceCRMCustomers,
 }: CRMTabProps) {
   const [subTab, setSubTab] = React.useState<'dashboard' | 'customers' | 'quotations' | 'followups'>('dashboard');
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(null);
@@ -174,17 +177,24 @@ export default function CRMTab({
     const prefix = `CRM-${yy}-${mm}-`;
 
     let maxSerial = 0;
-    if (allCustomers && allCustomers.length > 0) {
-      allCustomers.forEach((c) => {
-        if (c.id && c.id.startsWith(prefix)) {
+    const currentMonthCustomers = (allCustomers || []).filter(c => c && c.id && c.id.startsWith(prefix));
+
+    currentMonthCustomers.forEach((c) => {
           const serialPart = c.id.substring(prefix.length);
           const serialNum = parseInt(serialPart, 10);
-          if (!isNaN(serialNum) && serialNum > maxSerial) {
-            maxSerial = serialNum;
+      if (!isNaN(serialNum)) {
+        // Skip outlier jump numbers (> count + 20) to ensure continuous sequencing
+        if (currentMonthCustomers.length < 100 && serialNum > currentMonthCustomers.length + 20) {
+          // ignore outlier
+        } else if (serialNum > maxSerial) {            maxSerial = serialNum;
           }
         }
       });
+
+    if (currentMonthCustomers.length > maxSerial) {
+      maxSerial = currentMonthCustomers.length;
     }
+
     const nextSerial = maxSerial + 1;
     const sss = String(nextSerial).padStart(3, '0');
     return `${prefix}${sss}`;
@@ -1603,6 +1613,22 @@ export default function CRMTab({
               >
                 <Plus size={16} /> New Quotation
               </button>
+              {onResequenceCRMCustomers && (
+                <button
+                  onClick={() => {
+                    const result = onResequenceCRMCustomers();
+                    if (result.changesCount > 0) {
+                      alert(`Success: Re-sequenced ${result.changesCount} customer IDs without gaps (e.g. CRM-26-08-001 ... CRM-26-08-039)!`);
+                    } else {
+                      alert('All CRM Customer IDs are already perfectly continuous without gaps.');
+                    }
+                  }}
+                  title="Re-sequence CRM Customer IDs to close gaps"
+                  className="bg-white hover:bg-stone-100 text-stone-700 px-3.5 py-2 rounded-full text-xs font-bold flex items-center gap-1.5 border border-stone-200 shadow-xs transition cursor-pointer"
+                >
+                  <RefreshCw size={14} className="text-amber-700" /> Re-sequence IDs
+                </button>
+              )}
             </div>
           ) : <div />}
 
@@ -2125,6 +2151,23 @@ export default function CRMTab({
                       </button>
                     </div>
 
+                    {hasWriteAccess && onResequenceCRMCustomers && (
+                      <button
+                        onClick={() => {
+                          const result = onResequenceCRMCustomers();
+                          if (result.changesCount > 0) {
+                            alert(`Success: Re-sequenced ${result.changesCount} customer IDs without gaps (e.g. CRM-26-08-001 ... CRM-26-08-039)!`);
+                          } else {
+                            alert('All CRM Customer IDs are already perfectly continuous without gaps.');
+                          }
+                        }}
+                        title="Re-sequence all CRM customer IDs to eliminate any gaps or jumps"
+                        className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-stone-300 shadow-xs cursor-pointer transition"
+                      >
+                        <RefreshCw size={13} className="text-amber-700" /> Re-sequence IDs
+                      </button>
+                    )}
+                    
                     {hasWriteAccess && (
                       <button
                         onClick={() => { setEditingCustomer(null); setShowAddCustModal(true); }}

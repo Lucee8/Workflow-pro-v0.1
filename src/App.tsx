@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { loadState, saveState, AppState } from './db/store';
+import { loadState, saveState, AppState, resequenceCRMCustomersInState } from './db/store';
 import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from './types';
 import {
   authenticateFirebase,
@@ -37,7 +37,8 @@ import {
   deleteCRMNoteFromFirebase,
   saveCRMAttachmentToFirebase,
   deleteCRMAttachmentFromFirebase,
-  saveCRMTimelineEventToFirebase
+  saveCRMTimelineEventToFirebase,
+  syncResequencedCRMCustomersToFirestore
 } from './db/firebaseService';
 
 // Component imports
@@ -105,6 +106,17 @@ export default function App() {
                 ...currentDb,
                 ...updatedState,
               };
+
+              // Auto-resequence if any customer gaps or jumps are detected
+              if (Array.isArray(nextDb.crmCustomers) && nextDb.crmCustomers.length > 0) {
+                const reseqResult = resequenceCRMCustomersInState(nextDb);
+                if (reseqResult.changesCount > 0) {
+                  saveState(reseqResult.updatedState);
+                  syncResequencedCRMCustomersToFirestore(reseqResult.idMapping, reseqResult.updatedState).catch(console.error);
+                  return reseqResult.updatedState;
+                }
+              }
+
               saveState(nextDb);
               return nextDb;
             });
@@ -656,6 +668,15 @@ export default function App() {
     saveCRMTimelineEventToFirebase(item);
   };
 
+  const handleResequenceCRMCustomers = (): { changesCount: number; idMapping: Record<string, string> } => {
+    const result = resequenceCRMCustomersInState(db);
+    if (result.changesCount > 0) {
+      updateDbState(result.updatedState);
+      syncResequencedCRMCustomersToFirestore(result.idMapping, result.updatedState).catch(console.error);
+    }
+    return { changesCount: result.changesCount, idMapping: result.idMapping };
+  };
+
   // Nav to specific order details tab
   const handleViewOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -894,6 +915,7 @@ export default function App() {
                 onSaveOrder={handleSaveOrder}
                 currentUser={currentUser}
                 users={db.users}
+                onResequenceCRMCustomers={handleResequenceCRMCustomers}
                 onApproveQuotation={(quote) => {
                   setPreselectedQuotationId(quote.id);
                   setCurrentTab('detail_order_form');

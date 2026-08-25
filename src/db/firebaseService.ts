@@ -580,3 +580,104 @@ export async function saveAuditLogToFirebase(log: AuditLog): Promise<void> {
   }
 }
 
+
+/**
+ * Replaces old CRM Customer document IDs (e.g. 477..483) with new continuous IDs (e.g. 033..039)
+ * and updates any related quotations, followups, notes, attachments, payments, timeline events, and orders in Firestore.
+ */
+export async function syncResequencedCRMCustomersToFirestore(
+  idMapping: Record<string, string>,
+  updatedState: AppState
+): Promise<void> {
+  const oldIds = Object.keys(idMapping);
+  if (oldIds.length === 0) return;
+
+  try {
+    const batch = writeBatch(db);
+    const newIdsSet = new Set(Object.values(idMapping));
+
+    // 1. Delete old customer docs and write new ones
+    for (const oldId of oldIds) {
+      const newId = idMapping[oldId];
+      const customer = updatedState.crmCustomers?.find((c) => c.id === newId);
+      if (customer) {
+        // Delete old doc
+        const oldDocRef = doc(db, 'crmCustomers', oldId);
+        batch.delete(oldDocRef);
+        // Write new doc
+        const newDocRef = doc(db, 'crmCustomers', newId);
+        batch.set(newDocRef, cleanUndefined(customer));
+      }
+
+      // Also clean up any directory customer doc with oldId
+      const oldDirectoryDocRef = doc(db, 'customers', oldId);
+      batch.delete(oldDirectoryDocRef);
+      const dirCust = updatedState.customers?.find((c) => c.id === newId);
+      if (dirCust) {
+        const newDirectoryDocRef = doc(db, 'customers', newId);
+        batch.set(newDirectoryDocRef, cleanUndefined(dirCust));
+      }
+    }
+
+    // 2. Update quotations that referenced old customer IDs
+    (updatedState.crmQuotations || []).forEach((q) => {
+      if (q && q.id && newIdsSet.has(q.customer_id)) {
+        const qRef = doc(db, 'crmQuotations', q.id);
+        batch.set(qRef, cleanUndefined(q));
+      }
+    });
+
+    // 3. Update follow-ups
+    (updatedState.crmFollowUps || []).forEach((f) => {
+      if (f && f.id && newIdsSet.has(f.customer_id)) {
+        const fRef = doc(db, 'crmFollowUps', f.id);
+        batch.set(fRef, cleanUndefined(f));
+      }
+    });
+
+    // 4. Update notes
+    (updatedState.crmNotes || []).forEach((n) => {
+      if (n && n.id && newIdsSet.has(n.customer_id)) {
+        const nRef = doc(db, 'crmNotes', n.id);
+        batch.set(nRef, cleanUndefined(n));
+      }
+    });
+
+    // 5. Update attachments
+    (updatedState.crmAttachments || []).forEach((a) => {
+      if (a && a.id && newIdsSet.has(a.customer_id)) {
+        const aRef = doc(db, 'crmAttachments', a.id);
+        batch.set(aRef, cleanUndefined(a));
+      }
+    });
+
+    // 6. Update payments
+    (updatedState.crmPayments || []).forEach((p) => {
+      if (p && p.id && newIdsSet.has(p.customer_id)) {
+        const pRef = doc(db, 'crmPayments', p.id);
+        batch.set(pRef, cleanUndefined(p));
+      }
+    });
+
+    // 7. Update timeline events
+    (updatedState.crmTimelineEvents || []).forEach((e) => {
+      if (e && e.id && newIdsSet.has(e.customer_id)) {
+        const eRef = doc(db, 'crmTimelineEvents', e.id);
+        batch.set(eRef, cleanUndefined(e));
+      }
+    });
+
+    // 8. Update orders
+    (updatedState.orders || []).forEach((o) => {
+      if (o && o.id && newIdsSet.has(o.customer_id || '')) {
+        const oRef = doc(db, 'orders', o.id);
+        batch.set(oRef, cleanUndefined(o));
+      }
+    });
+
+    await batch.commit();
+    console.log(`Successfully synced ${oldIds.length} resequenced CRM customer IDs to Firestore.`);
+  } catch (err) {
+    console.error('Failed to sync resequenced CRM customer IDs to Firestore:', err);
+  }
+}

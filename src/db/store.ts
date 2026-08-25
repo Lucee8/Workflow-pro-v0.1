@@ -360,19 +360,27 @@ export function loadState(): AppState {
             }
           });
 
+          // Check and re-sequence any customer gaps in CRM
+          let stateAfterResequencing = parsed;
+          if (Array.isArray(parsed.crmCustomers) && parsed.crmCustomers.length > 0) {
+            const res = resequenceCRMCustomersInState(parsed);
+            if (res.changesCount > 0) {
+              stateAfterResequencing = res.updatedState;
+            }
+          }
           return {
-            ...parsed,
+            ...stateAfterResequencing,
             users: existingUsers,
-            payments: parsed.payments || [],
-            materials: parsed.materials || [],
-            auditLogs: parsed.auditLogs || [],
-            crmCustomers: parsed.crmCustomers || [],
-            crmQuotations: parsed.crmQuotations || [],
-            crmFollowUps: parsed.crmFollowUps || [],
-            crmPayments: parsed.crmPayments || [],
-            crmNotes: parsed.crmNotes || [],
-            crmAttachments: parsed.crmAttachments || [],
-            crmTimelineEvents: parsed.crmTimelineEvents || [],
+            payments: stateAfterResequencing.payments || [],
+            materials: stateAfterResequencing.materials || [],
+            auditLogs: stateAfterResequencing.auditLogs || [],
+            crmCustomers: stateAfterResequencing.crmCustomers || [],
+            crmQuotations: stateAfterResequencing.crmQuotations || [],
+            crmFollowUps: stateAfterResequencing.crmFollowUps || [],
+            crmPayments: stateAfterResequencing.crmPayments || [],
+            crmNotes: stateAfterResequencing.crmNotes || [],
+            crmAttachments: stateAfterResequencing.crmAttachments || [],
+            crmTimelineEvents: stateAfterResequencing.crmTimelineEvents || [],
           };
         }
       }
@@ -489,4 +497,145 @@ export function generateArticleNumber(
   const nnnn = String(nextSerial).padStart(4, '0');
 
   return `${dd}/${mm}/${namePart}/${nnnn}`;
+}
+
+/**
+ * Re-sequences CRM customer IDs to eliminate any gaps (e.g. jumps from CRM-26-08-032 to CRM-26-08-477),
+ * ensuring customer IDs are strictly continuous: 001, 002, ... 032, 033, 034, 035, etc.
+ * Cascades changes across all associated CRM collections, orders, and customer records.
+ */
+export function resequenceCRMCustomersInState(state: AppState): {
+  updatedState: AppState;
+  idMapping: Record<string, string>;
+  changesCount: number;
+} {
+  const crmCustomers = state.crmCustomers || [];
+  if (crmCustomers.length === 0) {
+    return { updatedState: state, idMapping: {}, changesCount: 0 };
+  }
+
+  // Group customers by month prefix, e.g. "CRM-26-08-"
+  const prefixGroups: Record<string, CRMCustomer[]> = {};
+  const ungrouped: CRMCustomer[] = [];
+
+  crmCustomers.forEach((c) => {
+    if (!c || !c.id) return;
+    const match = c.id.match(/^(CRM-\d{2}-\d{2}-)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      if (!prefixGroups[prefix]) {
+        prefixGroups[prefix] = [];
+      }
+      prefixGroups[prefix].push(c);
+    } else {
+      ungrouped.push(c);
+    }
+  });
+
+  const idMapping: Record<string, string> = {};
+  const resequencedCustomers: CRMCustomer[] = [...ungrouped];
+
+  Object.entries(prefixGroups).forEach(([prefix, list]) => {
+    // Sort chronologically:
+    // 1. By created_at (ascending)
+    // 2. Fallback to numeric serial if created_at is identical
+    const sorted = [...list].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeA !== timeB && timeA > 0 && timeB > 0) {
+        return timeA - timeB;
+      }
+      const numA = parseInt(a.id.substring(prefix.length), 10) || 0;
+      const numB = parseInt(b.id.substring(prefix.length), 10) || 0;
+      return numA - numB;
+    });
+
+    sorted.forEach((c, idx) => {
+      const newSerial = idx + 1;
+      const newId = `${prefix}${String(newSerial).padStart(3, '0')}`;
+      if (c.id !== newId) {
+        idMapping[c.id] = newId;
+        resequencedCustomers.push({ ...c, id: newId });
+      } else {
+        resequencedCustomers.push(c);
+      }
+    });
+  });
+
+  const changesCount = Object.keys(idMapping).length;
+  if (changesCount === 0) {
+    return { updatedState: state, idMapping: {}, changesCount: 0 };
+  }
+
+  // Cascade updates across all related state collections
+  const updatedQuotations = (state.crmQuotations || []).map((q) => {
+    if (q && q.customer_id && idMapping[q.customer_id]) {
+      return { ...q, customer_id: idMapping[q.customer_id] };
+    }
+    return q;
+  });
+
+  const updatedFollowUps = (state.crmFollowUps || []).map((f) => {
+    if (f && f.customer_id && idMapping[f.customer_id]) {
+      return { ...f, customer_id: idMapping[f.customer_id] };
+    }
+    return f;
+  });
+
+  const updatedNotes = (state.crmNotes || []).map((n) => {
+    if (n && n.customer_id && idMapping[n.customer_id]) {
+      return { ...n, customer_id: idMapping[n.customer_id] };
+    }
+    return n;
+  });
+
+  const updatedAttachments = (state.crmAttachments || []).map((a) => {
+    if (a && a.customer_id && idMapping[a.customer_id]) {
+      return { ...a, customer_id: idMapping[a.customer_id] };
+    }
+    return a;
+  });
+
+  const updatedPayments = (state.crmPayments || []).map((p) => {
+    if (p && p.customer_id && idMapping[p.customer_id]) {
+      return { ...p, customer_id: idMapping[p.customer_id] };
+    }
+    return p;
+  });
+
+  const updatedTimelineEvents = (state.crmTimelineEvents || []).map((e) => {
+    if (e && e.customer_id && idMapping[e.customer_id]) {
+      return { ...e, customer_id: idMapping[e.customer_id] };
+    }
+    return e;
+  });
+
+  const updatedCustomers = (state.customers || []).map((cust) => {
+    if (cust && cust.id && idMapping[cust.id]) {
+      return { ...cust, id: idMapping[cust.id] };
+    }
+    return cust;
+  });
+
+  const updatedOrders = (state.orders || []).map((o) => {
+    if (o && o.customer_id && idMapping[o.customer_id]) {
+      return { ...o, customer_id: idMapping[o.customer_id] };
+    }
+    return o;
+  });
+
+  const updatedState: AppState = {
+    ...state,
+    crmCustomers: resequencedCustomers,
+    crmQuotations: updatedQuotations,
+    crmFollowUps: updatedFollowUps,
+    crmNotes: updatedNotes,
+    crmAttachments: updatedAttachments,
+    crmPayments: updatedPayments,
+    crmTimelineEvents: updatedTimelineEvents,
+    customers: updatedCustomers,
+    orders: updatedOrders,
+  };
+
+  return { updatedState, idMapping, changesCount };
 }
