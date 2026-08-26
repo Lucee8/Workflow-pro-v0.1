@@ -38,7 +38,7 @@ export interface QCFailureInfo {
   stage: string;
   failed_by: string;
   failed_at: string;
-  notes: string;
+  notes?: string;
   acknowledged?: boolean;
   resolved?: boolean;
 }

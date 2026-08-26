@@ -774,6 +774,7 @@ export default function OrderForm({
         polish_labour_rate: prod.polishLabourRate !== '' ? Number(prod.polishLabourRate) : undefined,
         polish_delivery_date: prod.polishPersonId ? (prod.polishDeliveryDate || polishDeliveryDate) : undefined,
         current_status: 'Designing',
+        wood_schedule_status: 'Pending',
         is_delayed: false,
         priority,
         order_date: orderDate,

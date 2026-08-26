@@ -300,28 +300,19 @@ export default function WorkerDashboard({
   const [qcFinishing, setQcFinishing] = React.useState(false);
   const [qcBuffer, setQcBuffer] = React.useState(false);
 
-  // Approval status sync from localStorage and Order object
+  // Approval status sync from Order object
   const [showApprovedModal, setShowApprovedModal] = React.useState(false);
   const [showQcFailPopup, setShowQcFailPopup] = React.useState(false);
   const [seenQcFailures, setSeenQcFailures] = React.useState<Record<string, boolean>>({});
-
-  const woodStatusMap = React.useMemo(() => {
-    try {
-      const saved = localStorage.getItem('bhisez_wood_request_statuses');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  }, [activeOrder]);
 
   const isWoodScheduleApproved = React.useMemo(() => {
     if (!activeOrder) return false;
     return (
       activeOrder.wood_schedule_status === 'Approved' ||
-      activeOrder.wood_schedule?.status === 'Approved' ||
-      woodStatusMap[activeOrder.id] === 'Approved'
+      activeOrder.wood_schedule?.status === 'Approved'
+
     );
-  }, [activeOrder, woodStatusMap]);
+  }, [activeOrder?.wood_schedule_status, activeOrder?.wood_schedule?.status]);
 
   React.useEffect(() => {
     if (activeOrder && isWoodScheduleApproved) {
@@ -558,6 +549,11 @@ export default function WorkerDashboard({
       uploaded_by: currentUser.name,
     }));
 
+    // Determine verified Wood Schedule status
+    const verifiedWoodStatus = (activeOrder.wood_schedule_status === 'Approved' || activeOrder.wood_schedule?.status === 'Approved')
+      ? 'Approved'
+      : (activeOrder.wood_schedule_status === 'Rejected' ? 'Pending' : (activeOrder.wood_schedule_status || 'Pending'));
+
     // Assemble Wood Schedule metadata
     const woodScheduleData: WoodSchedule = {
       catalogue_name: catalogueName,
@@ -566,7 +562,7 @@ export default function WorkerDashboard({
       sqft: Number(sqft),
       image_link: imageLink,
       parts: parts,
-      status: isWoodScheduleApproved ? 'Approved' : (activeOrder.wood_schedule_status || 'Pending'),
+      status: verifiedWoodStatus,
       qc_check_1_details: {
         measurement: qcMeasurement,
         finishing: qcFinishing,
@@ -577,7 +573,7 @@ export default function WorkerDashboard({
     const updatedOrder: Order = {
       ...activeOrder,
       current_status: nextStage,
-      wood_schedule_status: isWoodScheduleApproved ? 'Approved' : (activeOrder.wood_schedule_status || 'Pending'),
+      wood_schedule_status: verifiedWoodStatus,
       carpenter_sub_status: isCarpenter ? nextSubStatus : activeOrder.carpenter_sub_status,
       images: [...existingOtherImages, ...newInProgressImages],
       updated_at: new Date().toISOString(),
@@ -1217,75 +1213,7 @@ export default function WorkerDashboard({
                         </div>
                       </div>
                     )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Catalogue Name</label>
-                        <input
-                          type="text"
-                          required
-                          disabled={isWoodScheduleApproved}
-                          value={catalogueName}
-                          onChange={(e) => setCatalogueName(e.target.value)}
-                          placeholder="e.g. Beds Catalogue"
-                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 ${
-                            isWoodScheduleApproved
-                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
-                              : 'bg-white border-stone-250'
-                          }`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Model Name</label>
-                        <input
-                          type="text"
-                          required
-                          disabled={isWoodScheduleApproved}
-                          value={modelName}
-                          onChange={(e) => setModelName(e.target.value)}
-                          placeholder="e.g. BED-01"
-                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 ${
-                            isWoodScheduleApproved
-                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
-                              : 'bg-white border-stone-250'
-                          }`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Size of Product</label>
-                        <input
-                          type="text"
-                          required
-                          disabled={isWoodScheduleApproved}
-                          value={sizeOfProduct}
-                          onChange={(e) => setSizeOfProduct(e.target.value)}
-                          placeholder="e.g. 5ft × 6.5ft"
-                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 ${
-                            isWoodScheduleApproved
-                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
-                              : 'bg-white border-stone-250'
-                          }`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">SQFT Area (Surface)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          disabled={isWoodScheduleApproved}
-                          value={sqft || ''}
-                          onChange={(e) => setSqft(Number(e.target.value))}
-                          placeholder="e.g. 32.5"
-                          className={`w-full px-2.5 py-1.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-[#593622] font-semibold text-stone-900 font-mono ${
-                            isWoodScheduleApproved
-                              ? 'bg-emerald-50/60 border-emerald-200 text-stone-700 cursor-not-allowed'
-                              : 'bg-white border-stone-250'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  </div>
+             </div>
 
                   {/* Section 2: Wooden components table spreadsheet */}
                   <div className="space-y-3">
@@ -1493,10 +1421,9 @@ export default function WorkerDashboard({
 
               {/* Add Progress notes */}
               <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">Add Notes *</label>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">Add Notes</label>
                 <textarea
                   rows={3}
-                  required
                   value={updateNotes}
                   onChange={(e) => setUpdateNotes(e.target.value)}
                   placeholder="Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."

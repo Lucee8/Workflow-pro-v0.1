@@ -899,6 +899,7 @@ export default function CRMTab({
           no_of_units: item.quantity || 1,
           carpenter_id: defaultCarp,
           current_status: 'Designing',
+          wood_schedule_status: 'Pending',
           is_delayed: false,
           priority: 'normal',
           order_date: new Date().toISOString().split('T')[0],
@@ -965,6 +966,7 @@ export default function CRMTab({
         no_of_units: 1,
         carpenter_id: users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod',
         current_status: 'Designing',
+        wood_schedule_status: 'Pending',
         is_delayed: false,
         priority: 'normal',
         order_date: new Date().toISOString().split('T')[0],
@@ -2167,7 +2169,7 @@ export default function CRMTab({
                         <RefreshCw size={13} className="text-amber-700" /> Re-sequence IDs
                       </button>
                     )}
-                    
+
                     {hasWriteAccess && (
                       <button
                         onClick={() => { setEditingCustomer(null); setShowAddCustModal(true); }}

@@ -153,7 +153,8 @@ export default function WoodManagementTab({
       });
 
       const totalCFT = woodScheduleItems.reduce((sum, item) => sum + (item.calculatedCFT || 0), 0);
-      const currentStatus = statusMap[ord.id] || 'Pending';
+      const rawStatus = ord.wood_schedule_status || ord.wood_schedule?.status || 'Pending';
+      const currentStatus: 'Pending' | 'Approved' | 'Rejected' = rawStatus === 'Approved' ? 'Approved' : (rawStatus === 'Rejected' ? 'Rejected' : 'Pending');
       const catalogueName = ord.wood_schedule?.catalogue_name || ord.material || (ord.category ? `${ord.category} Catalogue` : 'Timber Catalogue');
       const rawDateStr = ord.created_at || ord.order_date || ord.updated_at || '';
       const orderTs = rawDateStr ? new Date(rawDateStr).getTime() : 0;
@@ -230,8 +231,11 @@ export default function WoodManagementTab({
 
     const targetOrder = orders.find((o) => o.id === id || (selectedRequest && selectedRequest.orderId === o.id));
     if (targetOrder && onOrderUpdate) {
+      const shouldAdvanceToMaking = newStatus === 'Approved' && (targetOrder.current_status === 'Wood Procurement' || targetOrder.current_status === 'Pending' || targetOrder.current_status === 'Designing');
+      const nextStage = shouldAdvanceToMaking ? 'Making Started' : targetOrder.current_status;
       const updatedOrder: Order = {
         ...targetOrder,
+        current_status: nextStage,
         wood_schedule_status: newStatus,
         wood_schedule: targetOrder.wood_schedule
           ? { ...targetOrder.wood_schedule, status: newStatus }

@@ -523,7 +523,7 @@ export default function OrderDetailsView({
   };
 
   const handleRejectWoodSchedule = () => {
-    const note = prompt('Enter reason for rejecting Wood Sheet:', 'Wood schedule requires revision.');
+    const note = prompt('Enter reason for rejecting Wood Sheet (optional):', 'Wood schedule requires revision.');
     if (note === null) return;
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
@@ -533,7 +533,7 @@ export default function OrderDetailsView({
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: `Admin rejected Wood Schedule: ${note}`,
+      note: note ? `Admin rejected Wood Schedule: ${note}` : 'Admin rejected Wood Schedule.',
     };
     const updatedOrder: Order = {
       ...order,
@@ -541,7 +541,7 @@ export default function OrderDetailsView({
       wood_schedule: order.wood_schedule
         ? { ...order.wood_schedule, status: 'Rejected' }
         : undefined,
-      wood_rejection_note: note,
+      wood_rejection_note: note || undefined,
       current_status: 'Wood Procurement',
       updated_at: new Date().toISOString(),
     };
@@ -633,10 +633,6 @@ export default function OrderDetailsView({
   };
 
   const submitQcFailure = () => {
-    if (!qcFailNote.trim()) {
-      alert('Please fill out a specific note text detailing what failed during quality audits.');
-      return;
-    }
 
     const isQc1 = order.current_status === 'QC 1' || order.current_status === 'QC Check 1' || qcFailLogStage === 'Making Started';
     const failedStageName = isQc1 ? 'QC 1' : 'QC 2';
@@ -662,7 +658,7 @@ export default function OrderDetailsView({
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: failTimestamp,
-      note: `QC Audit Failed (${failedStageName}): ${qcFailNote.trim()}`,
+      note: qcFailNote.trim() ? `QC Audit Failed (${failedStageName}): ${qcFailNote.trim()}` : `QC Audit Failed (${failedStageName})`,
       qc_passed: false,
     };
 
@@ -1877,7 +1873,6 @@ export default function OrderDetailsView({
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5">Specify Fail Audit notes *</label>
                 <textarea
-                  required
                   rows={3}
                   value={qcFailNote}
                   onChange={(e) => setQcFailNote(e.target.value)}
