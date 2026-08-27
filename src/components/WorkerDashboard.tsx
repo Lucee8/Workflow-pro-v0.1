@@ -6,40 +6,8 @@
 import React from 'react';
 import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage, QCFailureInfo } from '../types';
 import { generateUUID } from '../db/store';
-import { compareOrdersByArticleSerialDesc } from '../utils';
-import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, ShieldCheck, CheckCircle2, Lock } from 'lucide-react';
-
-async function compressImage(file: File): Promise<string | null> {
-  if (!file || !file.type.startsWith('image/')) return null;
-
-  const imageUrl = URL.createObjectURL(file);
-
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Image load failed'));
-      image.src = imageUrl;
-    });
-
-    const maxWidth = 1600;
-    const maxHeight = 1600;
-    const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height);
-    const width = Math.max(1, Math.round(img.width * scale));
-    const height = Math.max(1, Math.round(img.height * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-
-    context.drawImage(img, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', 0.82);
-  } finally {
-    URL.revokeObjectURL(imageUrl);
-  }
-}
+import { compareOrdersByArticleSerialDesc, compressImage } from '../utils';
+import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, ShieldCheck, CheckCircle2, Lock, RotateCcw } from 'lucide-react';
 
 function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
   if (!ord) return null;
@@ -72,6 +40,7 @@ function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
 
   return null;
 }
+
 function getDefaultWoodSchedule(order: Order): WoodSchedule {
   const sub = (order.sub_category || '').toLowerCase();
   const cat = (order.category || '').toLowerCase();
@@ -302,6 +271,7 @@ export default function WorkerDashboard({
 
   // Approval status sync from Order object
   const [showApprovedModal, setShowApprovedModal] = React.useState(false);
+  const [showCompletedModal, setShowCompletedModal] = React.useState(false);
   const [showQcFailPopup, setShowQcFailPopup] = React.useState(false);
   const [seenQcFailures, setSeenQcFailures] = React.useState<Record<string, boolean>>({});
 
@@ -310,7 +280,6 @@ export default function WorkerDashboard({
     return (
       activeOrder.wood_schedule_status === 'Approved' ||
       activeOrder.wood_schedule?.status === 'Approved'
-
     );
   }, [activeOrder?.wood_schedule_status, activeOrder?.wood_schedule?.status]);
 
@@ -331,6 +300,35 @@ export default function WorkerDashboard({
       setShowApprovedModal(false);
     }
   }, [activeOrder?.id, isWoodScheduleApproved]);
+
+  React.useEffect(() => {
+    if (activeOrder && isCarpenter) {
+      const isCarpentryDone = (
+        activeOrder.carpenter_sub_status === 'completed' ||
+        activeOrder.qc_1_status === 'passed' ||
+        activeOrder.current_status === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status)
+      );
+
+      if (isCarpentryDone) {
+        try {
+          const savedSeen = localStorage.getItem('bhisez_seen_completed_carpentry');
+          const seenMap = savedSeen ? JSON.parse(savedSeen) : {};
+          if (!seenMap[activeOrder.id]) {
+            setShowCompletedModal(true);
+            seenMap[activeOrder.id] = true;
+            localStorage.setItem('bhisez_seen_completed_carpentry', JSON.stringify(seenMap));
+          }
+        } catch {
+          setShowCompletedModal(true);
+        }
+      } else {
+        setShowCompletedModal(false);
+      }
+    } else {
+      setShowCompletedModal(false);
+    }
+  }, [activeOrder?.id, activeOrder?.carpenter_sub_status, activeOrder?.qc_1_status, activeOrder?.current_status, isCarpenter]);
 
   React.useEffect(() => {
     if (activeOrder) {
@@ -419,7 +417,17 @@ export default function WorkerDashboard({
       setShowQcFailPopup(false);
     }
     if (isCarpenter) {
-      setProgressStatus(ord.carpenter_sub_status || 'wood_procurement');
+      const isCarpentryDone = (
+        ord.carpenter_sub_status === 'completed' ||
+        ord.qc_1_status === 'passed' ||
+        ord.current_status === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status)
+      );
+      const sub = isCarpentryDone ? 'completed' : (ord.carpenter_sub_status || 'wood_procurement');
+      setProgressStatus(sub);
+      if (isCarpentryDone) {
+        setShowCompletedModal(true);
+      }
       
       // Load or Initialize Wood Schedule data
       const schedule = ord.wood_schedule || getDefaultWoodSchedule(ord);
@@ -441,7 +449,7 @@ export default function WorkerDashboard({
         setQcMeasurement(!!schedule.qc_check_1_details.measurement);
         setQcFinishing(!!schedule.qc_check_1_details.finishing);
         setQcBuffer(!!schedule.qc_check_1_details.buffer);
-      } else if (ord.carpenter_sub_status === 'completed') {
+      } else if (ord.carpenter_sub_status === 'completed' || ord.qc_1_status === 'passed' || ord.current_status === 'Making Completed') {
         setQcMeasurement(true);
         setQcFinishing(true);
         setQcBuffer(true);
@@ -455,7 +463,7 @@ export default function WorkerDashboard({
       setProgressStatus(ord.current_status === myStage ? 'in_progress' : 'completed');
     }
     setUpdateNotes('');
-    setInProgressFiles((ord.images || []).filter(img => img.type === 'In-Progress').map(img => img.url));
+    setInProgressFiles(ord.images.filter(img => img.type === 'In-Progress').map(img => img.url));
   };
 
   const handleAddPhotos = () => {
@@ -465,6 +473,56 @@ export default function WorkerDashboard({
     } else {
       alert('Please enter a valid HTTP image path url, e.g. https://images.unsplash.com/photo-1595428774223-ef52624120d2');
     }
+  };
+
+  const handleRestartOrderFromQcFail = () => {
+    if (!activeOrder) return;
+    const failInfo = getQCFailureInfo(activeOrder);
+    const restartStage: OrderStage = 'Making Started';
+    const restartSubStatus = 'under_carpentry';
+
+    const updatedOrder: Order = {
+      ...activeOrder,
+      current_status: restartStage,
+      carpenter_sub_status: restartSubStatus,
+      qc_1_status: 'failed',
+      qc_1_measurements_verified: false,
+      qc_1_finish_verified: false,
+      qc_1_buffer_verified: false,
+      last_qc_failure: failInfo ? { ...failInfo, resolved: true, acknowledged: true } : undefined,
+      wood_schedule: activeOrder.wood_schedule ? {
+        ...activeOrder.wood_schedule,
+        qc_check_1_details: {
+          measurement: false,
+          finishing: false,
+          buffer: false,
+        }
+      } : undefined,
+      updated_at: new Date().toISOString(),
+    };
+
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: activeOrder.id,
+      stage: restartStage,
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: `QC 1 failure acknowledged by Carpenter (${currentUser.name}). Order restarted at "Under Carpentry" stage for corrections.`,
+    };
+
+    onUpdateOrder(updatedOrder, log);
+    setActiveOrder(updatedOrder);
+    setProgressStatus('under_carpentry');
+    setQcMeasurement(false);
+    setQcFinishing(false);
+    setQcBuffer(false);
+    setShowQcFailPopup(false);
+    if (activeOrder) {
+      setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
+    }
+    alert('Order restarted at "Under Carpentry". Please correct the carpentry issues noted by Admin and re-verify QC 1 when ready.');
   };
 
   const handleSaveStagingUpdate = (e: React.FormEvent) => {
@@ -500,15 +558,19 @@ export default function WorkerDashboard({
           alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
           return;
         }
-        nextSubStatus = 'completed';
-        nextStage = 'Making Started';
+        if (!qcMeasurement || !qcFinishing || !qcBuffer) {
+          alert('Please verify and check all 3 QC Check 1 boxes (1. Measurement, 2. Finishing, 3. Buffer) before saving QC 1.');
+          return;
+        }
+        nextSubStatus = 'qc_check_1';
+        nextStage = 'QC 1';
       } else if (progressStatus === 'completed') {
         if (!isWoodScheduleApproved) {
           alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before completing carpentry work.');
           return;
         }
         nextSubStatus = 'completed';
-        nextStage = 'QC 1';
+        nextStage = 'Making Completed';
       }
     } else {
       if (progressStatus === 'completed') {
@@ -525,7 +587,7 @@ export default function WorkerDashboard({
       : progressStatus === 'under_carpentry'
       ? 'Under Carpentry'
       : progressStatus === 'qc_check_1'
-      ? 'QC Check 1'
+      ? 'QC Check 1 (Awaiting Admin Review)'
       : 'In Progress';
 
     const log: StatusLog = {
@@ -540,7 +602,7 @@ export default function WorkerDashboard({
     };
 
     // Reconstruct order images with newly uploaded list
-    const existingOtherImages = (activeOrder.images || []).filter(img => img.type !== 'In-Progress');
+    const existingOtherImages = activeOrder.images.filter(img => img.type !== 'In-Progress');
     const newInProgressImages = inProgressFiles.map(url => ({
       id: 'img_' + generateUUID().split('-')[0],
       url,
@@ -578,6 +640,12 @@ export default function WorkerDashboard({
       images: [...existingOtherImages, ...newInProgressImages],
       updated_at: new Date().toISOString(),
       wood_schedule: isCarpenter ? woodScheduleData : activeOrder.wood_schedule,
+      ...(isCarpenter && progressStatus === 'qc_check_1' ? {
+        qc_1_measurements_verified: true,
+        qc_1_finish_verified: true,
+        qc_1_buffer_verified: true,
+        qc_1_status: 'pending_admin_approval' as const,
+      } : {}),
     };
 
     if (isCarpenter && progressStatus === 'wood_procurement' && !isWoodScheduleApproved) {
@@ -606,7 +674,7 @@ export default function WorkerDashboard({
       } else if (progressStatus === 'under_carpentry') {
         alert('Success: Under Carpentry completed! Sub-status has auto-advanced to "QC Check 1".');
       } else if (progressStatus === 'qc_check_1') {
-        alert('Success: QC Check 1 verified! Sub-status has auto-advanced to "Completed (Carpentry Done)".');
+        alert('Success: QC 1 checklist (3 of 3 items) verified and saved! Sent to Admin for final QC 1 approval. Admin will inspect and either click "Save QC 1" (to finish carpentry) or "Fail QC 1 (Revert)" (to request fixes).');
       }
     } else {
       setActiveOrder(null);
@@ -617,7 +685,13 @@ export default function WorkerDashboard({
   if (activeOrder) {
     // --- MODE B: UPDATE STATUS PAGE LAYOUT ---
     const activeCust = customers.find((c) => c.id === activeOrder.customer_id);
-    const savedSub = activeOrder.carpenter_sub_status || 'wood_procurement';
+    const isCarpentryDone = isCarpenter && (
+      activeOrder.carpenter_sub_status === 'completed' ||
+      activeOrder.qc_1_status === 'passed' ||
+      activeOrder.current_status === 'Making Completed' ||
+      ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status)
+    );
+    const savedSub = isCarpentryDone ? 'completed' : (activeOrder.carpenter_sub_status || 'wood_procurement');
 
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
@@ -653,6 +727,58 @@ export default function WorkerDashboard({
                   className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-md cursor-pointer"
                 >
                   Got It — Proceed with Carpentry Work
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Completed (Carpentry Done) Verification Modal */}
+        {showCompletedModal && activeOrder && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-500 space-y-4 text-center animate-in zoom-in-95 duration-150">
+              <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300 shadow-sm">
+                <CheckCircle2 size={38} className="text-emerald-600" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black uppercase tracking-wider border border-emerald-300">
+                  ✓ QC 1 Verified & Saved by Admin
+                </div>
+                <h3 className="text-lg font-black text-stone-900 font-display">
+                  Completed (Carpentry Done)
+                </h3>
+                <p className="text-xs text-stone-600 font-medium leading-relaxed pt-1">
+                  Admin has verified and approved QC 1 (Measurements, Finish & Buffer). Carpentry fabrication is officially completed and ready to proceed to Polish department.
+                </p>
+              </div>
+
+              <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 text-left text-xs space-y-2">
+                <div className="flex justify-between items-center text-stone-700">
+                  <span className="text-stone-500 font-semibold">Article Code:</span>
+                  <span className="font-mono font-bold text-stone-900">#{activeOrder.article_no}</span>
+                </div>
+                <div className="flex justify-between items-center text-stone-700">
+                  <span className="text-stone-500 font-semibold">Assigned Carpenter:</span>
+                  <span className="font-bold text-stone-900">{currentUser.name}</span>
+                </div>
+                <div className="flex justify-between items-center text-stone-700">
+                  <span className="text-stone-500 font-semibold">QC 1 Checklist:</span>
+                  <span className="font-extrabold text-emerald-700">All 3 Items Verified & Passed ✔</span>
+                </div>
+                <div className="flex justify-between items-center text-stone-700 border-t border-emerald-200/70 pt-1.5">
+                  <span className="text-stone-500 font-semibold">Current Workshop Status:</span>
+                  <span className="font-bold text-stone-900">Making Completed</span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCompletedModal(false)}
+                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle2 size={15} />
+                  Got It — Carpentry Done
                 </button>
               </div>
             </div>
@@ -733,8 +859,8 @@ export default function WorkerDashboard({
                   </p>
                 </div>
 
-                {/* Close button */}
-                <div className="pt-2 flex justify-end">
+                {/* Action buttons */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -743,9 +869,17 @@ export default function WorkerDashboard({
                         setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
                       }
                     }}
-                    className="w-full sm:w-auto bg-stone-900 hover:bg-stone-800 text-white font-extrabold px-6 py-2.5 rounded-xl shadow-md transition text-xs cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl transition text-xs cursor-pointer text-center"
                   >
-                    I Understand / Close
+                    Review Notes & Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRestartOrderFromQcFail}
+                    className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-5 py-2.5 rounded-xl shadow-md transition text-xs cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw size={15} />
+                    Restart Order & Fix Carpentry
                   </button>
                 </div>
 
@@ -805,6 +939,17 @@ export default function WorkerDashboard({
                   {failureInfo.notes}
                 </p>
               </div>
+
+              <div className="flex items-center justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={handleRestartOrderFromQcFail}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                >
+                  <RotateCcw size={14} />
+                  Restart Order & Fix Carpentry
+                </button>
+              </div>
             </div>
           );
         })()}
@@ -851,7 +996,9 @@ export default function WorkerDashboard({
               <div>
                 <span className="text-[10px] text-stone-400 font-bold block uppercase">Current workshop Stage</span>
                 <span className="px-2 py-0.5 mt-1 rounded bg-stone-150 text-stone-700 font-bold text-[10px] block border w-fit">
-                  {activeOrder.current_status}
+                  {isCarpenter && (activeOrder.carpenter_sub_status === 'completed' || activeOrder.current_status === 'Making Completed')
+                    ? 'Making Completed'
+                    : activeOrder.current_status}
                 </span>
               </div>
             </div>
@@ -1003,6 +1150,11 @@ export default function WorkerDashboard({
                   )}
 
                   <label
+                    onClick={() => {
+                      if (savedSub === 'completed') {
+                        setShowCompletedModal(true);
+                      }
+                    }}
                     className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
                       isCarpenter && savedSub !== 'completed'
                         ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
@@ -1016,7 +1168,12 @@ export default function WorkerDashboard({
                       name="progressRadios"
                       checked={progressStatus === 'completed'}
                       disabled={isCarpenter && savedSub !== 'completed'}
-                      onChange={() => setProgressStatus('completed')}
+                      onChange={() => {
+                        setProgressStatus('completed');
+                        if (savedSub === 'completed') {
+                          setShowCompletedModal(true);
+                        }
+                      }}
                       className="text-green-700 focus:ring-green-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     <div>
@@ -1029,7 +1186,7 @@ export default function WorkerDashboard({
                 </div>
 
                 {/* QC Check 1 Checkboxes Panel */}
-                {isCarpenter && (progressStatus === 'qc_check_1' || savedSub === 'qc_check_1' || savedSub === 'completed') && (
+                {isCarpenter && progressStatus === 'qc_check_1' && (
                   <div className="mt-3.5 p-3.5 bg-amber-50/70 border border-amber-300/80 rounded-xl space-y-2.5 animate-in fade-in duration-200 shadow-2xs">
                     <div className="flex items-center justify-between pb-2 border-b border-amber-200/80">
                       <div className="flex items-center gap-2">
@@ -1096,512 +1253,539 @@ export default function WorkerDashboard({
                 )}
               </div>
 
-              {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}
-              <div className="bg-[#fcfaf7] border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-amber-200/60 gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-[#593622] text-amber-300 shrink-0">
-                      <ImageIcon size={15} />
-                    </div>
-                    <div>
-                      <h3 className="font-display font-black text-stone-900 text-xs sm:text-sm tracking-tight leading-none">
-                        Design Reference & Blueprint Photos
-                      </h3>
-                      <p className="text-[10px] text-stone-500 mt-0.5 font-medium">
-                        Approved blueprints, sketches & catalog reference photos for Article #{activeOrder.article_no}
-                      </p>
-                    </div>
+              {isCarpenter && (progressStatus === 'completed' || savedSub === 'completed') ? (
+                /* Blank / Minimal Completed Section with Order Completed Popup Trigger */
+                <div className="bg-white border border-emerald-200 rounded-2xl p-8 sm:p-12 text-center space-y-4 shadow-2xs">
+                  <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-300 shadow-2xs">
+                    <CheckCircle2 size={36} />
                   </div>
-
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-[10px] font-bold cursor-pointer transition shadow-xs w-fit">
-                    <Upload size={11} />
-                    <span>+ Add Reference Image</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {galleryImages.map((img, idx) => (
-                    <div
-                      key={img.id || idx}
-                      onClick={() => setLightboxImg(img.url ?? null)}
-                      className="relative group rounded-xl border border-stone-200 overflow-hidden bg-stone-100 h-28 cursor-pointer hover:border-[#593622] hover:shadow-md transition"
+                  <div className="space-y-1.5 max-w-md mx-auto">
+                    <h3 className="text-base sm:text-lg font-black text-stone-900 font-display">
+                      Completed (Carpentry Done)
+                    </h3>
+                    <p className="text-xs text-stone-500 font-medium leading-relaxed">
+                      Carpentry fabrication for Article #{activeOrder.article_no} is completed.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCompletedModal(true)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                     >
-                      <img referrerPolicy="no-referrer" src={img.url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
-                        <Eye size={16} />
-                        <span>Click to Expand</span>
-                      </div>
-                      <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[8px] font-bold px-1.5 py-0.5 rounded backdrop-blur-xs">
-                        {img.type || 'Design Reference'} #{idx + 1}
-                      </div>
-                    </div>
-                  ))}
+                      <CheckCircle2 size={16} />
+                      View Completed Order Popup
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}
+                  <div className="bg-[#fcfaf7] border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-amber-200/60 gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-[#593622] text-amber-300 shrink-0">
+                          <ImageIcon size={15} />
+                        </div>
+                        <div>
+                          <h3 className="font-display font-black text-stone-900 text-xs sm:text-sm tracking-tight leading-none">
+                            Design Reference & Blueprint Photos
+                          </h3>
+                          <p className="text-[10px] text-stone-500 mt-0.5 font-medium">
+                            Approved blueprints, sketches & catalog reference photos for Article #{activeOrder.article_no}
+                          </p>
+                        </div>
+                      </div>
 
-              {/* SECTION: BHISE'Z WOOD REGISTRATION & REQUIREMENT CALCULATOR */}
-              {isCarpenter && (
-                <div className="bg-[#fdfbfc] border border-[#593622]/20 rounded-2xl p-4 md:p-5 space-y-5 shadow-xs">
-                  {/* Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-stone-150 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1 px-2.5 rounded-lg bg-[#593622]/10 border border-[#593622]/30 text-[#593622]">
-                        <Hammer size={16} className="animate-pulse" />
-                      </div>
-                      <div>
-                        <h3 className="font-display font-black text-[#593622] text-sm tracking-tight leading-none">Wood Requirement & Estimation Calculator</h3>
-                        <p className="text-[10px] text-stone-400 mt-1 font-medium select-none">Estimate and record total material volume (CFT) required for fabrication</p>
-                      </div>
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-[10px] font-bold cursor-pointer transition shadow-xs w-fit">
+                        <Upload size={11} />
+                        <span>+ Add Reference Image</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
+                      </label>
                     </div>
-                    
 
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {galleryImages.map((img, idx) => (
+                        <div
+                          key={img.id || idx}
+                          onClick={() => setLightboxImg(img.url ?? null)}
+                          className="relative group rounded-xl border border-stone-200 overflow-hidden bg-stone-100 h-28 cursor-pointer hover:border-[#593622] hover:shadow-md transition"
+                        >
+                          <img referrerPolicy="no-referrer" src={img.url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
+                            <Eye size={16} />
+                            <span>Click to Expand</span>
+                          </div>
+                          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[8px] font-bold px-1.5 py-0.5 rounded backdrop-blur-xs">
+                            {img.type || 'Design Reference'} #{idx + 1}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Section 1: Product details fields */}
-                  <div className="bg-stone-50 p-4 border border-stone-200 rounded-xl space-y-4">
-                    <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">1. Product Identification Details</h4>
-                    
-                    {/* Fetched Product Configuration & Specifications from Section 2 */}
-                    {activeOrder && (
-                      <div className="bg-white p-3.5 border border-amber-200/80 rounded-xl shadow-xs space-y-2.5">
-                        <div className="flex items-center justify-between pb-2 border-b border-stone-150">
-                          <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                            📋 Product Configuration & Specifications (Fetched from Order Specs)
-                          </span>
-                          <span className="text-[9px] font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200 font-mono">
-                            Article #{activeOrder.article_no}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-4 text-xs">
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Category</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.category || 'N/A'}</strong>
+                  {/* SECTION: BHISE'Z WOOD REGISTRATION & REQUIREMENT CALCULATOR */}
+                  {isCarpenter && (
+                    <div className="bg-[#fdfbfc] border border-[#593622]/20 rounded-2xl p-4 md:p-5 space-y-5 shadow-xs">
+                      {/* Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-stone-150 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 px-2.5 rounded-lg bg-[#593622]/10 border border-[#593622]/30 text-[#593622]">
+                            <Hammer size={16} className="animate-pulse" />
                           </div>
                           <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sub-category</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.sub_category || 'N/A'}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sizing Constraints</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">
-                              {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size || 'N/A'}
-                            </strong>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Design Blueprints</span>
-                            <span className="inline-block mt-0.5 px-1.5 py-0.5 font-bold text-[9px] border rounded bg-stone-50 text-stone-700 border-stone-200">
-                              {activeOrder.design_type || 'Standard'} Layout
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Structural Material</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.material || 'N/A'}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Finish Polish</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.finish || 'N/A'}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Color Shade</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.color_shade || 'N/A'}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Units Count</span>
-                            <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.no_of_units || 1} pieces</strong>
+                            <h3 className="font-display font-black text-[#593622] text-sm tracking-tight leading-none">Wood Requirement & Estimation Calculator</h3>
+                            <p className="text-[10px] text-stone-400 mt-1 font-medium select-none">Estimate and record total material volume (CFT) required for fabrication</p>
                           </div>
                         </div>
                       </div>
-                    )}
-             </div>
 
-                  {/* Section 2: Wooden components table spreadsheet */}
-                  <div className="space-y-3">
-                    {/* Approved Badge & Confirmation Banner */}
-                    {isWoodScheduleApproved && (
-                      <div className="p-3.5 bg-emerald-50/90 border border-emerald-300 rounded-2xl space-y-2 shadow-2xs">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black text-xs shadow-2xs">
-                            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                            <span>✓ Wood Schedule Approved</span>
+                      {/* Section 1: Product details fields */}
+                      <div className="bg-stone-50 p-4 border border-stone-200 rounded-xl space-y-4">
+                        <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">1. Product Identification Details</h4>
+                        
+                        {/* Fetched Product Configuration & Specifications from Section 2 */}
+                        {activeOrder && (
+                          <div className="bg-white p-3.5 border border-amber-200/80 rounded-xl shadow-xs space-y-2.5">
+                            <div className="flex items-center justify-between pb-2 border-b border-stone-150">
+                              <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                                📋 Product Configuration & Specifications (Fetched from Order Specs)
+                              </span>
+                              <span className="text-[9px] font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200 font-mono">
+                                Article #{activeOrder.article_no}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-4 text-xs">
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Category</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.category || 'N/A'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sub-category</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.sub_category || 'N/A'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sizing Constraints</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">
+                                  {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size || 'N/A'}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Design Blueprints</span>
+                                <span className="inline-block mt-0.5 px-1.5 py-0.5 font-bold text-[9px] border rounded bg-stone-50 text-stone-700 border-stone-200">
+                                  {activeOrder.design_type || 'Standard'} Layout
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Structural Material</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.material || 'N/A'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Finish Polish</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.finish || 'N/A'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Color Shade</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.color_shade || 'N/A'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Units Count</span>
+                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.no_of_units || 1} pieces</strong>
+                              </div>
+                            </div>
                           </div>
-                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
-                            <Lock size={12} className="text-emerald-700" />
-                            Locked (Approved by Admin)
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-emerald-950 font-bold flex items-center gap-2 pt-0.5">
-                          <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
-                          Wood Schedule Approved by Admin. You can now proceed with carpentry work.
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <h4 className={`text-[10px] font-black uppercase tracking-widest leading-none ${isWoodScheduleApproved ? 'text-emerald-800' : 'text-stone-400'}`}>
-                        2. Wood Schedule Calculation Table
-                      </h4>
-                      <div className="flex items-center gap-2">
-                        {!isWoodScheduleApproved && parts.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setParts([])}
-                            className="inline-flex items-center gap-1 bg-stone-200 hover:bg-stone-300 text-stone-700 p-1 px-2.5 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
-                          >
-                            <Trash2 size={10} /> Clear Table
-                          </button>
-                        )}
-                        {!isWoodScheduleApproved && (
-                          <button
-                            type="button"
-                            onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
-                            className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
-                          >
-                            <Plus size={10} /> Add Part Row
-                          </button>
                         )}
                       </div>
-                    </div>
 
-                    <div className={`border rounded-xl overflow-hidden shadow-xs transition-colors duration-200 ${
-                      isWoodScheduleApproved
-                        ? 'border-emerald-300 bg-emerald-50/20'
-                        : 'border-stone-250'
-                    }`}>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className={`border-b text-center font-bold uppercase text-[9px] tracking-wider select-none ${
-                              isWoodScheduleApproved
-                                ? 'bg-emerald-100/80 border-emerald-300 text-emerald-950'
-                                : 'bg-stone-100 border-stone-250 text-stone-500'
-                            }`}>
-                              <th className={`py-2.5 px-3 text-left min-w-[145px] border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Part Name & Component Purpose</th>
-                              <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Width (Inches)</th>
-                              <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Breadth (Inches)</th>
-                              <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Length (Feet)</th>
-                              <th className={`py-2.5 px-2 w-[65px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>QTY</th>
-                              <th className={`py-2.5 px-2 w-[85px] border-r text-right ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>CFT Vol.</th>
-                              <th className="py-2.5 px-1.5 w-[45px]">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className={`divide-y ${isWoodScheduleApproved ? 'divide-emerald-200 bg-white/90' : 'divide-stone-200 bg-white'}`}>
-                            {parts.length > 0 ? (
-                              parts.map((p, idx) => {
-                                const partCft = ((p.width * p.breadth * p.length) / 144) * p.quantity;
-                                return (
-                                  <tr key={p.id} className={`${isWoodScheduleApproved ? 'hover:bg-emerald-50/30' : 'hover:bg-amber-50/10'} text-center font-semibold text-stone-850`}>
-                                    {/* Name input */}
-                                    <td className={`py-1 px-2 text-left border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                      <input
-                                        type="text"
-                                        required
-                                        disabled={isWoodScheduleApproved}
-                                        value={p.part_name}
-                                        onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
-                                        placeholder="e.g. Backside Legs"
-                                        className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                      />
-                                    </td>
+                      {/* Section 2: Wooden components table spreadsheet */}
+                      <div className="space-y-3">
+                        {/* Approved Badge & Confirmation Banner */}
+                        {isWoodScheduleApproved && (
+                          <div className="p-3.5 bg-emerald-50/90 border border-emerald-300 rounded-2xl space-y-2 shadow-2xs">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black text-xs shadow-2xs">
+                                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                                <span>✓ Wood Schedule Approved</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                                <Lock size={12} className="text-emerald-700" />
+                                Locked (Approved by Admin)
+                              </span>
+                            </div>
 
-                                    {/* Width (inches) */}
-                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        disabled={isWoodScheduleApproved}
-                                        min={0}
-                                        value={p.width || ''}
-                                        onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
-                                        placeholder='0.0"'
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                      />
-                                    </td>
+                            <p className="text-xs text-emerald-950 font-bold flex items-center gap-2 pt-0.5">
+                              <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                              Wood Schedule Approved by Admin. You can now proceed with carpentry work.
+                            </p>
+                          </div>
+                        )}
 
-                                    {/* Breadth (inches) */}
-                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        disabled={isWoodScheduleApproved}
-                                        min={0}
-                                        value={p.breadth || ''}
-                                        onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
-                                        placeholder='0.0"'
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                      />
-                                    </td>
+                        <div className="flex items-center justify-between">
+                          <h4 className={`text-[10px] font-black uppercase tracking-widest leading-none ${isWoodScheduleApproved ? 'text-emerald-800' : 'text-stone-400'}`}>
+                            2. Wood Schedule Calculation Table
+                          </h4>
+                          <div className="flex items-center gap-2">
+                            {!isWoodScheduleApproved && parts.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setParts([])}
+                                className="inline-flex items-center gap-1 bg-stone-200 hover:bg-stone-300 text-stone-700 p-1 px-2.5 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                              >
+                                <Trash2 size={10} /> Clear Table
+                              </button>
+                            )}
+                            {!isWoodScheduleApproved && (
+                              <button
+                                type="button"
+                                onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
+                                className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
+                              >
+                                <Plus size={10} /> Add Part Row
+                              </button>
+                            )}
+                          </div>
+                        </div>
 
-                                    {/* Length (feet) */}
-                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                      <input
-                                        type="number"
-                                        step="0.1"
-                                        required
-                                        disabled={isWoodScheduleApproved}
-                                        min={0}
-                                        value={p.length || ''}
-                                        onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
-                                        placeholder="0.0'"
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                      />
-                                    </td>
+                        <div className={`border rounded-xl overflow-hidden shadow-xs transition-colors duration-200 ${
+                          isWoodScheduleApproved
+                            ? 'border-emerald-300 bg-emerald-50/20'
+                            : 'border-stone-250'
+                        }`}>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className={`border-b text-center font-bold uppercase text-[9px] tracking-wider select-none ${
+                                  isWoodScheduleApproved
+                                    ? 'bg-emerald-100/80 border-emerald-300 text-emerald-950'
+                                    : 'bg-stone-100 border-stone-250 text-stone-500'
+                                }`}>
+                                  <th className={`py-2.5 px-3 text-left min-w-[145px] border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Part Name & Component Purpose</th>
+                                  <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Width (Inches)</th>
+                                  <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Breadth (Inches)</th>
+                                  <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Length (Feet)</th>
+                                  <th className={`py-2.5 px-2 w-[65px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>QTY</th>
+                                  <th className={`py-2.5 px-2 w-[85px] border-r text-right ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>CFT Vol.</th>
+                                  <th className="py-2.5 px-1.5 w-[45px]">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className={`divide-y ${isWoodScheduleApproved ? 'divide-emerald-200 bg-white/90' : 'divide-stone-200 bg-white'}`}>
+                                {parts.length > 0 ? (
+                                  parts.map((p) => {
+                                    const partCft = ((p.width * p.breadth * p.length) / 144) * p.quantity;
+                                    return (
+                                      <tr key={p.id} className={`${isWoodScheduleApproved ? 'hover:bg-emerald-50/30' : 'hover:bg-amber-50/10'} text-center font-semibold text-stone-850`}>
+                                        {/* Name input */}
+                                        <td className={`py-1 px-2 text-left border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
+                                          <input
+                                            type="text"
+                                            required
+                                            disabled={isWoodScheduleApproved}
+                                            value={p.part_name}
+                                            onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
+                                            placeholder="e.g. Backside Legs"
+                                            className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold disabled:cursor-not-allowed disabled:text-stone-800"
+                                          />
+                                        </td>
 
-                                    {/* Quantity */}
-                                    <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                      <input
-                                        type="number"
-                                        required
-                                        disabled={isWoodScheduleApproved}
-                                        min={1}
-                                        value={p.quantity || ''}
-                                        onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
-                                        placeholder="qty"
-                                        className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                      />
-                                    </td>
+                                        {/* Width (inches) */}
+                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            required
+                                            disabled={isWoodScheduleApproved}
+                                            min={0}
+                                            value={p.width || ''}
+                                            onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
+                                            placeholder='0.0"'
+                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
+                                          />
+                                        </td>
 
-                                    {/* Computed CFT */}
-                                    <td className={`py-1 px-3 border-r font-mono whitespace-nowrap text-right ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950 font-bold' : 'border-stone-200 text-stone-850'}`}>
-                                      {isNaN(partCft) ? '0.00' : partCft.toFixed(2)} CFT
-                                    </td>
+                                        {/* Breadth (inches) */}
+                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            required
+                                            disabled={isWoodScheduleApproved}
+                                            min={0}
+                                            value={p.breadth || ''}
+                                            onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
+                                            placeholder='0.0"'
+                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
+                                          />
+                                        </td>
 
-                                    {/* Delete trigger */}
-                                    <td className="py-1 px-1.5">
-                                      {!isWoodScheduleApproved ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => setParts(parts.filter(pt => pt.id !== p.id))}
-                                          className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 rounded transition flex items-center justify-center mx-auto cursor-pointer"
-                                          title="Remove part row"
-                                        >
-                                          <Trash2 size={13} />
-                                        </button>
-                                      ) : (
-                                        <span className="text-emerald-600 flex justify-center" title="Approved (Read only)">
-                                          <Lock size={12} />
-                                        </span>
-                                      )}
+                                        {/* Length (feet) */}
+                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
+                                          <input
+                                            type="number"
+                                            step="0.1"
+                                            required
+                                            disabled={isWoodScheduleApproved}
+                                            min={0}
+                                            value={p.length || ''}
+                                            onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
+                                            placeholder="0.0'"
+                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
+                                          />
+                                        </td>
+
+                                        {/* Quantity */}
+                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
+                                          <input
+                                            type="number"
+                                            required
+                                            disabled={isWoodScheduleApproved}
+                                            min={1}
+                                            value={p.quantity || ''}
+                                            onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
+                                            placeholder="qty"
+                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
+                                          />
+                                        </td>
+
+                                        {/* Computed CFT */}
+                                        <td className={`py-1 px-3 border-r font-mono whitespace-nowrap text-right ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950 font-bold' : 'border-stone-200 text-stone-850'}`}>
+                                          {isNaN(partCft) ? '0.00' : partCft.toFixed(2)} CFT
+                                        </td>
+
+                                        {/* Delete trigger */}
+                                        <td className="py-1 px-1.5">
+                                          {!isWoodScheduleApproved ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => setParts(parts.filter(pt => pt.id !== p.id))}
+                                              className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 rounded transition flex items-center justify-center mx-auto cursor-pointer"
+                                              title="Remove part row"
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
+                                          ) : (
+                                            <span className="text-emerald-600 flex justify-center" title="Approved (Read only)">
+                                              <Lock size={12} />
+                                            </span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                ) : (
+                                  <tr>
+                                    <td colSpan={7} className="py-8 text-center text-stone-400 italic font-medium font-sans">
+                                      No components added yet. Tap "+ Add Part Row" above to enter wood schedule items manually.
                                     </td>
                                   </tr>
-                                );
-                              })
-                            ) : (
-                              <tr>
-                                <td colSpan={7} className="py-8 text-center text-stone-400 italic font-medium font-sans">
-                                  No components added yet. Tap "+ Add Part Row" above to enter wood schedule items manually.
-                                </td>
-                              </tr>
-                            )}
+                                )}
 
-                            {/* Total CFT Summary Row */}
-                            <tr className={`font-bold border-t select-none ${
-                              isWoodScheduleApproved
-                                ? 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black'
-                                : 'bg-amber-50/40 text-[#593622] border-stone-250'
-                            }`}>
-                              <td colSpan={5} className={`py-3 px-3 uppercase text-right text-[10px] tracking-wider border-r font-bold font-sans ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                🛠️ Total Wood Volume Required:
-                              </td>
-                              <td className={`py-3 px-3 text-right font-mono text-[13px] border-r font-black ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950' : 'border-stone-200'}`}>
-                                {parts.reduce((tot, p) => tot + (((p.width * p.breadth * p.length) / 144) * p.quantity), 0).toFixed(2)} CFT
-                              </td>
-                              <td className={isWoodScheduleApproved ? 'bg-emerald-100' : 'bg-white'}></td>
-                            </tr>
-                          </tbody>
-                        </table>
+                                {/* Total CFT Summary Row */}
+                                <tr className={`font-bold border-t select-none ${
+                                  isWoodScheduleApproved
+                                    ? 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black'
+                                    : 'bg-amber-50/40 text-[#593622] border-stone-250'
+                                }`}>
+                                  <td colSpan={5} className={`py-3 px-3 uppercase text-right text-[10px] tracking-wider border-r font-bold font-sans ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
+                                    🛠️ Total Wood Volume Required:
+                                  </td>
+                                  <td className={`py-3 px-3 text-right font-mono text-[13px] border-r font-black ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950' : 'border-stone-200'}`}>
+                                    {parts.reduce((tot, p) => tot + (((p.width * p.breadth * p.length) / 144) * p.quantity), 0).toFixed(2)} CFT
+                                  </td>
+                                  <td className={isWoodScheduleApproved ? 'bg-emerald-100' : 'bg-white'}></td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {/* Add Progress notes */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">Add Notes</label>
-                <textarea
-                  rows={3}
-                  value={updateNotes}
-                  onChange={(e) => setUpdateNotes(e.target.value)}
-                  placeholder="Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."
-                  className="w-full p-3 bg-stone-50 border border-stone-250 focus:border-[#593622] rounded-xl text-xs focus:outline-none font-semibold text-stone-850"
-                />
-              </div>
-
-              {/* Upload dynamic live photos (Simulated Paste url) */}
-              <div className="space-y-3 font-sans">
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Local file and mobile camera buttons */}
-                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
-                    <div>
-                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Local Attachment</span>
-                      <p className="text-[11px] text-stone-500 leading-normal">Choose existing files from your mobile phone memory or PC desktop gallery.</p>
-                    </div>
-
-                    <div className="flex gap-1.5 pt-1.5">
-                      <label className="flex-1 bg-white border border-stone-300 rounded-lg p-2 flex items-center justify-center gap-1.5 hover:border-[#593622] hover:bg-stone-50 cursor-pointer shadow-3xs font-extrabold text-[11px] text-stone-850 transition-colors">
-                        <UploadCloud size={13} className="text-[#593622]" />
-                        <span>Browse file</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLocalFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-
-                      <label className="flex-1 bg-[#593622] text-white rounded-lg p-2 flex items-center justify-center gap-1.5 hover:bg-[#402414] cursor-pointer shadow-3xs font-black uppercase text-[10px] tracking-wider transition-colors">
-                        <Camera size={13} />
-                        <span>Direct Camera</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={handleLocalFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
+                  {/* Add Progress notes */}
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">Add Notes</label>
+                    <textarea
+                      rows={3}
+                      value={updateNotes}
+                      onChange={(e) => setUpdateNotes(e.target.value)}
+                      placeholder="Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."
+                      className="w-full p-3 bg-stone-50 border border-stone-250 focus:border-[#593622] rounded-xl text-xs focus:outline-none font-semibold text-stone-850"
+                    />
                   </div>
 
-                  {/* Webcam Live Capture block */}
-                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
-                    <div>
-                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Workshop Scan</span>
-                      <p className="text-[11px] text-stone-500 leading-normal font-sans">Record snapshots of cut wood or finished polishing stages instantly.</p>
+                  {/* Upload dynamic live photos (Simulated Paste url) */}
+                  <div className="space-y-3 font-sans">
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Local file and mobile camera buttons */}
+                      <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
+                        <div>
+                          <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Local Attachment</span>
+                          <p className="text-[11px] text-stone-500 leading-normal">Choose existing files from your mobile phone memory or PC desktop gallery.</p>
+                        </div>
+
+                        <div className="flex gap-1.5 pt-1.5">
+                          <label className="flex-1 bg-white border border-stone-300 rounded-lg p-2 flex items-center justify-center gap-1.5 hover:border-[#593622] hover:bg-stone-50 cursor-pointer shadow-3xs font-extrabold text-[11px] text-stone-850 transition-colors">
+                            <UploadCloud size={13} className="text-[#593622]" />
+                            <span>Browse file</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLocalFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+
+                          <label className="flex-1 bg-[#593622] text-white rounded-lg p-2 flex items-center justify-center gap-1.5 hover:bg-[#402414] cursor-pointer shadow-3xs font-black uppercase text-[10px] tracking-wider transition-colors">
+                            <Camera size={13} />
+                            <span>Direct Camera</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              onChange={handleLocalFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Webcam Live Capture block */}
+                      <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
+                        <div>
+                          <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Workshop Scan</span>
+                          <p className="text-[11px] text-stone-500 leading-normal font-sans">Record snapshots of cut wood or finished polishing stages instantly.</p>
+                        </div>
+
+                        {!isWebcamActive ? (
+                          <button
+                            type="button"
+                            onClick={startWebcam}
+                            className="w-full bg-[#593622]/10 border border-[#593622]/35 text-[#593622] hover:bg-[#593622]/20 font-bold uppercase text-[10px] tracking-widest p-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Video size={13} />
+                            <span>Start Viewfinder</span>
+                          </button>
+                        ) : (
+                          <div className="bg-stone-950 rounded-lg overflow-hidden relative border border-stone-900 aspect-video flex flex-col justify-end">
+                            {webcamError ? (
+                              <div className="p-2 text-[9px] text-red-400 font-bold text-center flex flex-col items-center justify-center h-full">
+                                <span>{webcamError}</span>
+                                <button
+                                  type="button"
+                                  onClick={stopWebcam}
+                                  className="mt-1.5 p-0.5 px-2 bg-white text-stone-900 rounded font-black text-[8px] uppercase font-sans"
+                                >
+                                  Close
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <video
+                                  ref={videoRef}
+                                  autoPlay
+                                  playsInline
+                                  className="absolute inset-0 object-cover w-full h-full scale-x-[-1]"
+                                />
+                                <div className="absolute top-1 right-1 bg-black/60 p-0.5 px-1.5 rounded font-mono text-[8px] text-stone-300 font-bold tracking-widest animate-pulse flex items-center gap-0.5">
+                                  <span className="h-1 w-1 bg-red-600 rounded-full inline-block" /> WORKSHOP CAM
+                                </div>
+                                <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1 z-10">
+                                  <button
+                                    type="button"
+                                    onClick={captureSnapshot}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1 rounded font-black uppercase text-[9px] tracking-wider shadow"
+                                  >
+                                    📸 SNAP
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={stopWebcam}
+                                    className="bg-red-700 hover:bg-red-800 text-white p-1 px-2 rounded font-bold text-[9px] uppercase shadow"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {!isWebcamActive ? (
-                      <button
-                        type="button"
-                        onClick={startWebcam}
-                        className="w-full bg-[#593622]/10 border border-[#593622]/35 text-[#593622] hover:bg-[#593622]/20 font-bold uppercase text-[10px] tracking-widest p-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <Video size={13} />
-                        <span>Start Viewfinder</span>
-                      </button>
-                    ) : (
-                      <div className="bg-stone-950 rounded-lg overflow-hidden relative border border-stone-900 aspect-video flex flex-col justify-end">
-                        {webcamError ? (
-                          <div className="p-2 text-[9px] text-red-400 font-bold text-center flex flex-col items-center justify-center h-full">
-                            <span>{webcamError}</span>
+                    {/* Collapsible reference URL */}
+                    <details className="group bg-stone-100 border border-stone-250/70 rounded-xl overflow-hidden text-xs">
+                      <summary className="p-2 font-bold text-stone-500 hover:text-[#593622] cursor-pointer select-none flex items-center justify-between text-[10px] uppercase tracking-wide">
+                        <span>🔗 Paste manual snapshot link</span>
+                        <span className="group-open:rotate-180 transition-transform">▼</span>
+                      </summary>
+                      
+                      <div className="p-3 border-t bg-stone-50 space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={simulateUrlInput}
+                            onChange={(e) => setSimulateUrlInput(e.target.value)}
+                            placeholder="https://images.unsplash.com/photo-1595..."
+                            className="flex-1 px-2.5 py-1.5 bg-white border border-stone-250 rounded focus:outline-none text-xs text-stone-850 font-semibold"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddPhotos}
+                            className="bg-[#593622] text-white hover:bg-[#402414] px-3.5 py-1.5 font-bold rounded text-[10px] uppercase transition shrink-0"
+                          >
+                            Append Link
+                          </button>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Grid gallery of files uploaded */}
+                    {inProgressFiles.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2 pt-2">
+                        {inProgressFiles.map((url, idx) => (
+                          <div key={idx} className="relative aspect-video rounded-xl overflow-hidden border border-stone-200">
+                            <img referrerPolicy="no-referrer" src={url} alt="Uploaded" className="object-cover w-full h-full" />
                             <button
                               type="button"
-                              onClick={stopWebcam}
-                              className="mt-1.5 p-0.5 px-2 bg-white text-stone-900 rounded font-black text-[8px] uppercase font-sans"
+                              onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
+                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-md font-bold text-[10px] h-5 w-5 flex items-center justify-center transition shadow"
+                              title="Delete photograph"
                             >
-                              Close
+                              ✕
                             </button>
                           </div>
-                        ) : (
-                          <>
-                            <video
-                              ref={videoRef}
-                              autoPlay
-                              playsInline
-                              className="absolute inset-0 object-cover w-full h-full scale-x-[-1]"
-                            />
-                            <div className="absolute top-1 right-1 bg-black/60 p-0.5 px-1.5 rounded font-mono text-[8px] text-stone-300 font-bold tracking-widest animate-pulse flex items-center gap-0.5">
-                              <span className="h-1 w-1 bg-red-600 rounded-full inline-block" /> WORKSHOP CAM
-                            </div>
-                            <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1 z-10">
-                              <button
-                                type="button"
-                                onClick={captureSnapshot}
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1 rounded font-black uppercase text-[9px] tracking-wider shadow"
-                              >
-                                📸 SNAP
-                              </button>
-                              <button
-                                type="button"
-                                onClick={stopWebcam}
-                                className="bg-red-700 hover:bg-red-800 text-white p-1 px-2 rounded font-bold text-[9px] uppercase shadow"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </>
-                        )}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-8 border-2 border-dashed border-stone-250 rounded-xl flex flex-col items-center justify-center text-stone-400 select-none">
+                        <ImageIcon size={24} className="text-stone-300 mb-1 animate-pulse" />
+                        <p className="font-bold text-stone-500">No progress snapshots attached</p>
+                        <p className="text-[10px] text-stone-400 mt-0.5">Use camera button, local files browser, or paste custom urls.</p>
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Collapsible reference URL */}
-                <details className="group bg-stone-100 border border-stone-250/70 rounded-xl overflow-hidden text-xs">
-                  <summary className="p-2 font-bold text-stone-500 hover:text-[#593622] cursor-pointer select-none flex items-center justify-between text-[10px] uppercase tracking-wide">
-                    <span>🔗 Paste manual snapshot link</span>
-                    <span className="group-open:rotate-180 transition-transform">▼</span>
-                  </summary>
-                  
-                  <div className="p-3 border-t bg-stone-50 space-y-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={simulateUrlInput}
-                        onChange={(e) => setSimulateUrlInput(e.target.value)}
-                        placeholder="https://images.unsplash.com/photo-1595..."
-                        className="flex-1 px-2.5 py-1.5 bg-white border border-stone-250 rounded focus:outline-none text-xs text-stone-850 font-semibold"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddPhotos}
-                        className="bg-[#593622] text-white hover:bg-[#402414] px-3.5 py-1.5 font-bold rounded text-[10px] uppercase transition shrink-0"
-                      >
-                        Append Link
-                      </button>
-                    </div>
+                  {/* Action save brown button */}
+                  <div className="pt-3 border-t border-stone-100 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveOrder(null)}
+                      className="px-4 py-2.5 border rounded-xl text-stone-500 font-bold hover:bg-stone-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!isOrderInMyStage(activeOrder.current_status)}
+                      className="bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl shadow transition text-xs cursor-pointer"
+                    >
+                      Save Update
+                    </button>
                   </div>
-                </details>
-
-                {/* Grid gallery of files uploaded */}
-                {inProgressFiles.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2 pt-2">
-                    {inProgressFiles.map((url, idx) => (
-                      <div key={idx} className="relative aspect-video rounded-xl overflow-hidden border border-stone-200">
-                        <img referrerPolicy="no-referrer" src={url} alt="Uploaded" className="object-cover w-full h-full" />
-                        <button
-                          type="button"
-                          onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
-                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-md font-bold text-[10px] h-5 w-5 flex items-center justify-center transition shadow"
-                          title="Delete photograph"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-8 border-2 border-dashed border-stone-250 rounded-xl flex flex-col items-center justify-center text-stone-400 select-none">
-                    <ImageIcon size={24} className="text-stone-300 mb-1 animate-pulse" />
-                    <p className="font-bold text-stone-500">No progress snapshots attached</p>
-                    <p className="text-[10px] text-stone-400 mt-0.5">Use camera button, local files browser, or paste custom urls.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Action save brown button */}
-              <div className="pt-3 border-t border-stone-100 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveOrder(null)}
-                  className="px-4 py-2.5 border rounded-xl text-stone-500 font-bold hover:bg-stone-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!isOrderInMyStage(activeOrder.current_status)}
-                  className="bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl shadow transition text-xs cursor-pointer"
-                >
-                  Save Update
-                </button>
-              </div>
+                </>
+              )}
 
             </form>
           </div>

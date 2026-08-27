@@ -445,9 +445,15 @@ export default function OrderDetailsView({
   };
 
   // QC Checkbox States
-  const [qc1Measurements, setQc1Measurements] = React.useState(!!order.qc_1_measurements_verified);
-  const [qc1Finish, setQc1Finish] = React.useState(!!order.qc_1_finish_verified);
-  const [qc1Buffer, setQc1Buffer] = React.useState(!!order.qc_1_buffer_verified);
+  const [qc1Measurements, setQc1Measurements] = React.useState(
+    !!order.qc_1_measurements_verified || !!order.wood_schedule?.qc_check_1_details?.measurement
+  );
+  const [qc1Finish, setQc1Finish] = React.useState(
+    !!order.qc_1_finish_verified || !!order.wood_schedule?.qc_check_1_details?.finishing
+  );
+  const [qc1Buffer, setQc1Buffer] = React.useState(
+    !!order.qc_1_buffer_verified || !!order.wood_schedule?.qc_check_1_details?.buffer
+  );
 
   const [qc2Polish, setQc2Polish] = React.useState(!!order.qc_2_polish_quality_verified);
   const [qc2Surface, setQc2Surface] = React.useState(!!order.qc_2_surface_finish_approved);
@@ -455,9 +461,9 @@ export default function OrderDetailsView({
 
   // Sync state when order prop changes
   React.useEffect(() => {
-    setQc1Measurements(!!order.qc_1_measurements_verified);
-    setQc1Finish(!!order.qc_1_finish_verified);
-    setQc1Buffer(!!order.qc_1_buffer_verified);
+    setQc1Measurements(!!order.qc_1_measurements_verified || !!order.wood_schedule?.qc_check_1_details?.measurement);
+    setQc1Finish(!!order.qc_1_finish_verified || !!order.wood_schedule?.qc_check_1_details?.finishing);
+    setQc1Buffer(!!order.qc_1_buffer_verified || !!order.wood_schedule?.qc_check_1_details?.buffer);
     setQc2Polish(!!order.qc_2_polish_quality_verified);
     setQc2Surface(!!order.qc_2_surface_finish_approved);
     setQc2Final(!!order.qc_2_final_product_approved);
@@ -465,6 +471,7 @@ export default function OrderDetailsView({
     order.qc_1_measurements_verified,
     order.qc_1_finish_verified,
     order.qc_1_buffer_verified,
+    order.wood_schedule?.qc_check_1_details,
     order.qc_2_polish_quality_verified,
     order.qc_2_surface_finish_approved,
     order.qc_2_final_product_approved,
@@ -521,7 +528,7 @@ export default function OrderDetailsView({
     };
     onUpdateOrder(updatedOrder, log);
   };
-
+  
   const handleRejectWoodSchedule = () => {
     const note = prompt('Enter reason for rejecting Wood Sheet (optional):', 'Wood schedule requires revision.');
     if (note === null) return;
@@ -553,12 +560,24 @@ export default function OrderDetailsView({
   };
 
   const handlePassQC1 = () => {
+    const updatedWoodSchedule = order.wood_schedule
+      ? {
+          ...order.wood_schedule,
+          qc_check_1_details: {
+            measurement: true,
+            finishing: true,
+            buffer: true,
+          },
+        }
+      : undefined;
     const updatedOrder: Order = {
       ...order,
       qc_1_measurements_verified: true,
       qc_1_finish_verified: true,
       qc_1_buffer_verified: true,
       qc_1_status: 'passed',
+      carpenter_sub_status: 'completed',
+      wood_schedule: updatedWoodSchedule,
       last_qc_failure: order.last_qc_failure?.stage === 'QC 1' ? { ...order.last_qc_failure, resolved: true } : order.last_qc_failure,
       
       current_status: 'Making Completed',
@@ -572,10 +591,11 @@ export default function OrderDetailsView({
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: 'QC 1 passed: Measurements, Finish, and Buffer verified. Order moved to Making Completed.',
+      note: 'QC 1 passed: Measurements, Finish, and Buffer verified. Carpentry completed successfully.',
       qc_passed: true,
     };
     onUpdateOrder(updatedOrder, log);
+    addToast('QC 1 verified & saved! Carpentry completed successfully.');
   };
 
   const handleMoveToPolish = () => {

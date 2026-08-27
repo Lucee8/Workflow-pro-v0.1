@@ -18,15 +18,15 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Use custom database ID if specified and not default
+// Resolve Firestore database ID properly (respects named databases including ai-studio-* instances)
 const rawDbId = (firebaseConfig as any).firestoreDatabaseId;
-const databaseId = rawDbId && rawDbId !== "(default)" && !rawDbId.startsWith("ai-studio-") ? rawDbId : undefined;
+const databaseId = rawDbId && rawDbId !== "(default)" ? rawDbId : undefined;
 
 function getOrInitFirestore() {
+  const settings = {
+    experimentalForceLongPolling: true,
+  };
   try {
-    const settings = {
-      experimentalAutoDetectLongPolling: true,
-    };
     return databaseId 
       ? initializeFirestore(app, settings, databaseId) 
       : initializeFirestore(app, settings);
