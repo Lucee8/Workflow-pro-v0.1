@@ -175,7 +175,7 @@ export interface Order {
   qc_2_surface_finish_approved?: boolean;
   qc_2_final_product_approved?: boolean;
   last_qc_failure?: QCFailureInfo;
-  qc_1_status?: 'passed' | 'failed' | 'pending';
+  qc_1_status?: 'passed' | 'failed' | 'pending' | 'pending_admin_approval';
   qc_1_fail_notes?: string;
   qc_1_failed_at?: string;
   qc_1_failed_by?: string;
@@ -184,6 +184,8 @@ export interface Order {
   qc_2_failed_at?: string;
   qc_2_failed_by?: string;
   carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
+  completion_popup_acknowledged?: boolean;
+  completionPopupShown?: boolean;
   total_amount?: number;
   advance_paid?: number;
   dispatchDate?: string;

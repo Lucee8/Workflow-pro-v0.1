@@ -274,6 +274,14 @@ export default function WorkerDashboard({
   const [showCompletedModal, setShowCompletedModal] = React.useState(false);
   const [showQcFailPopup, setShowQcFailPopup] = React.useState(false);
   const [seenQcFailures, setSeenQcFailures] = React.useState<Record<string, boolean>>({});
+  const [seenCompletions, setSeenCompletions] = React.useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('bhisez_seen_completed_carpentry');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const isWoodScheduleApproved = React.useMemo(() => {
     if (!activeOrder) return false;
@@ -310,25 +318,26 @@ export default function WorkerDashboard({
         ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status)
       );
 
-      if (isCarpentryDone) {
-        try {
-          const savedSeen = localStorage.getItem('bhisez_seen_completed_carpentry');
-          const seenMap = savedSeen ? JSON.parse(savedSeen) : {};
-          if (!seenMap[activeOrder.id]) {
-            setShowCompletedModal(true);
-            seenMap[activeOrder.id] = true;
-            localStorage.setItem('bhisez_seen_completed_carpentry', JSON.stringify(seenMap));
-          }
-        } catch {
-          setShowCompletedModal(true);
-        }
+      const isAcknowledged = !!activeOrder.completion_popup_acknowledged || !!activeOrder.completionPopupShown || !!seenCompletions[activeOrder.id];
+
+      if (isCarpentryDone && !isAcknowledged) {
+        setShowCompletedModal(true);
       } else {
         setShowCompletedModal(false);
       }
     } else {
       setShowCompletedModal(false);
     }
-  }, [activeOrder?.id, activeOrder?.carpenter_sub_status, activeOrder?.qc_1_status, activeOrder?.current_status, isCarpenter]);
+  }, [
+    activeOrder?.id,
+    activeOrder?.carpenter_sub_status,
+    activeOrder?.qc_1_status,
+    activeOrder?.current_status,
+    activeOrder?.completion_popup_acknowledged,
+    activeOrder?.completionPopupShown,
+    seenCompletions,
+    isCarpenter
+  ]);
 
   React.useEffect(() => {
     if (activeOrder) {
@@ -423,10 +432,14 @@ export default function WorkerDashboard({
         ord.current_status === 'Making Completed' ||
         ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status)
       );
-      const sub = isCarpentryDone ? 'completed' : (ord.carpenter_sub_status || 'wood_procurement');
+      const sub = isCarpentryDone ? 'qc_check_1' : (ord.carpenter_sub_status || 'wood_procurement');
       setProgressStatus(sub);
-      if (isCarpentryDone) {
+      
+      const isAcknowledged = !!ord.completion_popup_acknowledged || !!ord.completionPopupShown || !!seenCompletions[ord.id];
+      if (isCarpentryDone && !isAcknowledged) {
         setShowCompletedModal(true);
+      } else {
+        setShowCompletedModal(false);
       }
       
       // Load or Initialize Wood Schedule data
@@ -464,6 +477,29 @@ export default function WorkerDashboard({
     }
     setUpdateNotes('');
     setInProgressFiles(ord.images.filter(img => img.type === 'In-Progress').map(img => img.url));
+  };
+
+  const handleAcknowledgeCompletion = () => {
+    setShowCompletedModal(false);
+    if (!activeOrder) return;
+    try {
+      const savedSeen = localStorage.getItem('bhisez_seen_completed_carpentry');
+      const seenMap = savedSeen ? JSON.parse(savedSeen) : {};
+      seenMap[activeOrder.id] = true;
+      localStorage.setItem('bhisez_seen_completed_carpentry', JSON.stringify(seenMap));
+      setSeenCompletions(seenMap);
+    } catch (e) {
+      console.error(e);
+    }
+
+    const updatedOrder: Order = {
+      ...activeOrder,
+      completion_popup_acknowledged: true,
+      completionPopupShown: true,
+      updated_at: new Date().toISOString(),
+    };
+    onUpdateOrder(updatedOrder);
+    setActiveOrder(updatedOrder);
   };
 
   const handleAddPhotos = () => {
@@ -564,13 +600,6 @@ export default function WorkerDashboard({
         }
         nextSubStatus = 'qc_check_1';
         nextStage = 'QC 1';
-      } else if (progressStatus === 'completed') {
-        if (!isWoodScheduleApproved) {
-          alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before completing carpentry work.');
-          return;
-        }
-        nextSubStatus = 'completed';
-        nextStage = 'Making Completed';
       }
     } else {
       if (progressStatus === 'completed') {
@@ -580,14 +609,14 @@ export default function WorkerDashboard({
       }
     }
 
-    const statusLabel = progressStatus === 'completed'
-      ? (isCarpenter ? 'Completed (Carpentry Done)' : 'Completed')
-      : progressStatus === 'wood_procurement'
+    const statusLabel = progressStatus === 'wood_procurement'
       ? 'Wood Procurement'
       : progressStatus === 'under_carpentry'
       ? 'Under Carpentry'
       : progressStatus === 'qc_check_1'
-      ? 'QC Check 1 (Awaiting Admin Review)'
+      ? 'QC Check 1 (Pending Admin Approval)'
+      : progressStatus === 'completed'
+      ? 'Completed'
       : 'In Progress';
 
     const log: StatusLog = {
@@ -691,7 +720,7 @@ export default function WorkerDashboard({
       activeOrder.current_status === 'Making Completed' ||
       ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status)
     );
-    const savedSub = isCarpentryDone ? 'completed' : (activeOrder.carpenter_sub_status || 'wood_procurement');
+    const savedSub = isCarpentryDone ? 'qc_check_1' : (activeOrder.carpenter_sub_status || 'wood_procurement');
 
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
@@ -733,7 +762,7 @@ export default function WorkerDashboard({
           </div>
         )}
 
-        {/* Completed (Carpentry Done) Verification Modal */}
+        {/* Order Completed Verification Modal */}
         {showCompletedModal && activeOrder && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-500 space-y-4 text-center animate-in zoom-in-95 duration-150">
@@ -742,13 +771,16 @@ export default function WorkerDashboard({
               </div>
               <div className="space-y-1.5">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black uppercase tracking-wider border border-emerald-300">
-                  ✓ QC 1 Verified & Saved by Admin
+                  ✓ QC Check 1 Approved
                 </div>
-                <h3 className="text-lg font-black text-stone-900 font-display">
-                  Completed (Carpentry Done)
+                <h3 className="text-xl font-black text-stone-900 font-display">
+                  Order Completed
                 </h3>
-                <p className="text-xs text-stone-600 font-medium leading-relaxed pt-1">
-                  Admin has verified and approved QC 1 (Measurements, Finish & Buffer). Carpentry fabrication is officially completed and ready to proceed to Polish department.
+                <p className="text-sm text-stone-800 font-bold leading-relaxed pt-1">
+                  QC Check 1 has been approved by Admin.
+                </p>
+                <p className="text-xs text-stone-600 font-medium">
+                  This order has been completed successfully.
                 </p>
               </div>
 
@@ -762,23 +794,23 @@ export default function WorkerDashboard({
                   <span className="font-bold text-stone-900">{currentUser.name}</span>
                 </div>
                 <div className="flex justify-between items-center text-stone-700">
-                  <span className="text-stone-500 font-semibold">QC 1 Checklist:</span>
-                  <span className="font-extrabold text-emerald-700">All 3 Items Verified & Passed ✔</span>
+                  <span className="text-stone-500 font-semibold">QC 1 Status:</span>
+                  <span className="font-extrabold text-emerald-700">Approved by Admin ✔</span>
                 </div>
                 <div className="flex justify-between items-center text-stone-700 border-t border-emerald-200/70 pt-1.5">
-                  <span className="text-stone-500 font-semibold">Current Workshop Status:</span>
+                  <span className="text-stone-500 font-semibold">Current Stage:</span>
                   <span className="font-bold text-stone-900">Making Completed</span>
                 </div>
               </div>
 
-              <div className="pt-2 flex gap-2">
+              <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowCompletedModal(false)}
+                  onClick={handleAcknowledgeCompletion}
                   className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-md cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <CheckCircle2 size={15} />
-                  Got It — Carpentry Done
+                  OK / Close
                 </button>
               </div>
             </div>
@@ -1045,7 +1077,7 @@ export default function WorkerDashboard({
               {/* Radios inputs matching completed states */}
               <div className="space-y-2.5">
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider font-sans">Progress Status *</label>
-                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-2'} gap-3`}>
+                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
                   {isCarpenter ? (
                     <>
                       {/* Wood procurement tab */}
@@ -1094,7 +1126,7 @@ export default function WorkerDashboard({
                         />
                         <div>
                           <strong className="text-xs block font-sans">
-                            Under Carpentry {(savedSub === 'qc_check_1' || savedSub === 'completed') && '(Passed ✔)'}
+                            Under Carpentry {(savedSub === 'qc_check_1' || isCarpentryDone) && '(Passed ✔)'}
                           </strong>
                           <span className="text-[10px] text-stone-400 font-medium font-sans">Active carpentry structure construction and assembly</span>
                         </div>
@@ -1103,7 +1135,7 @@ export default function WorkerDashboard({
                       {/* QC Check 1 tab */}
                       <label
                         className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'qc_check_1'
+                          savedSub !== 'qc_check_1' && !isCarpentryDone
                             ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
                             : progressStatus === 'qc_check_1'
                             ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
@@ -1114,75 +1146,65 @@ export default function WorkerDashboard({
                           type="radio"
                           name="progressRadios"
                           checked={progressStatus === 'qc_check_1'}
-                          disabled={savedSub !== 'qc_check_1'}
+                          disabled={savedSub !== 'qc_check_1' && !isCarpentryDone}
                           onChange={() => setProgressStatus('qc_check_1')}
                           className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <div>
                           <strong className="text-xs block font-sans">
-                            QC Check 1 {savedSub === 'completed' && '(Passed ✔)'}
+                            QC Check 1 {isCarpentryDone ? '(Passed ✔)' : (activeOrder.qc_1_status === 'pending_admin_approval' ? '(Pending Admin Approval ⏳)' : '')}
                           </strong>
                           <span className="text-[10px] text-stone-400 font-medium font-sans">Verify measurements, finishing & buffer specs</span>
                         </div>
                       </label>
                     </>
                   ) : (
-                    /* Default In Progress (used by paint/polish) */
-                    <label
-                      className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
-                        progressStatus === 'in_progress'
-                          ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
-                          : 'bg-stone-50 border-stone-200 text-stone-550'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="progressRadios"
-                        checked={progressStatus === 'in_progress'}
-                        onChange={() => setProgressStatus('in_progress')}
-                        className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
-                      />
-                      <div>
-                        <strong className="text-xs block font-sans">In Progress</strong>
-                        <span className="text-[10px] text-stone-400 font-medium font-sans">Continue work on active cabinetry floor cutting</span>
-                      </div>
-                    </label>
-                  )}
+                    <>
+                      {/* Default In Progress (used by paint/polish) */}
+                      <label
+                        className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
+                          progressStatus === 'in_progress'
+                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
+                            : 'bg-stone-50 border-stone-200 text-stone-550'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="progressRadios"
+                          checked={progressStatus === 'in_progress'}
+                          onChange={() => setProgressStatus('in_progress')}
+                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
+                        />
+                        <div>
+                          <strong className="text-xs block font-sans">In Progress</strong>
+                          <span className="text-[10px] text-stone-400 font-medium font-sans">Continue work on active cabinetry floor cutting</span>
+                        </div>
+                      </label>
 
-                  <label
-                    onClick={() => {
-                      if (savedSub === 'completed') {
-                        setShowCompletedModal(true);
-                      }
-                    }}
-                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                      isCarpenter && savedSub !== 'completed'
-                        ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
-                        : progressStatus === 'completed'
-                        ? 'bg-green-50/40 border-green-500 ring-2 ring-green-500/10 text-green-900 cursor-pointer'
-                        : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100 cursor-pointer'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="progressRadios"
-                      checked={progressStatus === 'completed'}
-                      disabled={isCarpenter && savedSub !== 'completed'}
-                      onChange={() => {
-                        setProgressStatus('completed');
-                        if (savedSub === 'completed') {
-                          setShowCompletedModal(true);
-                        }
-                      }}
-                      className="text-green-700 focus:ring-green-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                    <div>
-                      <strong className="text-xs block font-sans">
-                        {isCarpenter ? 'Completed (Carpentry Done)' : 'Completed (Move to QC Check 2)'}
-                      </strong>
-                      <span className="text-[10px] text-stone-400 font-medium font-sans">Mark department task finished successfully</span>
-                    </div>
-                  </label>
+                      {/* Completed for non-carpenter */}
+                      <label
+                        className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
+                          progressStatus === 'completed'
+                            ? 'bg-green-50/40 border-green-500 ring-2 ring-green-500/10 text-green-900'
+                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="progressRadios"
+                          checked={progressStatus === 'completed'}
+                          onChange={() => setProgressStatus('completed')}
+                          className="text-green-700 focus:ring-green-500 font-bold shrink-0 cursor-pointer"
+                        />
+                        <div>
+                          <strong className="text-xs block font-sans">
+                            Completed (Move to QC Check 2)
+                          </strong>
+                          <span className="text-[10px] text-stone-400 font-medium font-sans">Mark department task finished successfully</span>
+                        </div>
+                      </label>
+                    </>
+                  )}
                 </div>
 
                 {/* QC Check 1 Checkboxes Panel */}
@@ -1253,34 +1275,31 @@ export default function WorkerDashboard({
                 )}
               </div>
 
-              {isCarpenter && (progressStatus === 'completed' || savedSub === 'completed') ? (
-                /* Blank / Minimal Completed Section with Order Completed Popup Trigger */
-                <div className="bg-white border border-emerald-200 rounded-2xl p-8 sm:p-12 text-center space-y-4 shadow-2xs">
-                  <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-300 shadow-2xs">
-                    <CheckCircle2 size={36} />
+              {/* Carpentry Completed Status Banner if QC 1 was passed by Admin */}
+              {isCarpenter && isCarpentryDone && (
+                <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center border border-emerald-300 shrink-0">
+                      <CheckCircle2 size={22} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-emerald-950 font-display">QC Check 1 Approved — Carpentry Complete</h4>
+                      <p className="text-[11px] text-emerald-800 font-medium">Admin has verified and approved QC 1. Stage advanced to Making Completed.</p>
+                    </div>
                   </div>
-                  <div className="space-y-1.5 max-w-md mx-auto">
-                    <h3 className="text-base sm:text-lg font-black text-stone-900 font-display">
-                      Completed (Carpentry Done)
-                    </h3>
-                    <p className="text-xs text-stone-500 font-medium leading-relaxed">
-                      Carpentry fabrication for Article #{activeOrder.article_no} is completed.
-                    </p>
-                  </div>
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCompletedModal(true)}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                    >
-                      <CheckCircle2 size={16} />
-                      View Completed Order Popup
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCompletedModal(true)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 cursor-pointer flex items-center gap-1.5 w-fit"
+                  >
+                    <CheckCircle2 size={13} />
+                    View Completion Popup
+                  </button>
                 </div>
-              ) : (
-                <>
-                  {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}
+              )}
+
+              {/* Progress Staging Body */}
+              {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}
                   <div className="bg-[#fcfaf7] border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-amber-200/60 gap-2">
                       <div className="flex items-center gap-2">
@@ -1784,10 +1803,7 @@ export default function WorkerDashboard({
                       Save Update
                     </button>
                   </div>
-                </>
-              )}
-
-            </form>
+                </form>
           </div>
 
         </div>
