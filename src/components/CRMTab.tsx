@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/upi_qr.png';
-import signatureImg from '../assets/images/signature.svg';
+import upiQrImg from '../assets/images/UPI QR code.jpeg';
+import signatureImg from '../assets/images/Authorized Signatory.png';
 import { 
   AppState,
   generateArticleNumber
