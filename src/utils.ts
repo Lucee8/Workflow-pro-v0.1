@@ -304,3 +304,132 @@ export function compressImage(
   });
 }
 
+export interface ResolvedCustomerInfo {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  email?: string;
+}
+
+/**
+ * Accurately and deterministically resolves the customer associated with a quotation.
+ * Uses quotation.customer_id with defensive fallback against name-id desynchronization.
+ */
+export function resolveQuotationCustomer(
+  quote: { customer_id?: string; customer_name?: string } | null | undefined,
+  crmCustomers: Array<any> = [],
+  customers: Array<any> = []
+): ResolvedCustomerInfo {
+  if (!quote) {
+    return { id: '', name: 'Customer', phone: '', address: '', city: '' };
+  }
+
+  const allCusts = [
+    ...(Array.isArray(crmCustomers) ? crmCustomers : []),
+    ...(Array.isArray(customers) ? customers : [])
+  ];
+
+  // 1. Try finding customer by unique customer_id
+  let found: any = null;
+  if (quote.customer_id) {
+    found = allCusts.find((c) => c && c.id === quote.customer_id);
+  }
+
+  // 2. If found customer by ID but the customer's name doesn't match quote.customer_name (e.g. from previous resequencing corruption),
+  // or if customer was not found by ID, fallback to finding by customer_name
+  if ((!found || (quote.customer_name && found.name && found.name.trim().toLowerCase() !== quote.customer_name.trim().toLowerCase())) && quote.customer_name) {
+    const byName = allCusts.find(
+      (c) => c && c.name && c.name.trim().toLowerCase() === quote.customer_name!.trim().toLowerCase()
+    );
+    if (byName) {
+      found = byName;
+    }
+  }
+
+  if (found) {
+    return {
+      id: found.id,
+      name: found.name || quote.customer_name || 'Customer',
+      phone: found.phone || found.whatsappNumber || '',
+      address: found.address || '',
+      city: found.city || found.address || '',
+      email: found.email || '',
+    };
+  }
+
+  return {
+    id: quote.customer_id || '',
+    name: quote.customer_name || 'Customer',
+    phone: '',
+    address: '',
+    city: '',
+  };
+}
+
+/**
+ * Self-heals quotation-to-customer relationships across the state.
+ * Ensures every quotation has its correct unique customer_id linked to the true customer,
+ * matching customer_name, and items with unique IDs.
+ */
+export function reconcileQuotationsAndCustomers(state: any): any {
+  if (!state || typeof state !== 'object') return state;
+
+  const crmCustomers = Array.isArray(state.crmCustomers) ? state.crmCustomers : [];
+  const customers = Array.isArray(state.customers) ? state.customers : [];
+  const crmQuotations = Array.isArray(state.crmQuotations) ? state.crmQuotations : [];
+
+  if (crmQuotations.length === 0) {
+    return state;
+  }
+
+  const allCusts = [...crmCustomers, ...customers];
+
+  let hasChanges = false;
+  const updatedQuotations = crmQuotations.map((q: any) => {
+    if (!q) return q;
+
+    // Resolve by customer_id first
+    let matchedCustomer = q.customer_id
+      ? allCusts.find((c) => c && c.id === q.customer_id)
+      : null;
+
+    // If ID mismatch or missing, resolve by name
+    if ((!matchedCustomer || (q.customer_name && matchedCustomer.name && matchedCustomer.name.trim().toLowerCase() !== q.customer_name.trim().toLowerCase())) && q.customer_name) {
+      const byName = allCusts.find(
+        (c) => c && c.name && c.name.trim().toLowerCase() === q.customer_name.trim().toLowerCase()
+      );
+      if (byName) {
+        matchedCustomer = byName;
+      }
+    }
+
+    const resolvedCustId = matchedCustomer ? matchedCustomer.id : q.customer_id;
+    const resolvedCustName = matchedCustomer ? (matchedCustomer.name || q.customer_name) : q.customer_name;
+
+    const formattedItems = Array.isArray(q.items) ? q.items.map((item: any, idx: number) => ({
+      ...item,
+      id: item.id || `item_${q.id}_${idx + 1}`
+    })) : [];
+
+    if (q.customer_id !== resolvedCustId || q.customer_name !== resolvedCustName) {
+      hasChanges = true;
+    }
+
+    return {
+      ...q,
+      customer_id: resolvedCustId,
+      customer_name: resolvedCustName,
+      items: formattedItems
+    };
+  });
+
+  if (!hasChanges) return state;
+
+  return {
+    ...state,
+    crmQuotations: updatedQuotations,
+  };
+}
+

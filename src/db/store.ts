@@ -4,6 +4,7 @@
  */
 
 import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
+import { reconcileQuotationsAndCustomers } from '../utils';
 
 // Helper to generate UUIDs
 export function generateUUID(): string {
@@ -360,27 +361,22 @@ export function loadState(): AppState {
             }
           });
 
-          // Check and re-sequence any customer gaps in CRM
-          let stateAfterResequencing = parsed;
-          if (Array.isArray(parsed.crmCustomers) && parsed.crmCustomers.length > 0) {
-            const res = resequenceCRMCustomersInState(parsed);
-            if (res.changesCount > 0) {
-              stateAfterResequencing = res.updatedState;
-            }
-          }
+          // Reconcile and self-heal quotation-to-customer linkages
+          const reconciled = reconcileQuotationsAndCustomers(parsed);
+
           return {
-            ...stateAfterResequencing,
+            ...reconciled,
             users: existingUsers,
-            payments: stateAfterResequencing.payments || [],
-            materials: stateAfterResequencing.materials || [],
-            auditLogs: stateAfterResequencing.auditLogs || [],
-            crmCustomers: stateAfterResequencing.crmCustomers || [],
-            crmQuotations: stateAfterResequencing.crmQuotations || [],
-            crmFollowUps: stateAfterResequencing.crmFollowUps || [],
-            crmPayments: stateAfterResequencing.crmPayments || [],
-            crmNotes: stateAfterResequencing.crmNotes || [],
-            crmAttachments: stateAfterResequencing.crmAttachments || [],
-            crmTimelineEvents: stateAfterResequencing.crmTimelineEvents || [],
+            payments: reconciled.payments || [],
+            materials: reconciled.materials || [],
+            auditLogs: reconciled.auditLogs || [],
+            crmCustomers: reconciled.crmCustomers || [],
+            crmQuotations: reconciled.crmQuotations || [],
+            crmFollowUps: reconciled.crmFollowUps || [],
+            crmPayments: reconciled.crmPayments || [],
+            crmNotes: reconciled.crmNotes || [],
+            crmAttachments: reconciled.crmAttachments || [],
+            crmTimelineEvents: reconciled.crmTimelineEvents || [],
           };
         }
       }
@@ -639,3 +635,4 @@ export function resequenceCRMCustomersInState(state: AppState): {
 
   return { updatedState, idMapping, changesCount };
 }
+

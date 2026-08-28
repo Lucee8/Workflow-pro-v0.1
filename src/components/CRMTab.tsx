@@ -6,13 +6,13 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/UPI QR code.jpeg';
-import signatureImg from '../assets/images/Authorized Signatory.png';
+import upiQrImg from '../assets/images/upi_qr.png';
+import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
 } from '../db/store';
-import { compareOrdersByArticleSerialDesc } from '../utils';
+import { compareOrdersByArticleSerialDesc, resolveQuotationCustomer } from '../utils';
 import { 
   User, 
   CRMCustomer, 
@@ -71,7 +71,7 @@ import {
   Printer,
   Download,
   Share2,
-  Image as ImageIcon,
+  Image,
   QrCode,
   FileSignature,
   Package,
@@ -135,7 +135,7 @@ interface CRMTabProps {
   onSaveCRMAttachment: (attachment: CRMAttachment) => void;
   onDeleteCRMAttachment: (id: string) => void;
   onSaveCRMTimelineEvent: (event: CRMTimelineEvent) => void;
-  onSaveOrder: (order: Order | Order[], customer?: any) => void | Promise<void>;
+  onSaveOrder: (order: Order, customer?: any) => void;
   currentUser: User;
   users: User[];
   onApproveQuotation?: (quote: CRMQuotation) => void;
@@ -180,16 +180,17 @@ export default function CRMTab({
     const currentMonthCustomers = (allCustomers || []).filter(c => c && c.id && c.id.startsWith(prefix));
 
     currentMonthCustomers.forEach((c) => {
-          const serialPart = c.id.substring(prefix.length);
-          const serialNum = parseInt(serialPart, 10);
+      const serialPart = c.id.substring(prefix.length);
+      const serialNum = parseInt(serialPart, 10);
       if (!isNaN(serialNum)) {
         // Skip outlier jump numbers (> count + 20) to ensure continuous sequencing
         if (currentMonthCustomers.length < 100 && serialNum > currentMonthCustomers.length + 20) {
           // ignore outlier
-        } else if (serialNum > maxSerial) {            maxSerial = serialNum;
-          }
+        } else if (serialNum > maxSerial) {
+          maxSerial = serialNum;
         }
-      });
+      }
+    });
 
     if (currentMonthCustomers.length > maxSerial) {
       maxSerial = currentMonthCustomers.length;
@@ -877,12 +878,12 @@ export default function CRMTab({
       const defaultCarp = users.find(u => u.role === 'carpenter')?.id || 'user_rinku_v_prod';
       let primaryArticleNo = '';
 
-      const createdOrders = itemsList.map((item, idx) => {
+      itemsList.forEach((item, idx) => {
         const orderId = itemsList.length > 1 ? `${baseOrderId}-${idx + 1}` : baseOrderId;
         const articleNo = generateArticleNumber('Living Room', defaultCarp, db.orders || [], users, idx);
         if (idx === 0) primaryArticleNo = articleNo;
 
-        return {
+        const newOrder: Order = {
           id: orderId,
           parent_order_id: baseOrderId,
           article_no: articleNo,
@@ -910,10 +911,10 @@ export default function CRMTab({
           created_at: new Date().toISOString(),
           created_by: currentUser.id,
           images: []
-        } satisfies Order;
-      });
+        };
 
-      onSaveOrder(createdOrders);
+        onSaveOrder(newOrder);
+      });
 
       const orderId = baseOrderId;
       const articleNo = primaryArticleNo;
@@ -1402,7 +1403,7 @@ export default function CRMTab({
       return;
     }
 
-    const customer = allAvailableCustomers.find(c => c.id === quoteCustomerId) || db.crmCustomers?.find(c => c.id === quoteCustomerId) || db.customers?.find(c => c.id === quoteCustomerId);
+    const customer = resolveQuotationCustomer({ customer_id: quoteCustomerId, customer_name: '' } as CRMQuotation, db.crmCustomers, db.customers);
     const quoteId = editingQuotation ? editingQuotation.id : generateCRMQuotationId(db.crmQuotations || []);
     const nextEstimateNo = (db.crmQuotations && db.crmQuotations.length > 0) 
       ? Math.max(0, ...db.crmQuotations.map(q => q.estimateNo || 0)) + 1 
@@ -1435,10 +1436,13 @@ export default function CRMTab({
       };
     });
 
+    const resolvedCustId = customer.id || quoteCustomerId;
+    const resolvedCustName = customer.name || 'Customer';
+
     const newQuote: CRMQuotation = {
       id: quoteId,
-      customer_id: quoteCustomerId,
-      customer_name: customer ? customer.name : 'Unknown Customer',
+      customer_id: resolvedCustId,
+      customer_name: resolvedCustName,
       items: formattedItems,
       subtotal: quoteSubtotal,
       transportation_charges: quoteTransportationAmt,
@@ -2661,10 +2665,7 @@ export default function CRMTab({
                           <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                             {selectedCustQuotes.length > 0 ? (
                               selectedCustQuotes.map(q => {
-                                const qImages = (q.items || [])
-                                  .flatMap(i => i.images || [])
-                                  .map((img) => typeof img === 'string' ? img : (img?.url || ''))
-                                  .filter((url): url is string => Boolean(url));
+                                const qImages = (q.items || []).flatMap(i => i.images || []).filter(Boolean);
                                 return (
                                   <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                     <div>
@@ -2927,6 +2928,7 @@ export default function CRMTab({
                 <tbody className="divide-y divide-stone-100 font-medium text-stone-700">
                   {filteredQuotationsList.length > 0 ? (
                     filteredQuotationsList.map(quote => {
+                      const custInfo = resolveQuotationCustomer(quote, db.crmCustomers, db.customers);
                       const itemsCount = quote.items?.length || 0;
                       const firstItem = quote.items?.[0];
                       const totalQty = quote.items?.reduce((sum, i) => sum + (i.quantity || 1), 0) || 1;
@@ -2934,7 +2936,7 @@ export default function CRMTab({
                       return (
                         <tr key={quote.id} className="hover:bg-stone-50/50 transition">
                           <td className="p-4 font-mono font-bold text-[#593622]">{quote.id}</td>
-                          <td className="p-4 text-stone-900 font-bold">{quote.customer_name}</td>
+                          <td className="p-4 text-stone-900 font-bold">{custInfo.name}</td>
                           <td className="p-4">
                             {itemsCount > 1 ? (
                               <div>
@@ -3618,7 +3620,7 @@ export default function CRMTab({
                           <div className="space-y-2 pt-2 border-t border-stone-200/80">
                             <div className="flex items-center justify-between">
                               <label className="font-bold text-stone-700 text-xs flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-[#593622]">
-                                <ImageIcon size={14} className="text-[#593622]" /> Upload Product Photos
+                                <Image size={14} className="text-[#593622]" /> Upload Product Photos
                               </label>
                               <span className="text-[10px] text-stone-500 font-bold">
                                 {item.images && item.images.length > 0
@@ -4433,19 +4435,20 @@ export default function CRMTab({
 
       {/* 5. ESTIMATE RECEIPT VIEWER MODAL */}
       {viewingEstimateQuote && (() => {
+        const activeQuote = db.crmQuotations?.find(q => q.id === viewingEstimateQuote.id) || viewingEstimateQuote;
         const handleUpdateField = (field: keyof CRMQuotation, value: any) => {
-          if (!viewingEstimateQuote) return;
-          const updated = { ...viewingEstimateQuote, [field]: value };
+          if (!activeQuote) return;
+          const updated = { ...activeQuote, [field]: value };
           setViewingEstimateQuote(updated);
           onSaveCRMQuotation(updated);
         };
 
-        const customer = db.crmCustomers?.find(c => c.id === viewingEstimateQuote.customer_id) || db.customers?.find(c => c.id === viewingEstimateQuote.customer_id);
-        const itemsList = viewingEstimateQuote.items || [];
+        const customer = resolveQuotationCustomer(activeQuote, db.crmCustomers, db.customers);
+        const itemsList = activeQuote.items || [];
         const itemSubtotal = itemsList.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
-        const transportationCharges = Number(viewingEstimateQuote.transportation_charges) || 0;
-        const totalDiscount = (viewingEstimateQuote.discount !== undefined && Number(viewingEstimateQuote.discount) >= 0)
-          ? Number(viewingEstimateQuote.discount)
+        const transportationCharges = Number(activeQuote.transportation_charges) || 0;
+        const totalDiscount = (activeQuote.discount !== undefined && Number(activeQuote.discount) >= 0)
+          ? Number(activeQuote.discount)
           : itemsList.reduce((acc, item) => acc + (item.discount || 0), 0);
         const taxableAmount = Math.max(0, itemSubtotal + transportationCharges - totalDiscount);
         const totalGstAmount = itemsList.reduce((acc, item) => {
@@ -4476,14 +4479,14 @@ export default function CRMTab({
           return helper(Math.round(num)).trim() + ' Rupees Only';
         };
 
-        const quoteDisplayId = viewingEstimateQuote.id.startsWith('QT-') ? viewingEstimateQuote.id : `QT-${viewingEstimateQuote.id}`;
-        const isInvoice = (viewingEstimateQuote.received_amount || 0) > 0;
+        const quoteDisplayId = activeQuote.id.startsWith('QT-') ? activeQuote.id : `QT-${activeQuote.id}`;
+        const isInvoice = (activeQuote.received_amount || 0) > 0;
         const docTitle = isInvoice ? 'Invoice' : 'Estimate';
-        const receivedAmt = Math.max(0, viewingEstimateQuote.received_amount || 0);
-        const balanceAmt = Math.max(0, viewingEstimateQuote.totalAmount - receivedAmt);
+        const receivedAmt = Math.max(0, activeQuote.received_amount || 0);
+        const balanceAmt = Math.max(0, activeQuote.totalAmount - receivedAmt);
 
-        const shareText = `Hello ${customer?.name || viewingEstimateQuote.customer_name},\n\nPlease find the custom price ${docTitle} from *Bhisez Furniture*:\n\n*${docTitle} No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(viewingEstimateQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Grand Total:* ₹${viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}${receivedAmt > 0 ? `\n*Received Amount:* ₹${receivedAmt.toLocaleString('en-IN')}\n*Balance Amount:* ₹${balanceAmt.toLocaleString('en-IN')}` : ''}\n\nThank you for choosing Bhisez Furniture!`;
-        const phoneForWa = customer?.phone ? customer.phone.replace(/\D/g, '') : '';
+        const shareText = `Hello ${customer.name},\n\nPlease find the custom price ${docTitle} from *Bhisez Furniture*:\n\n*${docTitle} No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(activeQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Grand Total:* ₹${activeQuote.totalAmount.toLocaleString('en-IN')}${receivedAmt > 0 ? `\n*Received Amount:* ₹${receivedAmt.toLocaleString('en-IN')}\n*Balance Amount:* ₹${balanceAmt.toLocaleString('en-IN')}` : ''}\n\nThank you for choosing Bhisez Furniture!`;
+        const phoneForWa = customer.phone ? customer.phone.replace(/\D/g, '') : '';
         const whatsappUrl = phoneForWa
           ? `https://api.whatsapp.com/send?phone=${phoneForWa}&text=${encodeURIComponent(shareText)}`
           : `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
@@ -4609,20 +4612,18 @@ export default function CRMTab({
                           </span>
                         </div>
                         <div className="p-2.5 print:p-2 space-y-0.5 min-h-[55px] text-xs text-slate-700">
-                          <h3 className="font-bold text-slate-900 text-sm">{customer?.name || viewingEstimateQuote.customer_name}</h3>
+                          <h3 className="font-bold text-slate-900 text-sm">{customer.name}</h3>
                           <p className="text-[11px] font-bold text-slate-700">
                             {docTitle} Ref: <span className="text-[#593622] font-extrabold">{quoteDisplayId}</span>
                           </p>
-                          {customer && (
-                            <div className="space-y-0.5 text-slate-600 text-[11px]">
-                              <p>Contact: <span className="font-semibold text-slate-800">{customer.phone}</span></p>
-                              {customer.address && (
-                                <p className="leading-snug">
-                                  Address: {customer.address}{'city' in customer && customer.city ? `, ${customer.city}` : ''}
-                                </p>
-                              )}
-                            </div>
-                          )}
+                          <div className="space-y-0.5 text-slate-600 text-[11px]">
+                            {customer.phone && <p>Contact: <span className="font-semibold text-slate-800">{customer.phone}</span></p>}
+                            {(customer.address || customer.city) && (
+                              <p className="leading-snug">
+                                Address: {customer.address ? `${customer.address}${customer.city && customer.city !== customer.address ? `, ${customer.city}` : ''}` : customer.city}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -4636,12 +4637,12 @@ export default function CRMTab({
                           <div className="flex items-center gap-1">
                             <span className="text-slate-600">No:</span>
                             <span className="hidden print:inline font-bold text-slate-900">
-                              {viewingEstimateQuote.estimateNo !== undefined ? viewingEstimateQuote.estimateNo : (viewingEstimateQuote.id ? viewingEstimateQuote.id.toString().replace(/\D/g, '').slice(-3) || '1' : '1')}
+                              {activeQuote.estimateNo !== undefined ? activeQuote.estimateNo : (activeQuote.id ? activeQuote.id.toString().replace(/\D/g, '').slice(-3) || '1' : '1')}
                             </span>
                             <input
                               type="number"
                               min="1"
-                              value={viewingEstimateQuote.estimateNo !== undefined ? viewingEstimateQuote.estimateNo : (viewingEstimateQuote.id ? Number(viewingEstimateQuote.id.toString().replace(/\D/g, '')) || 1 : 1)}
+                              value={activeQuote.estimateNo !== undefined ? activeQuote.estimateNo : (activeQuote.id ? Number(activeQuote.id.toString().replace(/\D/g, '')) || 1 : 1)}
                               onChange={(e) => handleUpdateField('estimateNo', Number(e.target.value))}
                               className="print:hidden font-bold text-slate-900 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-20 outline-none transition"
                             />
@@ -4650,11 +4651,11 @@ export default function CRMTab({
                           <div className="flex items-center gap-1">
                             <span className="text-slate-600">Date:</span>
                             <span className="hidden print:inline font-bold text-slate-900">
-                              {formatToDDMMYYYY(viewingEstimateQuote.created_at)}
+                              {formatToDDMMYYYY(activeQuote.created_at)}
                             </span>
                             <input
                               type="date"
-                              value={new Date(viewingEstimateQuote.created_at).toISOString().split('T')[0]}
+                              value={new Date(activeQuote.created_at).toISOString().split('T')[0]}
                               onChange={(e) => handleUpdateField('created_at', new Date(e.target.value + 'T12:00:00').toISOString())}
                               className="print:hidden font-bold text-slate-900 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-0.5 text-[11px] w-28 outline-none transition"
                             />
@@ -4686,7 +4687,7 @@ export default function CRMTab({
                             itemsList.map((item, idx) => {
                               const itemTotalVal = (item.unitPrice * item.quantity);
                               return (
-                                <tr key={item.id} className="divide-x divide-slate-400 text-[11px]">
+                                <tr key={item.id || `quote_item_${activeQuote.id}_${idx}`} className="divide-x divide-slate-400 text-[11px]">
                                   <td className="p-2 text-center text-slate-500">{idx + 1}</td>
                                   <td className="p-2 font-medium">
                                     <div className="font-bold text-slate-900">{item.furnitureItem}</div>
@@ -4710,8 +4711,8 @@ export default function CRMTab({
                               <td className="p-2 font-bold text-slate-900">Custom Furniture Crafting</td>
                               <td className="p-2 text-center text-slate-400">-</td>
                               <td className="p-2 text-center font-bold text-slate-900">1</td>
-                              <td className="p-2 text-right">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
-                              <td className="p-2 text-right font-bold text-slate-900 pr-2">₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</td>
+                              <td className="p-2 text-right">₹{activeQuote.totalAmount.toLocaleString('en-IN')}.00</td>
+                              <td className="p-2 text-right font-bold text-slate-900 pr-2">₹{activeQuote.totalAmount.toLocaleString('en-IN')}.00</td>
                             </tr>
                           )}
 
@@ -4773,7 +4774,7 @@ export default function CRMTab({
 
                         <div className="grid grid-cols-2 p-1.5 print:p-1 font-bold text-slate-950 bg-slate-50/50">
                           <span>Grand Total</span>
-                          <span className="text-right font-extrabold text-slate-950 pr-1">: ₹{viewingEstimateQuote.totalAmount.toLocaleString('en-IN')}.00</span>
+                          <span className="text-right font-extrabold text-slate-950 pr-1">: ₹{activeQuote.totalAmount.toLocaleString('en-IN')}.00</span>
                         </div>
 
                         {receivedAmt > 0 && (
@@ -4796,7 +4797,7 @@ export default function CRMTab({
                         
                         {/* Amount text */}
                         <div className="p-1.5 print:p-1 text-[11px] leading-relaxed text-slate-800 font-semibold bg-white italic">
-                          {getAmountInWords(viewingEstimateQuote.totalAmount)}
+                          {getAmountInWords(activeQuote.totalAmount)}
                         </div>
                       </div>
                     </div>
@@ -4810,11 +4811,11 @@ export default function CRMTab({
                         </div>
                         <div className="p-2 print:p-1.5 text-slate-700 font-semibold min-h-[40px] print:min-h-[25px] flex flex-col flex-1">
                           <span className="hidden print:inline whitespace-pre-wrap leading-relaxed text-slate-700">
-                            {viewingEstimateQuote.description !== undefined ? viewingEstimateQuote.description : (viewingEstimateQuote.notes || '')}
+                            {activeQuote.description !== undefined ? activeQuote.description : (activeQuote.notes || '')}
                           </span>
                           <textarea
                             placeholder="Type custom description manually..."
-                            value={viewingEstimateQuote.description !== undefined ? viewingEstimateQuote.description : (viewingEstimateQuote.notes || '')}
+                            value={activeQuote.description !== undefined ? activeQuote.description : (activeQuote.notes || '')}
                             onChange={(e) => handleUpdateField('description', e.target.value)}
                             className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-semibold outline-none resize-none min-h-[40px] transition text-slate-700"
                           />
@@ -4828,11 +4829,11 @@ export default function CRMTab({
                         </div>
                         <div className="p-2 print:p-1.5 text-slate-500 font-medium min-h-[40px] print:min-h-[25px] flex flex-col flex-1">
                           <span className="hidden print:inline whitespace-pre-wrap leading-relaxed text-slate-500">
-                            {viewingEstimateQuote.termsAndConditions !== undefined ? viewingEstimateQuote.termsAndConditions : ''}
+                            {activeQuote.termsAndConditions !== undefined ? activeQuote.termsAndConditions : ''}
                           </span>
                           <textarea
                             placeholder="Type terms & conditions manually..."
-                            value={viewingEstimateQuote.termsAndConditions !== undefined ? viewingEstimateQuote.termsAndConditions : ''}
+                            value={activeQuote.termsAndConditions !== undefined ? activeQuote.termsAndConditions : ''}
                             onChange={(e) => handleUpdateField('termsAndConditions', e.target.value)}
                             className="print:hidden w-full flex-1 bg-transparent hover:bg-slate-100 focus:bg-amber-50/50 border border-transparent hover:border-dashed hover:border-slate-300 focus:border-amber-450 rounded px-1.5 py-1 text-xs font-medium outline-none resize-none min-h-[40px] transition text-slate-500"
                           />
@@ -5013,7 +5014,7 @@ export default function CRMTab({
           >
             <div className="w-full flex items-center justify-between p-2.5 border-b border-stone-800">
               <span className="text-xs font-bold font-mono text-stone-300 flex items-center gap-2">
-                <ImageIcon size={14} className="text-amber-400" />
+                <Image size={14} className="text-amber-400" />
                 Quotation Product Photo Inspection
               </span>
               <div className="flex items-center gap-2">

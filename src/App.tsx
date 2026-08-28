@@ -50,7 +50,7 @@ import OrdersTab from './components/OrdersTab';
 import OrderForm from './components/OrderForm';
 import OrderDetailsView from './components/OrderDetailsView';
 import CalendarTab from './components/CalendarTab';
-import { formatToDDMMYYYY } from './utils';
+import { formatToDDMMYYYY, reconcileQuotationsAndCustomers, resolveQuotationCustomer } from './utils';
 import UsersTab from './components/UsersTab';
 import WorkerDashboard from './components/WorkerDashboard';
 import NotificationCenter from './components/NotificationCenter';
@@ -107,18 +107,9 @@ export default function App() {
                 ...updatedState,
               };
 
-              // Auto-resequence if any customer gaps or jumps are detected
-              if (Array.isArray(nextDb.crmCustomers) && nextDb.crmCustomers.length > 0) {
-                const reseqResult = resequenceCRMCustomersInState(nextDb);
-                if (reseqResult.changesCount > 0) {
-                  saveState(reseqResult.updatedState);
-                  syncResequencedCRMCustomersToFirestore(reseqResult.idMapping, reseqResult.updatedState).catch(console.error);
-                  return reseqResult.updatedState;
-                }
-              }
-
-              saveState(nextDb);
-              return nextDb;
+              const reconciled = reconcileQuotationsAndCustomers(nextDb);
+              saveState(reconciled);
+              return reconciled;
             });
           },
           (error) => {
@@ -583,12 +574,23 @@ export default function App() {
   };
 
   const handleSaveCRMQuotation = (quote: CRMQuotation) => {
-    const exists = db.crmQuotations.some(q => q.id === quote.id);
+    const custInfo = resolveQuotationCustomer(quote, db.crmCustomers, db.customers);
+    const sanitizedQuote: CRMQuotation = {
+      ...quote,
+      customer_id: custInfo.id || quote.customer_id,
+      customer_name: custInfo.name || quote.customer_name,
+      items: Array.isArray(quote.items) ? quote.items.map((item, idx) => ({
+        ...item,
+        id: item.id || `item_${quote.id}_${idx + 1}`
+      })) : []
+    };
+
+    const exists = db.crmQuotations.some(q => q.id === sanitizedQuote.id);
     const updated = exists
-      ? db.crmQuotations.map(q => q.id === quote.id ? quote : q)
-      : [quote, ...db.crmQuotations];
+      ? db.crmQuotations.map(q => q.id === sanitizedQuote.id ? sanitizedQuote : q)
+      : [sanitizedQuote, ...db.crmQuotations];
     updateDbState({ ...db, crmQuotations: updated });
-    saveCRMQuotationToFirebase(quote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
+    saveCRMQuotationToFirebase(sanitizedQuote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
   };
 
   const handleDeleteCRMQuotation = (id: string) => {
