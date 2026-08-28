@@ -11,6 +11,8 @@ import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
   syncFirestore,
+  pushAllLocalDataToFirestore,
+  fetchFullFirestoreState,
   saveOrderToFirebase,
   deleteOrderFromFirebase,
   fetchOrdersFromFirestore,
@@ -58,6 +60,8 @@ import CustomersTab from './components/CustomersTab';
 import DetailOrderFormTab from './components/DetailOrderFormTab';
 import MaterialRequirementPlanning from './components/MaterialRequirementPlanning';
 import CRMTab from './components/CRMTab';
+import CloudSyncModal from './components/CloudSyncModel';
+import { Cloud, CloudUpload } from 'lucide-react';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
 import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
@@ -81,6 +85,7 @@ export default function App() {
   // Firebase connection and sync states
   const [firebaseConnected, setFirebaseConnected] = React.useState<boolean>(false);
   const [firebaseSeeding, setFirebaseSeeding] = React.useState<boolean>(false);
+  const [isCloudSyncOpen, setIsCloudSyncOpen] = React.useState<boolean>(false);
   const [isDeletingOrderId, setIsDeletingOrderId] = React.useState<string | null>(null);
 
   // Sync with Firestore asynchronously on user authentication lifecycle
@@ -91,21 +96,64 @@ export default function App() {
       const authenticated = await authenticateFirebase();
       if (authenticated) {
         setFirebaseConnected(true);
-        if (currentUser) {
-          setFirebaseSeeding(true);
-          // Seed if first time setup (empty)
-          await seedFirestoreIfEmpty(db);
-          setFirebaseSeeding(false);
-        }
 
-        // Subscribes to snapshotted real-time database updates
-        unsubscribe = syncFirestore(
-          (updatedState) => {
+        try {
+          // 1. Check if Firestore already has documents
+          const remoteState = await fetchFullFirestoreState();
+          const hasRemoteData = (remoteState.orders && remoteState.orders.length > 0) ||
+                                (remoteState.customers && remoteState.customers.length > 0) ||
+                                (remoteState.crmQuotations && remoteState.crmQuotations.length > 0) ||
+                                (remoteState.crmCustomers && remoteState.crmCustomers.length > 0);
+
+          if (hasRemoteData) {
+            // Apply remote data into state immediately
             setDb((currentDb) => {
               const nextDb = {
                 ...currentDb,
-                ...updatedState,
+                ...remoteState,
+                users: remoteState.users && remoteState.users.length > 0 ? remoteState.users : currentDb.users,
               };
+              const reconciled = reconcileQuotationsAndCustomers(nextDb as AppState);
+              saveState(reconciled);
+              return reconciled;
+            });
+          } else {
+            // If remote is empty, check if local state has records to upload
+            const currentLocal = loadState();
+            const hasLocalData = (currentLocal.orders && currentLocal.orders.length > 0) ||
+                                 (currentLocal.customers && currentLocal.customers.length > 0) ||
+                                 (currentLocal.crmQuotations && currentLocal.crmQuotations.length > 0) ||
+                                 (currentLocal.crmCustomers && currentLocal.crmCustomers.length > 0);
+
+            if (hasLocalData) {
+              setFirebaseSeeding(true);
+              await pushAllLocalDataToFirestore(currentLocal);
+              setFirebaseSeeding(false);
+            } else {
+              // Ensure baseline users are present in cloud
+              await seedFirestoreIfEmpty(currentLocal);
+            }
+          }
+        } catch (err) {
+          console.warn("Initial remote sync fetch notice:", err);
+        }
+
+        // 2. Subscribes to snapshotted real-time database updates
+        unsubscribe = syncFirestore(
+          (updatedState) => {
+            setDb((currentDb) => {
+              const nextDb = { ...currentDb };
+              // Merge non-destructively
+              for (const [key, val] of Object.entries(updatedState)) {
+                if (Array.isArray(val) && val.length === 0) {
+                  const currentArr = (currentDb as any)[key];
+                  if (!currentArr || currentArr.length === 0) {
+                    (nextDb as any)[key] = [];
+                  }
+                } else if (val !== undefined) {
+                  (nextDb as any)[key] = val;
+                }
+              }
 
               const reconciled = reconcileQuotationsAndCustomers(nextDb);
               saveState(reconciled);
@@ -113,7 +161,6 @@ export default function App() {
             });
           },
           (error) => {
-            // Only log if authenticated to keep console clean for unauthenticated login screen
             if (currentUser) {
               console.warn("Firestore sync subscription warning:", error);
             }
@@ -849,6 +896,14 @@ export default function App() {
               
               <div className="shrink-0 flex items-center gap-3">
                 <button
+                  onClick={() => setIsCloudSyncOpen(true)}
+                  title="Cloud Sync & Multi-Device Settings"
+                  className="bg-amber-50 border border-amber-200/80 hover:bg-amber-100 text-[#593622] px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-2xs text-xs font-bold"
+                >
+                  <Cloud size={15} className="stroke-[2.5] text-amber-700" />
+                  <span className="hidden sm:inline">Cloud Sync</span>
+                </button>
+                <button
                   onClick={handleRestartApp}
                   title="Restart App"
                   className="bg-stone-50 border border-stone-200 hover:bg-stone-100 hover:text-[#593622] text-stone-600 p-2.5 rounded-xl flex items-center justify-center transition cursor-pointer shadow-2xs"
@@ -1253,6 +1308,15 @@ export default function App() {
               </button>
             </motion.div>
           )}
+
+          {/* CLOUD SYNC & BACKUP MODAL */}
+          <CloudSyncModal
+            isOpen={isCloudSyncOpen}
+            onClose={() => setIsCloudSyncOpen(false)}
+            db={db}
+            onDbUpdate={updateDbState}
+            firebaseConnected={firebaseConnected}
+          />
 
         </main>
       </div>

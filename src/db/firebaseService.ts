@@ -58,11 +58,18 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
       
       if (snapshot.empty) {
         console.log(`Cloud collection '${name}' is empty. Initially seeding '${name}' with ${items.length} initial items...`);
-        const batch = writeBatch(db);
-        for (const item of items) {
-          batch.set(doc(db, name, item.id), cleanUndefined(item));
+        // Batch write with chunking (max 450 items per batch)
+        const chunkSize = 450;
+        for (let i = 0; i < items.length; i += chunkSize) {
+          const chunk = items.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+          for (const item of chunk) {
+            if (item && item.id) {
+              batch.set(doc(db, name, String(item.id)), cleanUndefined(item));
+            }
+          }
+          await batch.commit();
         }
-        await batch.commit();
       } else {
         if (name === 'users') {
           const batch = writeBatch(db);
@@ -85,7 +92,7 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
             }
           });
 
-          // Ensure required manager and wood tab manager users are in Firestore
+          // Ensure required manager, wood tab manager, and admin users are in Firestore
           for (const item of items) {
             if (item.email && !existingEmails.has(item.email.toLowerCase())) {
               batch.set(doc(db, 'users', item.id), cleanUndefined(item));
@@ -120,6 +127,131 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
   } catch (error) {
     console.error("Failed to complete local-to-cloud sync phase on initialization:", error);
   }
+}
+
+/**
+ * Pushes ALL local state data explicitly to Firestore.
+ * Useful when syncing data across devices or restoring after reconnect.
+ */
+export async function pushAllLocalDataToFirestore(state: AppState): Promise<{ success: boolean; count: number; message: string }> {
+  try {
+    let totalWritten = 0;
+    const collectionsToSync: Array<{ name: string; items: any[] }> = [
+      { name: 'users', items: state.users || [] },
+      { name: 'customers', items: state.customers || [] },
+      { name: 'orders', items: state.orders || [] },
+      { name: 'statusLogs', items: state.statusLogs || [] },
+      { name: 'materials', items: state.materials || [] },
+      { name: 'payments', items: state.payments || [] },
+      { name: 'crmCustomers', items: state.crmCustomers || [] },
+      { name: 'crmQuotations', items: state.crmQuotations || [] },
+      { name: 'crmFollowUps', items: state.crmFollowUps || [] },
+      { name: 'crmPayments', items: state.crmPayments || [] },
+      { name: 'crmNotes', items: state.crmNotes || [] },
+      { name: 'crmAttachments', items: state.crmAttachments || [] },
+      { name: 'crmTimelineEvents', items: state.crmTimelineEvents || [] },
+      { name: 'auditLogs', items: state.auditLogs || [] },
+    ];
+
+    for (const col of collectionsToSync) {
+      if (col.items.length === 0) continue;
+      const chunkSize = 400;
+      for (let i = 0; i < col.items.length; i += chunkSize) {
+        const chunk = col.items.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        for (const item of chunk) {
+          if (item && item.id) {
+            batch.set(doc(db, col.name, String(item.id)), cleanUndefined(item));
+            totalWritten++;
+          }
+        }
+        await batch.commit();
+      }
+    }
+
+    return {
+      success: true,
+      count: totalWritten,
+      message: `Successfully synchronized ${totalWritten} records to Firebase Cloud Firestore.`,
+    };
+  } catch (error) {
+    console.error("Failed to push all local data to Firestore:", error);
+    return {
+      success: false,
+      count: 0,
+      message: `Sync failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Explicitly pulls all documents across all collections from Cloud Firestore.
+ */
+export async function fetchFullFirestoreState(): Promise<Partial<AppState>> {
+  const result: Partial<AppState> = {};
+
+  const fetchCollection = async (name: string): Promise<any[]> => {
+    try {
+      const colRef = collection(db, name);
+      const snapshot = await getDocs(colRef);
+      return snapshot.docs.map((docSnap) => ({
+        ...docSnap.data(),
+        id: docSnap.id,
+      }));
+    } catch (err) {
+      console.warn(`Could not fetch collection ${name}:`, err);
+      return [];
+    }
+  };
+
+  const [
+    users,
+    customers,
+    orders,
+    statusLogs,
+    materials,
+    payments,
+    crmCustomers,
+    crmQuotations,
+    crmFollowUps,
+    crmPayments,
+    crmNotes,
+    crmAttachments,
+    crmTimelineEvents,
+    auditLogs,
+  ] = await Promise.all([
+    fetchCollection('users'),
+    fetchCollection('customers'),
+    fetchCollection('orders'),
+    fetchCollection('statusLogs'),
+    fetchCollection('materials'),
+    fetchCollection('payments'),
+    fetchCollection('crmCustomers'),
+    fetchCollection('crmQuotations'),
+    fetchCollection('crmFollowUps'),
+    fetchCollection('crmPayments'),
+    fetchCollection('crmNotes'),
+    fetchCollection('crmAttachments'),
+    fetchCollection('crmTimelineEvents'),
+    fetchCollection('auditLogs'),
+  ]);
+
+  if (users.length > 0) result.users = users as User[];
+  if (customers.length > 0) result.customers = customers as Customer[];
+  if (orders.length > 0) result.orders = orders as Order[];
+  if (statusLogs.length > 0) result.statusLogs = statusLogs as StatusLog[];
+  if (materials.length > 0) result.materials = materials as Material[];
+  if (payments.length > 0) result.payments = payments as Payment[];
+  if (crmCustomers.length > 0) result.crmCustomers = crmCustomers as CRMCustomer[];
+  if (crmQuotations.length > 0) result.crmQuotations = crmQuotations as CRMQuotation[];
+  if (crmFollowUps.length > 0) result.crmFollowUps = crmFollowUps as CRMFollowUp[];
+  if (crmPayments.length > 0) result.crmPayments = crmPayments as CRMPayment[];
+  if (crmNotes.length > 0) result.crmNotes = crmNotes as CRMNote[];
+  if (crmAttachments.length > 0) result.crmAttachments = crmAttachments as CRMAttachment[];
+  if (crmTimelineEvents.length > 0) result.crmTimelineEvents = crmTimelineEvents as CRMTimelineEvent[];
+  if (auditLogs.length > 0) result.auditLogs = auditLogs as AuditLog[];
+
+  return result;
 }
 
 // Sync Firestore changes in real-time
