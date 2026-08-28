@@ -24,6 +24,13 @@ export async function authenticateFirebase(): Promise<boolean> {
     if (auth.currentUser) {
       return true;
     }
+    // Attempt anonymous auth session so Firebase Auth has an active session for real-time sync
+    try {
+      await signInAnonymously(auth);
+    } catch (authErr) {
+      // If anonymous auth is not enabled in the Firebase console, proceed with Firestore directly
+      console.log("Firebase Auth notice (anonymous mode not required or disabled):", authErr);
+    }
     // Test if Firestore is reachable
     await testConnection();
     return true;
@@ -580,7 +587,6 @@ export async function saveAuditLogToFirebase(log: AuditLog): Promise<void> {
   }
 }
 
-
 /**
  * Replaces old CRM Customer document IDs (e.g. 477..483) with new continuous IDs (e.g. 033..039)
  * and updates any related quotations, followups, notes, attachments, payments, timeline events, and orders in Firestore.
@@ -681,3 +687,5 @@ export async function syncResequencedCRMCustomersToFirestore(
     console.error('Failed to sync resequenced CRM customer IDs to Firestore:', err);
   }
 }
+
+
