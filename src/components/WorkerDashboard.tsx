@@ -3,11 +3,55 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { Order, Customer, User, StatusLog, OrderStage, WoodSchedule, WoodPart, normalizeStage, QCFailureInfo } from '../types';
+import React, { useState, useRef, useMemo } from 'react';
+import {
+  Order,
+  Customer,
+  User,
+  StatusLog,
+  OrderStage,
+  WoodSchedule,
+  WoodPart,
+  normalizeStage,
+  QCFailureInfo,
+  OrderPriority,
+} from '../types';
 import { generateUUID } from '../db/store';
 import { compareOrdersByArticleSerialDesc, compressImage } from '../utils';
-import { Clock, Eye, AlertCircle, CheckCircle, Upload, ArrowLeft, Image as ImageIcon, Camera, Trash2, Plus, Hammer, ExternalLink, UploadCloud, Video, X, CheckSquare, ShieldCheck, CheckCircle2, Lock, RotateCcw } from 'lucide-react';
+import {
+  Clock,
+  Eye,
+  AlertCircle,
+  CheckCircle,
+  Upload,
+  ArrowLeft,
+  Image as ImageIcon,
+  Camera,
+  Trash2,
+  Plus,
+  Hammer,
+  ExternalLink,
+  UploadCloud,
+  Video,
+  X,
+  CheckSquare,
+  ShieldCheck,
+  CheckCircle2,
+  Lock,
+  RotateCcw,
+  Search,
+  Filter,
+  ArrowUpDown,
+  Calendar,
+  Layers,
+  User as UserIcon,
+  Check,
+  DollarSign,
+  FileText,
+  Sparkles,
+  AlertTriangle,
+  ChevronDown,
+} from 'lucide-react';
 
 function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
   if (!ord) return null;
@@ -41,16 +85,15 @@ function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
   return null;
 }
 
-function getDefaultWoodSchedule(order: Order): WoodSchedule {
+function getDefaultWoodSchedule(order: Partial<Order>): WoodSchedule {
   const sub = (order.sub_category || '').toLowerCase();
   const cat = (order.category || '').toLowerCase();
-  
+
   let parts: WoodPart[] = [];
   let modelName = order.article_no ? order.article_no.split('/').pop() || 'BED-01' : 'BED-01';
   let sizeOfProduct = order.size === 'Custom' ? (order.custom_size || '5FT X 6.5FT') : (order.size || '5FT X 6.5FT');
   let catalogueName = order.category ? `${order.category} Catalogue` : 'Beds Catalogue';
-  
-  // Find any Design Reference image from order
+
   const designRefImg = order.images?.find((img) => img.type === 'Design Reference')?.url;
   let defaultImage = designRefImg || 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
   let sqft = 32.5;
@@ -63,7 +106,6 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=650&auto=format&fit=crop';
     }
-    parts = [];
   } else if (sub.includes('wardrobe') || sub.includes('cabinet') || sub.includes('almirah') || cat.includes('kitchen')) {
     catalogueName = 'Wardrobes & Cabinets';
     modelName = 'CAB-02';
@@ -72,7 +114,6 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=650&auto=format&fit=crop';
     }
-    parts = [];
   } else if (sub.includes('table') || sub.includes('desk') || cat.includes('living')) {
     catalogueName = 'Tables Catalogue';
     modelName = 'TAB-15';
@@ -81,7 +122,6 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=650&auto=format&fit=crop';
     }
-    parts = [];
   } else if (sub.includes('sofa') || sub.includes('chair') || sub.includes('couch')) {
     catalogueName = 'Sofa Collections';
     modelName = 'SOF-03';
@@ -90,17 +130,11 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     if (!designRefImg) {
       defaultImage = 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=650&auto=format&fit=crop';
     }
-    parts = [];
   } else {
-    // Default fallback
     catalogueName = 'General Timber Catalogue';
     modelName = 'MODEL-X';
     sizeOfProduct = 'Custom Size';
     sqft = 12.0;
-    if (!designRefImg) {
-      defaultImage = 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop';
-    }
-    parts = [];
   }
 
   return {
@@ -109,70 +143,256 @@ function getDefaultWoodSchedule(order: Order): WoodSchedule {
     size_of_product: sizeOfProduct,
     sqft: sqft,
     image_link: defaultImage,
-    parts
+    parts,
   };
 }
 
 interface WorkerDashboardProps {
   currentUser: User;
+  users?: User[];
   orders: Order[];
   customers: Customer[];
   statusLogs: StatusLog[];
   onUpdateOrder: (updatedOrder: Order, newLog?: StatusLog) => void;
+  onDeleteOrder?: (orderId: string) => void;
+  onAddOrder?: (newOrder: Order, newCust?: Customer) => void;
 }
 
 export default function WorkerDashboard({
   currentUser,
+  users = [],
   orders,
   customers,
   statusLogs,
   onUpdateOrder,
+  onDeleteOrder,
+  onAddOrder,
 }: WorkerDashboardProps) {
-  const isCarpenter = currentUser.role === 'carpenter';
-  const myStage: OrderStage = isCarpenter ? 'Carpentry' : 'Polish';
+  // Determine if viewing as admin/supervisor or specific worker
+  const isUserCarpenter = currentUser.role === 'carpenter';
+  const isUserPolish = currentUser.role === 'polish_person';
+  const isAdminOrManager = currentUser.role === 'admin' || currentUser.role === 'manager';
+
+  // Worker switcher for Admin/Manager view
+  const carpentersList = useMemo(() => users.filter((u) => u.role === 'carpenter'), [users]);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>(() => {
+    if (isUserCarpenter || isUserPolish) return currentUser.id;
+    if (carpentersList.length > 0) return carpentersList[0].id;
+    return 'all';
+  });
+
+  const activeWorkerUser = useMemo(() => {
+    if (selectedWorkerId === 'all') return null;
+    return users.find((u) => u.id === selectedWorkerId) || (currentUser.id === selectedWorkerId ? currentUser : null);
+  }, [selectedWorkerId, users, currentUser]);
+
+  const isCarpenter = activeWorkerUser ? activeWorkerUser.role === 'carpenter' : isUserCarpenter || isAdminOrManager;
+
+  // Filter criteria helper for orders
+  const matchesWorker = (ord: Order) => {
+    if (selectedWorkerId === 'all') {
+      return true;
+    }
+    const targetWorker = activeWorkerUser || currentUser;
+    const workerId = targetWorker.id;
+    const workerName = (targetWorker.name || '').trim().toLowerCase();
+
+    if (isCarpenter) {
+      if (!ord.carpenter_id) return false;
+      const cId = ord.carpenter_id.trim();
+      return cId === workerId || (workerName && cId.toLowerCase() === workerName);
+    } else {
+      if (!ord.polish_person_id) return false;
+      const pId = ord.polish_person_id.trim();
+      const isAssigned = pId === workerId || (workerName && pId.toLowerCase() === workerName);
+      const stage = normalizeStage(ord.current_status);
+      return isAssigned && ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(stage);
+    }
+  };
 
   const isOrderInMyStage = (ordStage: OrderStage) => {
     const normalized = normalizeStage(ordStage);
     if (isCarpenter) {
-      return normalized === 'Wood Procurement' || normalized === 'Making Started' || normalized === 'Carpentry';
+      return (
+        normalized === 'Wood Procurement' ||
+        normalized === 'Making Started' ||
+        normalized === 'Carpentry' ||
+        normalized === 'Pending' ||
+        normalized === 'Designing' ||
+        normalized === 'QC 1' ||
+        normalized === 'QC Check 1'
+      );
     } else {
-      return normalized === 'Polish';
+      return normalized === 'Polish' || normalized === 'QC 2';
     }
   };
 
-  // Filter orders assigned to this worker
-  const myOrders = orders.filter((o) => {
-    if (isCarpenter) {
-      return o.carpenter_id === currentUser.id;
-    } else {
-      // Polish person sees work only after carpentry passes QC 1 (i.e. Polish stage or later)
-      const stage = normalizeStage(o.current_status);
-      return o.polish_person_id === currentUser.id && ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(stage);
+  // Search, Filter & Sort states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_update' | 'wood_procurement' | 'under_carpentry' | 'qc_1' | 'completed'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'deadline' | 'priority' | 'article'>('newest');
+
+  // Selected order for active edit / staging
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+
+  // Form states for active order
+  const [progressStatus, setProgressStatus] = useState<string>('in_progress');
+  const [updateNotes, setUpdateNotes] = useState('');
+  const [inProgressFiles, setInProgressFiles] = useState<string[]>([]);
+  const [simulateUrlInput, setSimulateUrlInput] = useState('');
+  const [customLabourRate, setCustomLabourRate] = useState<number | ''>('');
+  const [customDeliveryDate, setCustomDeliveryDate] = useState('');
+
+  // Wood Schedule form fields
+  const [catalogueName, setCatalogueName] = useState('');
+  const [modelName, setModelName] = useState('');
+  const [sizeOfProduct, setSizeOfProduct] = useState('');
+  const [sqft, setSqft] = useState<number>(0);
+  const [imageLink, setImageLink] = useState('');
+  const [parts, setParts] = useState<WoodPart[]>([]);
+
+  // QC Check 1 verification checkboxes
+  const [qcMeasurement, setQcMeasurement] = useState(false);
+  const [qcFinishing, setQcFinishing] = useState(false);
+  const [qcBuffer, setQcBuffer] = useState(false);
+
+  // Modals and Alerts
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [showApprovedModal, setShowApprovedModal] = useState(false);
+  const [showCompletedModal, setShowCompletedModal] = useState(false);
+  const [showQcFailPopup, setShowQcFailPopup] = useState(false);
+  const [seenQcFailures, setSeenQcFailures] = useState<Record<string, boolean>>({});
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+
+  // Webcam & Image upload states
+  const [isWebcamActive, setIsWebcamActive] = useState(false);
+  const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
+  const [webcamError, setWebcamError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Calculate base assigned orders
+  const baseAssignedOrders = useMemo(() => {
+    return orders.filter(matchesWorker);
+  }, [orders, selectedWorkerId, activeWorkerUser, isCarpenter]);
+
+  // Apply search, filters and sorting
+  const filteredOrders = useMemo(() => {
+    let list = [...baseAssignedOrders];
+
+    // Search filter
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      list = list.filter((ord) => {
+        const cust = customers.find((c) => c.id === ord.customer_id);
+        const art = (ord.article_no || '').toLowerCase();
+        const custName = (cust?.name || '').toLowerCase();
+        const cat = (ord.category || '').toLowerCase();
+        const sub = (ord.sub_category || '').toLowerCase();
+        const mat = (ord.material || '').toLowerCase();
+        const fin = (ord.finish || '').toLowerCase();
+        const notes = (ord.special_notes || '').toLowerCase();
+        return (
+          art.includes(q) ||
+          custName.includes(q) ||
+          cat.includes(q) ||
+          sub.includes(q) ||
+          mat.includes(q) ||
+          fin.includes(q) ||
+          notes.includes(q)
+        );
+      });
     }
-  }).sort(compareOrdersByArticleSerialDesc);
 
-  // State: selected order for active edit
-  const [activeOrder, setActiveOrder] = React.useState<Order | null>(null);
+    // Status filter
+    if (statusFilter !== 'all') {
+      list = list.filter((ord) => {
+        const isDone =
+          ord.carpenter_sub_status === 'completed' ||
+          ord.qc_1_status === 'passed' ||
+          ord.current_status === 'Making Completed' ||
+          ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status);
 
-  // Form States for updating status (Section 5 and 6)
-  const [progressStatus, setProgressStatus] = React.useState<string>('in_progress');
-  const [updateNotes, setUpdateNotes] = React.useState('');
-  const [inProgressFiles, setInProgressFiles] = React.useState<string[]>([]);
-  const [simulateUrlInput, setSimulateUrlInput] = React.useState('');
+        if (statusFilter === 'completed') return isDone;
+        if (statusFilter === 'needs_update') return !isDone && isOrderInMyStage(ord.current_status);
+        if (statusFilter === 'wood_procurement') {
+          return !isDone && (ord.carpenter_sub_status === 'wood_procurement' || ord.current_status === 'Wood Procurement');
+        }
+        if (statusFilter === 'under_carpentry') {
+          return !isDone && (ord.carpenter_sub_status === 'under_carpentry' || ord.current_status === 'Making Started');
+        }
+        if (statusFilter === 'qc_1') {
+          return !isDone && (ord.carpenter_sub_status === 'qc_check_1' || ord.current_status === 'QC 1' || ord.qc_1_status === 'pending_admin_approval');
+        }
+        return true;
+      });
+    }
 
-  // Interactive Camera & Local Upload states for Worker update
-  const [isWebcamActive, setIsWebcamActive] = React.useState(false);
-  const [webcamStream, setWebcamStream] = React.useState<MediaStream | null>(null);
-  const [webcamError, setWebcamError] = React.useState<string | null>(null);
-  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+    // Priority filter
+    if (priorityFilter !== 'all') {
+      list = list.filter((ord) => (ord.priority || 'Normal').toLowerCase() === priorityFilter.toLowerCase());
+    }
 
+    // Sorting
+    list.sort((a, b) => {
+      if (sortBy === 'newest') return compareOrdersByArticleSerialDesc(a, b);
+      if (sortBy === 'oldest') return compareOrdersByArticleSerialDesc(b, a);
+      if (sortBy === 'deadline') {
+        const dateA = a.carpenter_delivery_date || a.delivery_date || '9999-99-99';
+        const dateB = b.carpenter_delivery_date || b.delivery_date || '9999-99-99';
+        return dateA.localeCompare(dateB);
+      }
+      if (sortBy === 'priority') {
+        const weight: Record<string, number> = { Urgent: 3, High: 2, Medium: 1, Normal: 1, Low: 0 };
+        return (weight[b.priority || 'Normal'] || 0) - (weight[a.priority || 'Normal'] || 0);
+      }
+      if (sortBy === 'article') {
+        return (a.article_no || '').localeCompare(b.article_no || '');
+      }
+      return 0;
+    });
+
+    return list;
+  }, [baseAssignedOrders, searchTerm, statusFilter, priorityFilter, sortBy, customers]);
+
+  // Workbench KPI Counts
+  const metrics = useMemo(() => {
+    const total = baseAssignedOrders.length;
+    let woodPending = 0;
+    let underCarpentry = 0;
+    let qc1Pending = 0;
+    let completed = 0;
+
+    baseAssignedOrders.forEach((o) => {
+      const isDone =
+        o.carpenter_sub_status === 'completed' ||
+        o.qc_1_status === 'passed' ||
+        o.current_status === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(o.current_status);
+
+      if (isDone) {
+        completed++;
+      } else if (o.carpenter_sub_status === 'wood_procurement' || o.current_status === 'Wood Procurement') {
+        woodPending++;
+      } else if (o.carpenter_sub_status === 'under_carpentry' || o.current_status === 'Making Started') {
+        underCarpentry++;
+      } else if (o.carpenter_sub_status === 'qc_check_1' || o.current_status === 'QC 1') {
+        qc1Pending++;
+      }
+    });
+
+    return { total, woodPending, underCarpentry, qc1Pending, completed };
+  }, [baseAssignedOrders]);
+
+  // Webcam stream handlers
   const startWebcam = async () => {
     setWebcamError(null);
     setIsWebcamActive(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
-        audio: false
+        audio: false,
       });
       setWebcamStream(stream);
       setTimeout(() => {
@@ -181,10 +401,8 @@ export default function WorkerDashboard({
         }
       }, 100);
     } catch (err: any) {
-      console.error("Webcam access failed:", err);
-      setWebcamError(
-        "Could not launch camera stream. Please use the mobile native camera button or upload standard local files directly."
-      );
+      console.error('Webcam access failed:', err);
+      setWebcamError('Could not launch camera stream. Please use the mobile native camera button or upload standard files.');
     }
   };
 
@@ -198,354 +416,208 @@ export default function WorkerDashboard({
 
   const captureSnapshot = () => {
     if (videoRef.current) {
-      const video = videoRef.current;
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
+      canvas.width = videoRef.current.videoWidth || 640;
+      canvas.height = videoRef.current.videoHeight || 480;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setInProgressFiles((prev) => [...prev, dataUrl]);
         stopWebcam();
       }
     }
   };
 
-  const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    Array.from(files).forEach(async (file: File) => {
-      if (!file.type.startsWith('image/')) {
-        alert('Please choose an image file (PNG, JPG, WEBP, etc).');
-        return;
-      }
-
-      try {
-        const compressed = await compressImage(file);
-        if (compressed) {
-          setInProgressFiles((prev) => [...prev, compressed]);
-        }
-      } catch (err) {
-        console.error("Failed to compress image:", err);
-      }
-    });
-    
-    e.target.value = '';
-  };
-
-  // Safe release of webcam streams on activeOrder change or unmounting
-  React.useEffect(() => {
-    if (!activeOrder) {
-      if (webcamStream) {
-        webcamStream.getTracks().forEach((track) => track.stop());
-        setWebcamStream(null);
-      }
-      setIsWebcamActive(false);
-    }
-  }, [activeOrder]);
-
-  React.useEffect(() => {
-    return () => {
-      if (webcamStream) {
-        webcamStream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [webcamStream]);
-
-  // Wood Schedule edit states (replaces empty placeholder layout)
-  const [catalogueName, setCatalogueName] = React.useState('');
-  const [modelName, setModelName] = React.useState('');
-  const [sizeOfProduct, setSizeOfProduct] = React.useState('');
-  const [sqft, setSqft] = React.useState<number>(0);
-  const [imageLink, setImageLink] = React.useState('');
-  const [parts, setParts] = React.useState<WoodPart[]>([]);
-  const [showRefImg, setShowRefImg] = React.useState(false);
-  const [lightboxImg, setLightboxImg] = React.useState<string | null>(null);
-
-  // QC Check 1 checkboxes state
-  const [qcMeasurement, setQcMeasurement] = React.useState(false);
-  const [qcFinishing, setQcFinishing] = React.useState(false);
-  const [qcBuffer, setQcBuffer] = React.useState(false);
-
-  // Approval status sync from Order object
-  const [showApprovedModal, setShowApprovedModal] = React.useState(false);
-  const [showCompletedModal, setShowCompletedModal] = React.useState(false);
-  const [showQcFailPopup, setShowQcFailPopup] = React.useState(false);
-  const [seenQcFailures, setSeenQcFailures] = React.useState<Record<string, boolean>>({});
-  const [seenCompletions, setSeenCompletions] = React.useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('bhisez_seen_completed_carpentry');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const isWoodScheduleApproved = React.useMemo(() => {
-    if (!activeOrder) return false;
-    return (
-      activeOrder.wood_schedule_status === 'Approved' ||
-      activeOrder.wood_schedule?.status === 'Approved'
-    );
-  }, [activeOrder?.wood_schedule_status, activeOrder?.wood_schedule?.status]);
-
-  React.useEffect(() => {
-    if (activeOrder && isWoodScheduleApproved) {
-      try {
-        const savedSeen = localStorage.getItem('bhisez_seen_approved_schedules');
-        const seenMap = savedSeen ? JSON.parse(savedSeen) : {};
-        if (!seenMap[activeOrder.id]) {
-          setShowApprovedModal(true);
-          seenMap[activeOrder.id] = true;
-          localStorage.setItem('bhisez_seen_approved_schedules', JSON.stringify(seenMap));
-        }
-      } catch {
-        setShowApprovedModal(true);
-      }
-    } else {
-      setShowApprovedModal(false);
-    }
-  }, [activeOrder?.id, isWoodScheduleApproved]);
-
-  React.useEffect(() => {
-    if (activeOrder && isCarpenter) {
-      const isCarpentryDone = (
-        activeOrder.carpenter_sub_status === 'completed' ||
-        activeOrder.qc_1_status === 'passed' ||
-        activeOrder.current_status === 'Making Completed' ||
-        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status)
-      );
-
-      const isAcknowledged = !!activeOrder.completion_popup_acknowledged || !!activeOrder.completionPopupShown || !!seenCompletions[activeOrder.id];
-
-      if (isCarpentryDone && !isAcknowledged) {
-        setShowCompletedModal(true);
-      } else {
-        setShowCompletedModal(false);
-      }
-    } else {
-      setShowCompletedModal(false);
-    }
-  }, [
-    activeOrder?.id,
-    activeOrder?.carpenter_sub_status,
-    activeOrder?.qc_1_status,
-    activeOrder?.current_status,
-    activeOrder?.completion_popup_acknowledged,
-    activeOrder?.completionPopupShown,
-    seenCompletions,
-    isCarpenter
-  ]);
-
-  React.useEffect(() => {
-    if (activeOrder) {
-      const failInfo = getQCFailureInfo(activeOrder);
-      if (failInfo && !failInfo.resolved && !seenQcFailures[activeOrder.id]) {
-        setShowQcFailPopup(true);
-      } else {
-        setShowQcFailPopup(false);
-      }
-    } else {
-      setShowQcFailPopup(false);
-    }
-  }, [activeOrder?.id, activeOrder?.last_qc_failure?.failed_at, activeOrder?.qc_1_failed_at, activeOrder?.qc_2_failed_at, seenQcFailures]);
-
-  const handleUploadRefImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0 || !activeOrder) return;
-
-    const file = files[0];
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file (JPG, PNG, WEBP).');
-      return;
-    }
-
-    try {
-      const compressed = await compressImage(file);
-      if (compressed) {
-        const newImg = {
-          id: 'img_' + generateUUID().split('-')[0],
-          url: compressed,
-          type: 'Design Reference' as const,
-          uploaded_at: new Date().toISOString(),
-          uploaded_by: currentUser.name,
-        };
-
-        const updatedOrder: Order = {
-          ...activeOrder,
-          images: [...(activeOrder.images || []), newImg],
-          updated_at: new Date().toISOString(),
-        };
-
-        setActiveOrder(updatedOrder);
-        onUpdateOrder(updatedOrder);
-      }
-    } catch (err) {
-      console.error("Failed to compress/upload image:", err);
-    }
-    e.target.value = '';
-  };
-
-  const updatePartField = (id: string, field: keyof WoodPart, value: any) => {
-    setParts((currentParts) =>
-      currentParts.map((p) => {
-        if (p.id === id) {
-          return { ...p, [field]: value };
-        }
-        return p;
-      })
-    );
-  };
-
-  const handleLoadPreset = (presetType: 'bed' | 'cabinet' | 'table' | 'sofa') => {
-    if (!activeOrder) return;
-    const dummyOrder = { ...activeOrder, sub_category: presetType } as Order;
-    const schedule = getDefaultWoodSchedule(dummyOrder);
-    setCatalogueName(schedule.catalogue_name);
-    setModelName(schedule.model_name);
-    setSizeOfProduct(schedule.size_of_product);
-    setSqft(schedule.sqft || 0);
-
-    const originalDesignImg = activeOrder.images?.find((img) => img.type === 'Design Reference')?.url;
-    if (originalDesignImg) {
-      setImageLink(originalDesignImg);
-    } else {
-      setImageLink(schedule.image_link || '');
-    }
-    setParts(schedule.parts || []);
-  };
-
+  // Open active order for staging & specifications update
   const handleOpenUpdate = (ord: Order) => {
     setActiveOrder(ord);
-    const failInfo = getQCFailureInfo(ord);
-    if (failInfo && !failInfo.resolved && !seenQcFailures[ord.id]) {
-      setShowQcFailPopup(true);
-    } else {
-      setShowQcFailPopup(false);
-    }
-    if (isCarpenter) {
-      const isCarpentryDone = (
-        ord.carpenter_sub_status === 'completed' ||
-        ord.qc_1_status === 'passed' ||
-        ord.current_status === 'Making Completed' ||
-        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status)
-      );
-      const sub = isCarpentryDone ? 'qc_check_1' : (ord.carpenter_sub_status || 'wood_procurement');
-      setProgressStatus(sub);
-      
-      const isAcknowledged = !!ord.completion_popup_acknowledged || !!ord.completionPopupShown || !!seenCompletions[ord.id];
-      if (isCarpentryDone && !isAcknowledged) {
-        setShowCompletedModal(true);
-      } else {
-        setShowCompletedModal(false);
-      }
-      
-      // Load or Initialize Wood Schedule data
-      const schedule = ord.wood_schedule || getDefaultWoodSchedule(ord);
-      setCatalogueName(schedule.catalogue_name);
-      setModelName(schedule.model_name);
-      setSizeOfProduct(schedule.size_of_product);
-      setSqft(schedule.sqft || 0);
 
-      const originalDesignImg = ord.images?.find((img) => img.type === 'Design Reference')?.url;
-      // If the saved wood schedule STILL uses a generic unsplash placeholder but we have a custom design reference uploaded, open with the custom design reference!
-      if (originalDesignImg && (!schedule.image_link || schedule.image_link.includes('unsplash.com'))) {
-        setImageLink(originalDesignImg);
-      } else {
-        setImageLink(schedule.image_link || originalDesignImg || '');
-      }
-
-      setParts(schedule.parts || []);
-      if (schedule.qc_check_1_details) {
-        setQcMeasurement(!!schedule.qc_check_1_details.measurement);
-        setQcFinishing(!!schedule.qc_check_1_details.finishing);
-        setQcBuffer(!!schedule.qc_check_1_details.buffer);
-      } else if (ord.carpenter_sub_status === 'completed' || ord.qc_1_status === 'passed' || ord.current_status === 'Making Completed') {
-        setQcMeasurement(true);
-        setQcFinishing(true);
-        setQcBuffer(true);
-      } else {
-        setQcMeasurement(false);
-        setQcFinishing(false);
-        setQcBuffer(false);
-      }
-      setShowRefImg(false);
-    } else {
-      setProgressStatus(ord.current_status === myStage ? 'in_progress' : 'completed');
-    }
+    // Populate images
+    const existingInProgress = ord.images?.filter((img) => img.type === 'In-Progress').map((img) => img.url) || [];
+    setInProgressFiles(existingInProgress);
     setUpdateNotes('');
-    setInProgressFiles(ord.images.filter(img => img.type === 'In-Progress').map(img => img.url));
-  };
+    setCustomLabourRate(ord.carpenter_labour_rate ?? '');
+    setCustomDeliveryDate(ord.carpenter_delivery_date || ord.delivery_date || '');
 
-  const handleAcknowledgeCompletion = () => {
-    setShowCompletedModal(false);
-    if (!activeOrder) return;
-    try {
-      const savedSeen = localStorage.getItem('bhisez_seen_completed_carpentry');
-      const seenMap = savedSeen ? JSON.parse(savedSeen) : {};
-      seenMap[activeOrder.id] = true;
-      localStorage.setItem('bhisez_seen_completed_carpentry', JSON.stringify(seenMap));
-      setSeenCompletions(seenMap);
-    } catch (e) {
-      console.error(e);
-    }
+    // Initialize Wood Schedule state
+    const ws = ord.wood_schedule || getDefaultWoodSchedule(ord);
+    setCatalogueName(ws.catalogue_name || (ord.category ? `${ord.category} Catalogue` : 'Beds Catalogue'));
+    setModelName(ws.model_name || (ord.article_no ? ord.article_no.split('/').pop() || 'BED-01' : 'BED-01'));
+    setSizeOfProduct(ws.size_of_product || (ord.size === 'Custom' ? ord.custom_size || '5FT X 6.5FT' : ord.size || '5FT X 6.5FT'));
+    setSqft(ws.sqft || 32.5);
+    setImageLink(ws.image_link || 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop');
+    setParts(ws.parts ? [...ws.parts] : []);
 
-    const updatedOrder: Order = {
-      ...activeOrder,
-      completion_popup_acknowledged: true,
-      completionPopupShown: true,
-      updated_at: new Date().toISOString(),
-    };
-    onUpdateOrder(updatedOrder);
-    setActiveOrder(updatedOrder);
-  };
+    // Set QC 1 checkboxes
+    setQcMeasurement(!!ord.qc_1_measurements_verified || !!ws.qc_check_1_details?.measurement);
+    setQcFinishing(!!ord.qc_1_finish_verified || !!ws.qc_check_1_details?.finishing);
+    setQcBuffer(!!ord.qc_1_buffer_verified || !!ws.qc_check_1_details?.buffer);
 
-  const handleAddPhotos = () => {
-    if (simulateUrlInput && simulateUrlInput.startsWith('http')) {
-      setInProgressFiles([...inProgressFiles, simulateUrlInput]);
-      setSimulateUrlInput('');
+    // Determine initial Progress Status
+    const isCarpentryDone =
+      ord.carpenter_sub_status === 'completed' ||
+      ord.qc_1_status === 'passed' ||
+      ord.current_status === 'Making Completed' ||
+      ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status);
+
+    if (isCarpenter) {
+      if (isCarpentryDone) {
+        setProgressStatus('qc_check_1');
+      } else if (ord.carpenter_sub_status) {
+        setProgressStatus(ord.carpenter_sub_status);
+      } else {
+        const stage = normalizeStage(ord.current_status);
+        if (stage === 'Wood Procurement') setProgressStatus('wood_procurement');
+        else if (stage === 'Making Started' || stage === 'Carpentry') setProgressStatus('under_carpentry');
+        else if (stage === 'QC 1' || stage === 'QC Check 1') setProgressStatus('qc_check_1');
+        else setProgressStatus('wood_procurement');
+      }
     } else {
-      alert('Please enter a valid HTTP image path url, e.g. https://images.unsplash.com/photo-1595428774223-ef52624120d2');
+      setProgressStatus('in_progress');
+    }
+
+    // Check for QC failure popups
+    const failureInfo = getQCFailureInfo(ord);
+    if (failureInfo && !failureInfo.resolved && !seenQcFailures[ord.id]) {
+      setShowQcFailPopup(true);
     }
   };
 
+  const isWoodScheduleApproved = activeOrder
+    ? activeOrder.wood_schedule_status === 'Approved' || activeOrder.wood_schedule?.status === 'Approved'
+    : false;
+
+  // Wood Parts helpers
+  const updatePartField = (id: string, field: keyof WoodPart, value: any) => {
+    setParts((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+  };
+
+  const loadWoodPreset = (preset: 'bed' | 'cabinet' | 'table' | 'sofa') => {
+    if (isWoodScheduleApproved) return;
+    if (preset === 'bed') {
+      setCatalogueName('Beds Catalogue');
+      setModelName('BED-KING-01');
+      setSizeOfProduct('6FT X 6.5FT');
+      setSqft(39);
+      setParts([
+        { id: 'part_' + Date.now() + '_1', part_name: 'HEADBOARD LEGS', width: 3, breadth: 3, length: 4.5, quantity: 2 },
+        { id: 'part_' + Date.now() + '_2', part_name: 'FOOTBOARD LEGS', width: 3, breadth: 3, length: 1.8, quantity: 2 },
+        { id: 'part_' + Date.now() + '_3', part_name: 'SIDE RAILS', width: 1.5, breadth: 6, length: 6.5, quantity: 2 },
+        { id: 'part_' + Date.now() + '_4', part_name: 'CENTRAL PLANK BEAM', width: 2, breadth: 4, length: 6.2, quantity: 3 },
+      ]);
+    } else if (preset === 'cabinet') {
+      setCatalogueName('Wardrobes & Cabinets');
+      setModelName('CAB-4DOOR');
+      setSizeOfProduct('4FT X 7FT');
+      setSqft(28);
+      setParts([
+        { id: 'part_' + Date.now() + '_1', part_name: 'OUTER SIDE PANELS', width: 0.75, breadth: 24, length: 7, quantity: 2 },
+        { id: 'part_' + Date.now() + '_2', part_name: 'TOP & BOTTOM FRAME', width: 1.5, breadth: 3, length: 4, quantity: 4 },
+        { id: 'part_' + Date.now() + '_3', part_name: 'DOOR VERTICAL STYLES', width: 1, breadth: 3.5, length: 6.8, quantity: 4 },
+      ]);
+    } else if (preset === 'table') {
+      setCatalogueName('Tables Catalogue');
+      setModelName('DINING-6S');
+      setSizeOfProduct('5.5FT X 3FT');
+      setSqft(16.5);
+      setParts([
+        { id: 'part_' + Date.now() + '_1', part_name: 'CORNER LEGS', width: 3.5, breadth: 3.5, length: 2.5, quantity: 4 },
+        { id: 'part_' + Date.now() + '_2', part_name: 'SUPPORT APRONS', width: 1, breadth: 4, length: 5.2, quantity: 2 },
+        { id: 'part_' + Date.now() + '_3', part_name: 'CROSS STRETCHERS', width: 1, breadth: 4, length: 2.8, quantity: 2 },
+      ]);
+    } else if (preset === 'sofa') {
+      setCatalogueName('Sofa Collections');
+      setModelName('SOF-3SEAT');
+      setSizeOfProduct('6.5FT X 3FT');
+      setSqft(19.5);
+      setParts([
+        { id: 'part_' + Date.now() + '_1', part_name: 'BOTTOM BASE RAILS', width: 2, breadth: 3, length: 6.5, quantity: 2 },
+        { id: 'part_' + Date.now() + '_2', part_name: 'ARMREST UPRIGHTS', width: 2, breadth: 3, length: 2.2, quantity: 4 },
+        { id: 'part_' + Date.now() + '_3', part_name: 'BACKREST FRAME', width: 1.5, breadth: 3, length: 6.5, quantity: 3 },
+      ]);
+    }
+  };
+
+  // Upload Reference Photo for active order
+  const handleUploadRefImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!activeOrder || !e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    try {
+      const dataUrl = await compressImage(file);
+      const newImg = {
+        id: 'img_' + generateUUID().split('-')[0],
+        url: dataUrl,
+        type: 'Design Reference' as const,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: currentUser.name,
+      };
+      const updatedImages = [...(activeOrder.images || []), newImg];
+      const updatedOrder = {
+        ...activeOrder,
+        images: updatedImages,
+        updated_at: new Date().toISOString(),
+      };
+      onUpdateOrder(updatedOrder);
+      setActiveOrder(updatedOrder);
+      alert('Reference drawing/photo attached successfully.');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to upload image. Please try again.');
+    }
+  };
+
+  // Upload Progress Photos
+  const handleUploadProgressFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files: File[] = Array.from(e.target.files);
+    try {
+      const compressedUrls = await Promise.all(files.map((f: File) => compressImage(f)));
+      setInProgressFiles((prev) => [...prev, ...compressedUrls]);
+    } catch (err) {
+      console.error(err);
+      alert('Error compressing images. Some images may be added in standard resolution.');
+    }
+  };
+
+  const handleAppendUrl = () => {
+    if (!simulateUrlInput.trim()) return;
+    setInProgressFiles((prev) => [...prev, simulateUrlInput.trim()]);
+    setSimulateUrlInput('');
+  };
+
+  // QC Failure Restart Handler
   const handleRestartOrderFromQcFail = () => {
     if (!activeOrder) return;
-    const failInfo = getQCFailureInfo(activeOrder);
-    const restartStage: OrderStage = 'Making Started';
-    const restartSubStatus = 'under_carpentry';
-
-    const updatedOrder: Order = {
-      ...activeOrder,
-      current_status: restartStage,
-      carpenter_sub_status: restartSubStatus,
-      qc_1_status: 'failed',
-      qc_1_measurements_verified: false,
-      qc_1_finish_verified: false,
-      qc_1_buffer_verified: false,
-      last_qc_failure: failInfo ? { ...failInfo, resolved: true, acknowledged: true } : undefined,
-      wood_schedule: activeOrder.wood_schedule ? {
-        ...activeOrder.wood_schedule,
-        qc_check_1_details: {
-          measurement: false,
-          finishing: false,
-          buffer: false,
-        }
-      } : undefined,
-      updated_at: new Date().toISOString(),
-    };
-
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: activeOrder.id,
-      stage: restartStage,
+      stage: 'Making Started',
       changed_by: currentUser.id,
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: `QC 1 failure acknowledged by Carpenter (${currentUser.name}). Order restarted at "Under Carpentry" stage for corrections.`,
+      note: `${currentUser.name} (Carpenter) acknowledged QC failure notes and restarted carpentry adjustments.`,
+    };
+
+    const updatedOrder: Order = {
+      ...activeOrder,
+      current_status: 'Making Started',
+      carpenter_sub_status: 'under_carpentry',
+      qc_1_status: 'failed',
+      last_qc_failure: {
+        ...(getQCFailureInfo(activeOrder) || {
+          stage: 'QC 1',
+          failed_by: 'Inspector',
+          failed_at: new Date().toISOString(),
+          notes: 'Re-working carpentry components.',
+          acknowledged: true,
+          resolved: true,
+        }),
+        acknowledged: true,
+        resolved: true,
+      },
+      updated_at: new Date().toISOString(),
     };
 
     onUpdateOrder(updatedOrder, log);
@@ -555,18 +627,17 @@ export default function WorkerDashboard({
     setQcFinishing(false);
     setQcBuffer(false);
     setShowQcFailPopup(false);
-    if (activeOrder) {
-      setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
-    }
-    alert('Order restarted at "Under Carpentry". Please correct the carpentry issues noted by Admin and re-verify QC 1 when ready.');
+    setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
+    alert('Order restarted at "Under Carpentry". Please correct the carpentry issues noted and re-verify QC 1 when ready.');
   };
 
+  // Staging save handler
   const handleSaveStagingUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeOrder) return;
 
     if (!isOrderInMyStage(activeOrder.current_status)) {
-      alert(`Access denied: You are assigned, but you can update order files and stage only during your assigned stages.`);
+      alert('Access restriction: You can update stage specifications exclusively during assigned active workshop stages.');
       return;
     }
 
@@ -595,7 +666,7 @@ export default function WorkerDashboard({
           return;
         }
         if (!qcMeasurement || !qcFinishing || !qcBuffer) {
-          alert('Please verify and check all 3 QC Check 1 boxes (1. Measurement, 2. Finishing, 3. Buffer) before saving QC 1.');
+          alert('Please verify and check all 3 QC Check 1 requirements (1. Measurement, 2. Finishing, 3. Buffer) before saving QC 1.');
           return;
         }
         nextSubStatus = 'qc_check_1';
@@ -609,15 +680,16 @@ export default function WorkerDashboard({
       }
     }
 
-    const statusLabel = progressStatus === 'wood_procurement'
-      ? 'Wood Procurement'
-      : progressStatus === 'under_carpentry'
-      ? 'Under Carpentry'
-      : progressStatus === 'qc_check_1'
-      ? 'QC Check 1 (Pending Admin Approval)'
-      : progressStatus === 'completed'
-      ? 'Completed'
-      : 'In Progress';
+    const statusLabel =
+      progressStatus === 'wood_procurement'
+        ? 'Wood Procurement'
+        : progressStatus === 'under_carpentry'
+        ? 'Under Carpentry'
+        : progressStatus === 'qc_check_1'
+        ? 'QC Check 1 (Pending Admin Approval)'
+        : progressStatus === 'completed'
+        ? 'Completed'
+        : 'In Progress';
 
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
@@ -627,12 +699,11 @@ export default function WorkerDashboard({
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: updateNotes || `${currentUser.name} logged progress update: status set to "${statusLabel}".`,
+      note: updateNotes || `${currentUser.name} updated workbench progress: status set to "${statusLabel}".`,
     };
 
-    // Reconstruct order images with newly uploaded list
-    const existingOtherImages = activeOrder.images.filter(img => img.type !== 'In-Progress');
-    const newInProgressImages = inProgressFiles.map(url => ({
+    const existingOtherImages = (activeOrder.images || []).filter((img) => img.type !== 'In-Progress');
+    const newInProgressImages = inProgressFiles.map((url) => ({
       id: 'img_' + generateUUID().split('-')[0],
       url,
       type: 'In-Progress' as const,
@@ -640,17 +711,18 @@ export default function WorkerDashboard({
       uploaded_by: currentUser.name,
     }));
 
-    // Determine verified Wood Schedule status
-    const verifiedWoodStatus = (activeOrder.wood_schedule_status === 'Approved' || activeOrder.wood_schedule?.status === 'Approved')
-      ? 'Approved'
-      : (activeOrder.wood_schedule_status === 'Rejected' ? 'Pending' : (activeOrder.wood_schedule_status || 'Pending'));
+    const verifiedWoodStatus =
+      activeOrder.wood_schedule_status === 'Approved' || activeOrder.wood_schedule?.status === 'Approved'
+        ? 'Approved'
+        : activeOrder.wood_schedule_status === 'Rejected'
+        ? 'Pending'
+        : activeOrder.wood_schedule_status || 'Pending';
 
-    // Assemble Wood Schedule metadata
     const woodScheduleData: WoodSchedule = {
       catalogue_name: catalogueName,
       model_name: modelName,
       size_of_product: sizeOfProduct,
-      sqft: Number(sqft),
+      sqft: Number(sqft) || 0,
       image_link: imageLink,
       parts: parts,
       status: verifiedWoodStatus,
@@ -658,7 +730,7 @@ export default function WorkerDashboard({
         measurement: qcMeasurement,
         finishing: qcFinishing,
         buffer: qcBuffer,
-      }
+      },
     };
 
     const updatedOrder: Order = {
@@ -666,27 +738,20 @@ export default function WorkerDashboard({
       current_status: nextStage,
       wood_schedule_status: verifiedWoodStatus,
       carpenter_sub_status: isCarpenter ? nextSubStatus : activeOrder.carpenter_sub_status,
+      carpenter_labour_rate: customLabourRate !== '' ? Number(customLabourRate) : activeOrder.carpenter_labour_rate,
+      carpenter_delivery_date: customDeliveryDate || activeOrder.carpenter_delivery_date,
       images: [...existingOtherImages, ...newInProgressImages],
       updated_at: new Date().toISOString(),
       wood_schedule: isCarpenter ? woodScheduleData : activeOrder.wood_schedule,
-      ...(isCarpenter && progressStatus === 'qc_check_1' ? {
-        qc_1_measurements_verified: true,
-        qc_1_finish_verified: true,
-        qc_1_buffer_verified: true,
-        qc_1_status: 'pending_admin_approval' as const,
-      } : {}),
+      ...(isCarpenter && progressStatus === 'qc_check_1'
+        ? {
+            qc_1_measurements_verified: true,
+            qc_1_finish_verified: true,
+            qc_1_buffer_verified: true,
+            qc_1_status: 'pending_admin_approval' as const,
+          }
+        : {}),
     };
-
-    if (isCarpenter && progressStatus === 'wood_procurement' && !isWoodScheduleApproved) {
-      try {
-        const savedMap = localStorage.getItem('bhisez_wood_request_statuses');
-        const woodStatusMap = savedMap ? JSON.parse(savedMap) : {};
-        woodStatusMap[activeOrder.id] = 'Pending';
-        localStorage.setItem('bhisez_wood_request_statuses', JSON.stringify(woodStatusMap));
-      } catch (e) {
-        console.error(e);
-      }
-    }
 
     onUpdateOrder(updatedOrder, log);
 
@@ -696,267 +761,206 @@ export default function WorkerDashboard({
       setUpdateNotes('');
       if (progressStatus === 'wood_procurement') {
         if (!isWoodScheduleApproved) {
-          alert('Success: Wood Schedule saved & submitted! Status set to "Pending" for Admin review in Wood Management. "Making Started" will remain locked until Admin approves.');
+          alert('Success: Wood schedule parts saved & submitted for Admin review in Wood Management.');
         } else {
-          alert('Success: Wood procurement completed! Sub-status has auto-advanced to "Under Carpentry".');
+          alert('Success: Wood procurement verified! Sub-status updated to "Under Carpentry".');
         }
       } else if (progressStatus === 'under_carpentry') {
-        alert('Success: Under Carpentry completed! Sub-status has auto-advanced to "QC Check 1".');
+        alert('Success: Under Carpentry progress saved! Ready for QC Check 1.');
       } else if (progressStatus === 'qc_check_1') {
-        alert('Success: QC 1 checklist (3 of 3 items) verified and saved! Sent to Admin for final QC 1 approval. Admin will inspect and either click "Save QC 1" (to finish carpentry) or "Fail QC 1 (Revert)" (to request fixes).');
+        alert('Success: QC 1 checklist (3/3 items) verified and submitted to Admin for final QC 1 inspection.');
       }
     } else {
       setActiveOrder(null);
-      alert(`Success: Staging status saved. Order advanced to "${nextStage}".`);
+      alert(`Success: Workbench update saved. Order stage advanced to "${nextStage}".`);
     }
   };
 
-  if (activeOrder) {
-    // --- MODE B: UPDATE STATUS PAGE LAYOUT ---
-    const activeCust = customers.find((c) => c.id === activeOrder.customer_id);
-    const isCarpentryDone = isCarpenter && (
-      activeOrder.carpenter_sub_status === 'completed' ||
-      activeOrder.qc_1_status === 'passed' ||
-      activeOrder.current_status === 'Making Completed' ||
-      ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status)
-    );
-    const savedSub = isCarpentryDone ? 'qc_check_1' : (activeOrder.carpenter_sub_status || 'wood_procurement');
+  // Quick Task Creation Form State
+  const [newTaskCustName, setNewTaskCustName] = useState('');
+  const [newTaskCustPhone, setNewTaskCustPhone] = useState('');
+  const [newTaskSelectedCustId, setNewTaskSelectedCustId] = useState('');
+  const [newTaskArticleNo, setNewTaskArticleNo] = useState(() => {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `${dd}/${mm}/${yy}/${rand}`;
+  });
+  const [newTaskCategory, setNewTaskCategory] = useState('Bedroom');
+  const [newTaskSubCategory, setNewTaskSubCategory] = useState('Bed');
+  const [newTaskSize, setNewTaskSize] = useState('5FT X 6.5FT');
+  const [newTaskMaterial, setNewTaskMaterial] = useState('Teak Wood');
+  const [newTaskFinish, setNewTaskFinish] = useState('Matte PU Polish');
+  const [newTaskColorShade, setNewTaskColorShade] = useState('Natural Teak');
+  const [newTaskUnits, setNewTaskUnits] = useState<number>(1);
+  const [newTaskLabourRate, setNewTaskLabourRate] = useState<number>(2500);
+  const [newTaskDeliveryDate, setNewTaskDeliveryDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().split('T')[0];
+  });
+  const [newTaskPriority, setNewTaskPriority] = useState<OrderPriority>('Normal');
+  const [newTaskNotes, setNewTaskNotes] = useState('');
+  const [newTaskParts, setNewTaskParts] = useState<WoodPart[]>([
+    { id: 'part_' + Date.now() + '_1', part_name: 'MAIN FRAME STRUCTURE', width: 2, breadth: 4, length: 6.5, quantity: 2 },
+    { id: 'part_' + Date.now() + '_2', part_name: 'SUPPORT BATTENS', width: 1.5, breadth: 3, length: 5, quantity: 4 },
+  ]);
 
+  const handleCreateNewTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddOrder) {
+      alert('Order creation capability not connected.');
+      return;
+    }
+
+    let customerId = newTaskSelectedCustId;
+    let newCustomerObj: Customer | undefined;
+
+    if (!customerId) {
+      if (!newTaskCustName.trim()) {
+        alert('Please enter or select a customer name.');
+        return;
+      }
+      customerId = 'cust_' + generateUUID().split('-')[0];
+      newCustomerObj = {
+        id: customerId,
+        name: newTaskCustName.trim(),
+        phone: newTaskCustPhone.trim() || '9876543210',
+        address: 'Workshop Local Client',
+        whatsapp_opt_in: true,
+        created_at: new Date().toISOString(),
+        created_by: currentUser.name,
+      };
+    }
+
+    const assignedCarpenterId =
+      isCarpenter && !isAdminOrManager
+        ? currentUser.id
+        : selectedWorkerId !== 'all'
+        ? selectedWorkerId
+        : currentUser.id;
+
+    const newOrder: Order = {
+      id: 'ord_' + generateUUID(),
+      article_no: newTaskArticleNo.trim(),
+      customer_id: customerId,
+      category: newTaskCategory,
+      sub_category: newTaskSubCategory,
+      size: newTaskSize,
+      finish: newTaskFinish,
+      design_type: 'Custom',
+      material: newTaskMaterial,
+      color_shade: newTaskColorShade,
+      no_of_units: Number(newTaskUnits) || 1,
+      carpenter_id: assignedCarpenterId,
+      carpenter_labour_rate: Number(newTaskLabourRate) || 0,
+      carpenter_delivery_date: newTaskDeliveryDate,
+      current_status: 'Wood Procurement',
+      carpenter_sub_status: 'wood_procurement',
+      is_delayed: false,
+      priority: newTaskPriority,
+      order_date: new Date().toISOString().split('T')[0],
+      delivery_date: newTaskDeliveryDate,
+      special_notes: newTaskNotes,
+      portal_token: generateUUID().split('-')[0],
+      portal_token_expires: new Date(Date.now() + 30 * 86400000).toISOString(),
+      qr_token: generateUUID().split('-')[0],
+      created_at: new Date().toISOString(),
+      created_by: currentUser.name,
+      images: [
+        {
+          id: 'img_init',
+          url: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop',
+          type: 'Design Reference',
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: currentUser.name,
+        },
+      ],
+      wood_schedule: {
+        catalogue_name: `${newTaskCategory} Catalogue`,
+        model_name: newTaskSubCategory.toUpperCase(),
+        size_of_product: newTaskSize,
+        sqft: 32.5,
+        image_link: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=650&auto=format&fit=crop',
+        parts: newTaskParts,
+        status: 'Pending',
+      },
+      wood_schedule_status: 'Pending',
+    };
+
+    onAddOrder(newOrder, newCustomerObj);
+    setShowAddTaskModal(false);
+    alert(`Success: Carpentry task registered with Article #${newOrder.article_no}!`);
+  };
+
+  // --- MODE B: STAGING & SPECIFICATION UPDATE VIEW ---
+  if (activeOrder) {
+    const activeCust = customers.find((c) => c.id === activeOrder.customer_id);
+    const isCarpentryDone =
+      isCarpenter &&
+      (activeOrder.carpenter_sub_status === 'completed' ||
+        activeOrder.qc_1_status === 'passed' ||
+        activeOrder.current_status === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status));
+
+    const savedSub = isCarpentryDone ? 'qc_check_1' : activeOrder.carpenter_sub_status || 'wood_procurement';
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
     const allOrderImages = activeOrder.images || [];
     const fallbackImage = activeOrder.wood_schedule?.image_link || getDefaultWoodSchedule(activeOrder).image_link;
-    const galleryImages = orderRefImages.length > 0
-      ? orderRefImages
-      : (allOrderImages.length > 0 ? allOrderImages : [{ id: 'default_ref_img', url: fallbackImage, type: 'Design Reference' as const }]);
+    const galleryImages =
+      orderRefImages.length > 0
+        ? orderRefImages
+        : allOrderImages.length > 0
+        ? allOrderImages
+        : [{ id: 'default_ref_img', url: fallbackImage, type: 'Design Reference' as const }];
+
+    const totalCft = parts.reduce((acc, p) => acc + ((p.width * p.breadth * p.length) / 144) * (p.quantity || 1), 0);
 
     return (
-      <>
-        {/* Approved Wood Schedule Toast Popup Modal */}
-        {showApprovedModal && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-400 space-y-4 text-center">
-              <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300 shadow-sm">
-                <CheckCircle2 size={36} />
-              </div>
-              <div className="space-y-1.5">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black uppercase tracking-wider border border-emerald-300">
-                  ✓ Wood Schedule Approved
-                </div>
-                <h3 className="text-lg font-black text-stone-900 font-display">
-                  Wood Schedule Approved
-                </h3>
-                <p className="text-xs text-stone-600 font-medium leading-relaxed pt-1">
-                  The submitted wood schedule has been reviewed and approved by Admin.
-                </p>
-              </div>
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowApprovedModal(false)}
-                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-md cursor-pointer"
-                >
-                  Got It — Proceed with Carpentry Work
-                </button>
-              </div>
-            </div>
+      <div className="space-y-6">
+        {/* Navigation back */}
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setActiveOrder(null)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition cursor-pointer"
+          >
+            <ArrowLeft size={15} /> Back to Workbench
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-stone-500 font-bold">Article:</span>
+            <span className="text-xs font-mono font-black bg-stone-900 text-white px-2.5 py-1 rounded-lg">
+              #{activeOrder.article_no}
+            </span>
           </div>
-        )}
+        </div>
 
-        {/* Order Completed Verification Modal */}
-        {showCompletedModal && activeOrder && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-500 space-y-4 text-center animate-in zoom-in-95 duration-150">
-              <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300 shadow-sm">
-                <CheckCircle2 size={38} className="text-emerald-600" />
-              </div>
-              <div className="space-y-1.5">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black uppercase tracking-wider border border-emerald-300">
-                  ✓ QC Check 1 Approved
-                </div>
-                <h3 className="text-xl font-black text-stone-900 font-display">
-                  Order Completed
-                </h3>
-                <p className="text-sm text-stone-800 font-bold leading-relaxed pt-1">
-                  QC Check 1 has been approved by Admin.
-                </p>
-                <p className="text-xs text-stone-600 font-medium">
-                  This order has been completed successfully.
-                </p>
-              </div>
-
-              <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 text-left text-xs space-y-2">
-                <div className="flex justify-between items-center text-stone-700">
-                  <span className="text-stone-500 font-semibold">Article Code:</span>
-                  <span className="font-mono font-bold text-stone-900">#{activeOrder.article_no}</span>
-                </div>
-                <div className="flex justify-between items-center text-stone-700">
-                  <span className="text-stone-500 font-semibold">Assigned Carpenter:</span>
-                  <span className="font-bold text-stone-900">{currentUser.name}</span>
-                </div>
-                <div className="flex justify-between items-center text-stone-700">
-                  <span className="text-stone-500 font-semibold">QC 1 Status:</span>
-                  <span className="font-extrabold text-emerald-700">Approved by Admin ✔</span>
-                </div>
-                <div className="flex justify-between items-center text-stone-700 border-t border-emerald-200/70 pt-1.5">
-                  <span className="text-stone-500 font-semibold">Current Stage:</span>
-                  <span className="font-bold text-stone-900">Making Completed</span>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={handleAcknowledgeCompletion}
-                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <CheckCircle2 size={15} />
-                  OK / Close
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* QC Failure Automatic Alert Popup for Worker */}
-        {showQcFailPopup && activeOrder && (() => {
-          const failInfo = getQCFailureInfo(activeOrder);
-          if (!failInfo) return null;
-
-          const formattedDate = failInfo.failed_at
-            ? new Date(failInfo.failed_at).toLocaleString()
-            : 'Recently';
-
-          return (
-            <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border-2 border-rose-300 space-y-5">
-                
-                {/* Header */}
-                <div className="flex items-start justify-between border-b border-stone-150 pb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-rose-100 rounded-xl text-rose-600">
-                      <AlertCircle size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-black text-rose-950 font-display">
-                        {failInfo.stage} Failed – Action Required
-                      </h3>
-                      <p className="text-stone-500 text-xs font-medium">
-                        Article #{activeOrder.article_no}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowQcFailPopup(false);
-                      if (activeOrder) {
-                        setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
-                      }
-                    }}
-                    className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* Message */}
-                <p className="text-xs text-stone-700 bg-amber-50/80 p-3 rounded-xl border border-amber-200/80 font-medium leading-relaxed">
-                  This order did not pass <strong>{failInfo.stage}</strong>. Please review the audit notes below and correct the issues before continuing.
-                </p>
-
-                {/* Metadata Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200/80 text-xs">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">Failed QC</span>
-                    <strong className="text-rose-900 font-extrabold">{failInfo.stage}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">Failed By</span>
-                    <strong className="text-stone-900 font-bold">{failInfo.failed_by || 'Admin / Inspector'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">Failure Date</span>
-                    <strong className="text-stone-800 font-medium">{formattedDate}</strong>
-                  </div>
-                </div>
-
-                {/* Fail Audit Notes Prominently Displayed */}
-                <div className="bg-rose-50/90 border-2 border-rose-200 rounded-xl p-4 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-rose-800 text-[11px] font-black uppercase tracking-wider">
-                    <AlertCircle size={14} className="text-rose-600" />
-                    <span>Fail Audit Notes:</span>
-                  </div>
-                  <p className="text-rose-950 font-bold text-sm leading-relaxed whitespace-pre-wrap bg-white/80 p-3 rounded-lg border border-rose-200/60">
-                    {failInfo.notes}
-                  </p>
-                </div>
-
-                {/* Action buttons */}
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowQcFailPopup(false);
-                      if (activeOrder) {
-                        setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
-                      }
-                    }}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl transition text-xs cursor-pointer text-center"
-                  >
-                    Review Notes & Close
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRestartOrderFromQcFail}
-                    className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-5 py-2.5 rounded-xl shadow-md transition text-xs cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <RotateCcw size={15} />
-                    Restart Order & Fix Carpentry
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          );
-        })()}
-
-        <div className="space-y-6 animate-in fade-in duration-200">
-        {/* Header navigation back */}
-        <button
-          onClick={() => setActiveOrder(null)}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-500 hover:text-stone-800 transition"
-        >
-          <ArrowLeft size={14} /> Back to workbench listings
-        </button>
-
-        {/* Persistent Warning Banner for QC Failure */}
+        {/* QC Failure Alert Banner */}
         {(() => {
           const failureInfo = getQCFailureInfo(activeOrder);
           if (!failureInfo || failureInfo.resolved) return null;
-
-          const formattedDate = failureInfo.failed_at
-            ? new Date(failureInfo.failed_at).toLocaleString()
-            : 'Recently';
+          const formattedDate = failureInfo.failed_at ? new Date(failureInfo.failed_at).toLocaleString() : 'Recently';
 
           return (
-            <div className="bg-rose-50/90 border-2 border-rose-300 rounded-2xl p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-rose-200/80 pb-2">
+            <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-rose-200 pb-2">
                 <div className="flex items-center gap-2 text-rose-900 font-black text-sm">
-                  <AlertCircle size={18} className="text-rose-600 animate-bounce" />
-                  <span>⚠ QC Failure Notes – Action Required</span>
+                  <AlertCircle size={18} className="text-rose-600 animate-pulse" />
+                  <span>QC Failure Audit – Corrective Action Required</span>
                 </div>
                 <span className="text-[10px] font-mono text-rose-800 font-bold bg-rose-100 px-2.5 py-0.5 rounded-md border border-rose-200 uppercase">
                   {failureInfo.stage} Reverted
                 </span>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-rose-900 font-medium">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-rose-900">
                 <div>
                   <span className="text-stone-500 uppercase tracking-wider font-bold text-[10px] block">Failed QC:</span>
                   <strong className="text-rose-900 font-extrabold">{failureInfo.stage}</strong>
                 </div>
                 <div>
-                  <span className="text-stone-500 uppercase tracking-wider font-bold text-[10px] block">Failed By:</span>
+                  <span className="text-stone-500 uppercase tracking-wider font-bold text-[10px] block">Inspector:</span>
                   <strong className="text-stone-900 font-bold">{failureInfo.failed_by || 'Admin / Inspector'}</strong>
                 </div>
                 <div>
@@ -964,85 +968,91 @@ export default function WorkerDashboard({
                   <strong className="text-stone-850 font-semibold">{formattedDate}</strong>
                 </div>
               </div>
-
-              <div className="bg-white border border-rose-200 rounded-xl p-3 text-xs space-y-1 shadow-2xs">
-                <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 block">Fail Audit Notes:</span>
-                <p className="font-bold text-stone-900 whitespace-pre-wrap leading-relaxed text-xs">
-                  {failureInfo.notes}
-                </p>
+              <div className="bg-white border border-rose-200 rounded-xl p-3 text-xs space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 block">Failure Notes:</span>
+                <p className="font-bold text-stone-900 whitespace-pre-wrap leading-relaxed text-xs">{failureInfo.notes}</p>
               </div>
-
               <div className="flex items-center justify-end pt-1">
                 <button
                   type="button"
                   onClick={handleRestartOrderFromQcFail}
                   className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                 >
-                  <RotateCcw size={14} />
-                  Restart Order & Fix Carpentry
+                  <RotateCcw size={14} /> Restart Carpentry & Fix Issues
                 </button>
               </div>
             </div>
           );
         })()}
 
-        <div className="pb-2 border-b border-stone-200">
-          <h1 className="text-xl md:text-2xl font-black text-stone-900 tracking-tight font-display">Update Technical Status</h1>
-          <p className="text-stone-500 text-xs">Verify measurements, log notes, and upload floor completion photographs</p>
-        </div>
-
-        {/* Dynamic Splits design columns */}
+        {/* Staging Layout Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
-          {/* Left specification summarizations column */}
-          <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4 font-sans text-xs">
-            <h3 className="font-display font-black text-stone-900 text-sm border-b border-stone-100 pb-2">Order Information Details</h3>
-            
-            <div className="space-y-3.5 leading-relaxed text-stone-600">
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold block uppercase">Article Number</span>
-                <strong className="text-stone-900 text-sm font-mono mt-0.5 block tracking-wide">{activeOrder.article_no}</strong>
-              </div>
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold block uppercase">Customer Match</span>
-                <strong className="text-stone-850 text-xs block mt-0.5">{activeCust?.name || 'Walkin Customer'}</strong>
-              </div>
-              {currentUser.role === 'admin' && (
-                <div>
-                  <span className="text-[10px] text-stone-400 font-bold block uppercase">Goal Delivery deadline</span>
-                  <strong className="text-stone-850 text-xs block font-mono mt-0.5">{activeOrder.delivery_date}</strong>
-                </div>
-              )}
-              {activeOrder.carpenter_delivery_date && (
-                <div>
-                  <span className="text-[10px] text-amber-800 font-bold block uppercase">Carpenter Delivery Date</span>
-                  <strong className="text-amber-950 text-xs block font-mono mt-0.5">{activeOrder.carpenter_delivery_date}</strong>
-                </div>
-              )}
-              {activeOrder.polish_delivery_date && (
-                <div>
-                  <span className="text-[10px] text-teal-800 font-bold block uppercase">Polish Delivery Date</span>
-                  <strong className="text-teal-950 text-xs block font-mono mt-0.5">{activeOrder.polish_delivery_date}</strong>
-                </div>
-              )}
-              <div>
-                <span className="text-[10px] text-stone-400 font-bold block uppercase">Current workshop Stage</span>
-                <span className="px-2 py-0.5 mt-1 rounded bg-stone-150 text-stone-700 font-bold text-[10px] block border w-fit">
-                  {isCarpenter && (activeOrder.carpenter_sub_status === 'completed' || activeOrder.current_status === 'Making Completed')
-                    ? 'Making Completed'
-                    : activeOrder.current_status}
+          {/* Left Column: Specs, Drawings & Blueprints */}
+          <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-5">
+            <div>
+              <h3 className="font-display font-black text-stone-900 text-sm border-b border-stone-150 pb-2 flex items-center justify-between">
+                <span>Task Specifications</span>
+                <span className="text-[10px] font-mono bg-stone-100 px-2 py-0.5 rounded text-stone-600">
+                  {activeOrder.design_type || 'Standard'}
                 </span>
+              </h3>
+
+              <div className="mt-3 space-y-3 text-xs text-stone-700">
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Customer:</span>
+                  <strong className="text-stone-900 font-bold">{activeCust?.name || 'Walk-In Customer'}</strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Product / Category:</span>
+                  <strong className="text-stone-900 font-semibold">
+                    {activeOrder.category} &rsaquo; {activeOrder.sub_category}
+                  </strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Dimensions:</span>
+                  <strong className="text-stone-900 font-mono font-bold">
+                    {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size}
+                  </strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Material:</span>
+                  <strong className="text-stone-900 font-semibold">{activeOrder.material || 'Teak Wood'}</strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Finish & Polish:</span>
+                  <strong className="text-stone-900 font-semibold">{activeOrder.finish || 'Matte'}</strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Colour Shade:</span>
+                  <strong className="text-stone-900 font-semibold">{activeOrder.color_shade || 'Natural'}</strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Quantity:</span>
+                  <strong className="text-stone-900 font-bold">{activeOrder.no_of_units || 1} Unit(s)</strong>
+                </div>
+                <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Labour Rate:</span>
+                  <strong className="text-amber-900 font-mono font-bold">
+                    ₹{activeOrder.carpenter_labour_rate ?? 0}
+                  </strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-stone-400 font-bold uppercase text-[10px]">Target Deadline:</span>
+                  <strong className="text-stone-900 font-mono font-bold">
+                    {activeOrder.carpenter_delivery_date || activeOrder.delivery_date}
+                  </strong>
+                </div>
               </div>
             </div>
 
-            {/* REFERENCE IMAGES CARD IN LEFT SIDEBAR */}
-            <div className="pt-3.5 border-t border-stone-200/80 space-y-2.5">
+            {/* Reference Images Gallery */}
+            <div className="pt-2 border-t border-stone-200/80 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                  <ImageIcon size={13} className="text-[#593622]" /> Reference Drawings & Photos
+                <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                  <ImageIcon size={14} className="text-[#593622]" /> Design Blueprints & Drawings
                 </span>
                 <span className="text-[9px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-200">
-                  {orderRefImages.length > 0 ? `${orderRefImages.length} Attached` : 'Catalogue Spec'}
+                  {galleryImages.length} Image(s)
                 </span>
               </div>
 
@@ -1050,10 +1060,15 @@ export default function WorkerDashboard({
                 {galleryImages.slice(0, 4).map((img, idx) => (
                   <div
                     key={img.id || idx}
-                    onClick={() => setLightboxImg(img.url ?? null)}
+                    onClick={() => setLightboxImg(img.url)}
                     className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
                   >
-                    <img referrerPolicy="no-referrer" src={img.url} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                    <img
+                      referrerPolicy="no-referrer"
+                      src={img.url}
+                      alt={`Ref ${idx + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                    />
                     <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[9px] font-bold gap-1">
                       <Eye size={16} />
                       <span>Expand</span>
@@ -1062,212 +1077,166 @@ export default function WorkerDashboard({
                 ))}
               </div>
 
-              <label className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-stone-50 hover:bg-stone-100 border border-dashed border-stone-300 rounded-lg text-stone-700 text-[11px] font-bold cursor-pointer transition">
-                <Upload size={12} className="text-[#593622]" />
-                <span>Upload Reference Photo</span>
+              <label className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-stone-50 hover:bg-stone-100 border border-dashed border-stone-300 rounded-xl text-stone-700 text-xs font-bold cursor-pointer transition">
+                <Upload size={13} className="text-[#593622]" />
+                <span>+ Upload Blueprint Photo</span>
                 <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
               </label>
             </div>
           </div>
 
-          {/* Right actual Update Status inputs panel column matching screenshot 2 */}
+          {/* Right Column: Interactive Staging & Wood Requirement Calculator */}
           <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
             <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
-              
-              {/* Radios inputs matching completed states */}
-              <div className="space-y-2.5">
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider font-sans">Progress Status *</label>
-                <div className={`grid grid-cols-1 ${isCarpenter ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
-                  {isCarpenter ? (
-                    <>
-                      {/* Wood procurement tab */}
-                      <label
-                        className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'wood_procurement'
-                            ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
-                            : progressStatus === 'wood_procurement'
-                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
-                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100 cursor-pointer'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="progressRadios"
-                          checked={progressStatus === 'wood_procurement'}
-                          disabled={savedSub !== 'wood_procurement'}
-                          onChange={() => setProgressStatus('wood_procurement')}
-                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                        <div>
-                          <strong className="text-xs block font-sans">
-                            Wood procurement {savedSub !== 'wood_procurement' && '(Passed ✔)'}
-                          </strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Log materials and start wood preparation work</span>
-                        </div>
-                      </label>
-
-                      {/* Under Carpentry tab */}
-                      <label
-                        className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'under_carpentry'
-                            ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
-                            : progressStatus === 'under_carpentry'
-                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
-                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100 cursor-pointer'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="progressRadios"
-                          checked={progressStatus === 'under_carpentry'}
-                          disabled={savedSub !== 'under_carpentry'}
-                          onChange={() => setProgressStatus('under_carpentry')}
-                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                        <div>
-                          <strong className="text-xs block font-sans">
-                            Under Carpentry {(savedSub === 'qc_check_1' || isCarpentryDone) && '(Passed ✔)'}
-                          </strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Active carpentry structure construction and assembly</span>
-                        </div>
-                      </label>
-
-                      {/* QC Check 1 tab */}
-                      <label
-                        className={`border rounded-xl p-3.5 flex items-center gap-3 transition ${
-                          savedSub !== 'qc_check_1' && !isCarpentryDone
-                            ? 'bg-stone-100 opacity-60 border-stone-200 text-stone-400 cursor-not-allowed select-none'
-                            : progressStatus === 'qc_check_1'
-                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900 cursor-pointer'
-                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100 cursor-pointer'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="progressRadios"
-                          checked={progressStatus === 'qc_check_1'}
-                          disabled={savedSub !== 'qc_check_1' && !isCarpentryDone}
-                          onChange={() => setProgressStatus('qc_check_1')}
-                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                        <div>
-                          <strong className="text-xs block font-sans">
-                            QC Check 1 {isCarpentryDone ? '(Passed ✔)' : (activeOrder.qc_1_status === 'pending_admin_approval' ? '(Pending Admin Approval ⏳)' : '')}
-                          </strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Verify measurements, finishing & buffer specs</span>
-                        </div>
-                      </label>
-                    </>
-                  ) : (
-                    <>
-                      {/* Default In Progress (used by paint/polish) */}
-                      <label
-                        className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
-                          progressStatus === 'in_progress'
-                            ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
-                            : 'bg-stone-50 border-stone-200 text-stone-550'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="progressRadios"
-                          checked={progressStatus === 'in_progress'}
-                          onChange={() => setProgressStatus('in_progress')}
-                          className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
-                        />
-                        <div>
-                          <strong className="text-xs block font-sans">In Progress</strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Continue work on active cabinetry floor cutting</span>
-                        </div>
-                      </label>
-
-                      {/* Completed for non-carpenter */}
-                      <label
-                        className={`border rounded-xl p-3.5 flex items-center gap-3 cursor-pointer transition ${
-                          progressStatus === 'completed'
-                            ? 'bg-green-50/40 border-green-500 ring-2 ring-green-500/10 text-green-900'
-                            : 'bg-stone-50 border-stone-200 text-stone-550 hover:bg-stone-100'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="progressRadios"
-                          checked={progressStatus === 'completed'}
-                          onChange={() => setProgressStatus('completed')}
-                          className="text-green-700 focus:ring-green-500 font-bold shrink-0 cursor-pointer"
-                        />
-                        <div>
-                          <strong className="text-xs block font-sans">
-                            Completed (Move to QC Check 2)
-                          </strong>
-                          <span className="text-[10px] text-stone-400 font-medium font-sans">Mark department task finished successfully</span>
-                        </div>
-                      </label>
-                    </>
-                  )}
+              {/* Progress Stage Radios */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider">
+                    Workbench Progress Stage *
+                  </label>
+                  <span className="text-[10px] text-stone-500 font-semibold">
+                    Current Workshop Stage:{' '}
+                    <strong className="text-stone-900">{activeOrder.current_status}</strong>
+                  </span>
                 </div>
 
-                {/* QC Check 1 Checkboxes Panel */}
-                {isCarpenter && progressStatus === 'qc_check_1' && (
-                  <div className="mt-3.5 p-3.5 bg-amber-50/70 border border-amber-300/80 rounded-xl space-y-2.5 animate-in fade-in duration-200 shadow-2xs">
-                    <div className="flex items-center justify-between pb-2 border-b border-amber-200/80">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Step 1: Wood Procurement */}
+                  <label
+                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition cursor-pointer ${
+                      progressStatus === 'wood_procurement'
+                        ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="progressRadios"
+                      checked={progressStatus === 'wood_procurement'}
+                      onChange={() => setProgressStatus('wood_procurement')}
+                      className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
+                    />
+                    <div>
+                      <strong className="text-xs block font-bold">1. Wood Procurement</strong>
+                      <span className="text-[10px] text-stone-400 font-medium">Log timber schedule & calculate CFT</span>
+                    </div>
+                  </label>
+
+                  {/* Step 2: Under Carpentry */}
+                  <label
+                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition cursor-pointer ${
+                      progressStatus === 'under_carpentry'
+                        ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="progressRadios"
+                      checked={progressStatus === 'under_carpentry'}
+                      onChange={() => setProgressStatus('under_carpentry')}
+                      className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
+                    />
+                    <div>
+                      <strong className="text-xs block font-bold">2. Under Carpentry</strong>
+                      <span className="text-[10px] text-stone-400 font-medium">Active timber cutting & assembly</span>
+                    </div>
+                  </label>
+
+                  {/* Step 3: QC Check 1 */}
+                  <label
+                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition cursor-pointer ${
+                      progressStatus === 'qc_check_1'
+                        ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="progressRadios"
+                      checked={progressStatus === 'qc_check_1'}
+                      onChange={() => setProgressStatus('qc_check_1')}
+                      className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
+                    />
+                    <div>
+                      <strong className="text-xs block font-bold">
+                        3. QC Check 1 {isCarpentryDone ? '(Passed ✔)' : ''}
+                      </strong>
+                      <span className="text-[10px] text-stone-400 font-medium">Check dimensions, finish & buffer</span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* QC Check 1 Checklist Requirements */}
+                {progressStatus === 'qc_check_1' && (
+                  <div className="mt-3 p-4 bg-amber-50/80 border border-amber-300 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-amber-200">
                       <div className="flex items-center gap-2">
                         <CheckSquare className="text-[#593622]" size={16} />
-                        <span className="font-bold text-xs text-amber-950 uppercase tracking-wide font-sans">
-                          QC Check 1 Checklist
+                        <span className="font-bold text-xs text-amber-950 uppercase tracking-wide">
+                          QC Check 1 Mandatory Verification
                         </span>
                       </div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-200/90 text-amber-950 font-sans">
-                        {[qcMeasurement, qcFinishing, qcBuffer].filter(Boolean).length} of 3 Checked
+                      <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-950">
+                        {[qcMeasurement, qcFinishing, qcBuffer].filter(Boolean).length} of 3 Verified
                       </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {/* 1. Measurement */}
-                      <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer select-none ${
-                        qcMeasurement ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold shadow-2xs' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
-                      }`}>
+                      <label
+                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer ${
+                          qcMeasurement
+                            ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
+                            : 'bg-white border-stone-200 text-stone-700'
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={qcMeasurement}
                           onChange={(e) => setQcMeasurement(e.target.checked)}
                           className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
                         />
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-xs font-bold font-sans">1. Measurement</span>
-                          <span className="text-[9px] text-stone-500 font-normal font-sans">Dimensions & size verified</span>
+                        <div className="leading-tight">
+                          <span className="text-xs font-bold block">1. Measurement</span>
+                          <span className="text-[9px] text-stone-500">Dimensions verified</span>
                         </div>
                       </label>
 
-                      {/* 2. Finishing */}
-                      <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer select-none ${
-                        qcFinishing ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold shadow-2xs' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
-                      }`}>
+                      <label
+                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer ${
+                          qcFinishing
+                            ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
+                            : 'bg-white border-stone-200 text-stone-700'
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={qcFinishing}
                           onChange={(e) => setQcFinishing(e.target.checked)}
                           className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
                         />
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-xs font-bold font-sans">2. Finishing</span>
-                          <span className="text-[9px] text-stone-500 font-normal font-sans">Surface & edge preparation</span>
+                        <div className="leading-tight">
+                          <span className="text-xs font-bold block">2. Finishing</span>
+                          <span className="text-[9px] text-stone-500">Smoothness & edges</span>
                         </div>
                       </label>
 
-                      {/* 3. Buffer */}
-                      <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer select-none ${
-                        qcBuffer ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold shadow-2xs' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
-                      }`}>
+                      <label
+                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer ${
+                          qcBuffer
+                            ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
+                            : 'bg-white border-stone-200 text-stone-700'
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={qcBuffer}
                           onChange={(e) => setQcBuffer(e.target.checked)}
                           className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
                         />
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-xs font-bold font-sans">3. Buffer</span>
-                          <span className="text-[9px] text-stone-500 font-normal font-sans">Tolerances & joint margins</span>
+                        <div className="leading-tight">
+                          <span className="text-xs font-bold block">3. Buffer & Fit</span>
+                          <span className="text-[9px] text-stone-500">Joint tolerances</span>
                         </div>
                       </label>
                     </div>
@@ -1275,666 +1244,798 @@ export default function WorkerDashboard({
                 )}
               </div>
 
-              {/* Carpentry Completed Status Banner if QC 1 was passed by Admin */}
-              {isCarpenter && isCarpentryDone && (
-                <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center border border-emerald-300 shrink-0">
-                      <CheckCircle2 size={22} />
+              {/* SECTION: Wood Requirement & Estimation Calculator */}
+              <div className="bg-[#fdfbfc] border border-[#593622]/20 rounded-2xl p-4 md:p-5 space-y-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-stone-200 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#593622]/10 border border-[#593622]/30 text-[#593622]">
+                      <Hammer size={16} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black text-emerald-950 font-display">QC Check 1 Approved — Carpentry Complete</h4>
-                      <p className="text-[11px] text-emerald-800 font-medium">Admin has verified and approved QC 1. Stage advanced to Making Completed.</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowCompletedModal(true)}
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 cursor-pointer flex items-center gap-1.5 w-fit"
-                  >
-                    <CheckCircle2 size={13} />
-                    View Completion Popup
-                  </button>
-                </div>
-              )}
-
-              {/* Progress Staging Body */}
-              {/* REFERENCE IMAGES & DESIGN BLUEPRINTS BANNER UNDER PROGRESS STATUS */}
-                  <div className="bg-[#fcfaf7] border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-amber-200/60 gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-[#593622] text-amber-300 shrink-0">
-                          <ImageIcon size={15} />
-                        </div>
-                        <div>
-                          <h3 className="font-display font-black text-stone-900 text-xs sm:text-sm tracking-tight leading-none">
-                            Design Reference & Blueprint Photos
-                          </h3>
-                          <p className="text-[10px] text-stone-500 mt-0.5 font-medium">
-                            Approved blueprints, sketches & catalog reference photos for Article #{activeOrder.article_no}
-                          </p>
-                        </div>
-                      </div>
-
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-[10px] font-bold cursor-pointer transition shadow-xs w-fit">
-                        <Upload size={11} />
-                        <span>+ Add Reference Image</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {galleryImages.map((img, idx) => (
-                        <div
-                          key={img.id || idx}
-                          onClick={() => setLightboxImg(img.url ?? null)}
-                          className="relative group rounded-xl border border-stone-200 overflow-hidden bg-stone-100 h-28 cursor-pointer hover:border-[#593622] hover:shadow-md transition"
-                        >
-                          <img referrerPolicy="no-referrer" src={img.url} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
-                            <Eye size={16} />
-                            <span>Click to Expand</span>
-                          </div>
-                          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[8px] font-bold px-1.5 py-0.5 rounded backdrop-blur-xs">
-                            {img.type || 'Design Reference'} #{idx + 1}
-                          </div>
-                        </div>
-                      ))}
+                      <h3 className="font-display font-black text-[#593622] text-sm leading-none">
+                        Wood Cut Schedule & Volume Calculator (CFT)
+                      </h3>
+                      <p className="text-[10px] text-stone-400 mt-0.5">
+                        Formula: <code>(Width" × Breadth" × Length' ÷ 144) × QTY</code>
+                      </p>
                     </div>
                   </div>
 
-                  {/* SECTION: BHISE'Z WOOD REGISTRATION & REQUIREMENT CALCULATOR */}
-                  {isCarpenter && (
-                    <div className="bg-[#fdfbfc] border border-[#593622]/20 rounded-2xl p-4 md:p-5 space-y-5 shadow-xs">
-                      {/* Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-stone-150 pb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="p-1 px-2.5 rounded-lg bg-[#593622]/10 border border-[#593622]/30 text-[#593622]">
-                            <Hammer size={16} className="animate-pulse" />
-                          </div>
-                          <div>
-                            <h3 className="font-display font-black text-[#593622] text-sm tracking-tight leading-none">Wood Requirement & Estimation Calculator</h3>
-                            <p className="text-[10px] text-stone-400 mt-1 font-medium select-none">Estimate and record total material volume (CFT) required for fabrication</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Section 1: Product details fields */}
-                      <div className="bg-stone-50 p-4 border border-stone-200 rounded-xl space-y-4">
-                        <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">1. Product Identification Details</h4>
-                        
-                        {/* Fetched Product Configuration & Specifications from Section 2 */}
-                        {activeOrder && (
-                          <div className="bg-white p-3.5 border border-amber-200/80 rounded-xl shadow-xs space-y-2.5">
-                            <div className="flex items-center justify-between pb-2 border-b border-stone-150">
-                              <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                                📋 Product Configuration & Specifications (Fetched from Order Specs)
-                              </span>
-                              <span className="text-[9px] font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200 font-mono">
-                                Article #{activeOrder.article_no}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-4 text-xs">
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Category</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.category || 'N/A'}</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sub-category</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.sub_category || 'N/A'}</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Sizing Constraints</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">
-                                  {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size || 'N/A'}
-                                </strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Design Blueprints</span>
-                                <span className="inline-block mt-0.5 px-1.5 py-0.5 font-bold text-[9px] border rounded bg-stone-50 text-stone-700 border-stone-200">
-                                  {activeOrder.design_type || 'Standard'} Layout
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Structural Material</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.material || 'N/A'}</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Finish Polish</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.finish || 'N/A'}</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Color Shade</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.color_shade || 'N/A'}</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-stone-400 font-bold block uppercase tracking-wide">Units Count</span>
-                                <strong className="text-stone-850 block font-semibold text-xs mt-0.5">{activeOrder.no_of_units || 1} pieces</strong>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Section 2: Wooden components table spreadsheet */}
-                      <div className="space-y-3">
-                        {/* Approved Badge & Confirmation Banner */}
-                        {isWoodScheduleApproved && (
-                          <div className="p-3.5 bg-emerald-50/90 border border-emerald-300 rounded-2xl space-y-2 shadow-2xs">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black text-xs shadow-2xs">
-                                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                                <span>✓ Wood Schedule Approved</span>
-                              </div>
-                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
-                                <Lock size={12} className="text-emerald-700" />
-                                Locked (Approved by Admin)
-                              </span>
-                            </div>
-
-                            <p className="text-xs text-emerald-950 font-bold flex items-center gap-2 pt-0.5">
-                              <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
-                              Wood Schedule Approved by Admin. You can now proceed with carpentry work.
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between">
-                          <h4 className={`text-[10px] font-black uppercase tracking-widest leading-none ${isWoodScheduleApproved ? 'text-emerald-800' : 'text-stone-400'}`}>
-                            2. Wood Schedule Calculation Table
-                          </h4>
-                          <div className="flex items-center gap-2">
-                            {!isWoodScheduleApproved && parts.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setParts([])}
-                                className="inline-flex items-center gap-1 bg-stone-200 hover:bg-stone-300 text-stone-700 p-1 px-2.5 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
-                              >
-                                <Trash2 size={10} /> Clear Table
-                              </button>
-                            )}
-                            {!isWoodScheduleApproved && (
-                              <button
-                                type="button"
-                                onClick={() => setParts([...parts, { id: 'part_' + Date.now(), part_name: '', width: 1, breadth: 1, length: 1, quantity: 1 }])}
-                                className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white p-1 px-3 rounded-lg text-[10px] font-bold transition font-sans cursor-pointer"
-                              >
-                                <Plus size={10} /> Add Part Row
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className={`border rounded-xl overflow-hidden shadow-xs transition-colors duration-200 ${
-                          isWoodScheduleApproved
-                            ? 'border-emerald-300 bg-emerald-50/20'
-                            : 'border-stone-250'
-                        }`}>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
-                              <thead>
-                                <tr className={`border-b text-center font-bold uppercase text-[9px] tracking-wider select-none ${
-                                  isWoodScheduleApproved
-                                    ? 'bg-emerald-100/80 border-emerald-300 text-emerald-950'
-                                    : 'bg-stone-100 border-stone-250 text-stone-500'
-                                }`}>
-                                  <th className={`py-2.5 px-3 text-left min-w-[145px] border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Part Name & Component Purpose</th>
-                                  <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Width (Inches)</th>
-                                  <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Breadth (Inches)</th>
-                                  <th className={`py-2.5 px-2 w-[75px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>Length (Feet)</th>
-                                  <th className={`py-2.5 px-2 w-[65px] border-r text-center ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>QTY</th>
-                                  <th className={`py-2.5 px-2 w-[85px] border-r text-right ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>CFT Vol.</th>
-                                  <th className="py-2.5 px-1.5 w-[45px]">Action</th>
-                                </tr>
-                              </thead>
-                              <tbody className={`divide-y ${isWoodScheduleApproved ? 'divide-emerald-200 bg-white/90' : 'divide-stone-200 bg-white'}`}>
-                                {parts.length > 0 ? (
-                                  parts.map((p) => {
-                                    const partCft = ((p.width * p.breadth * p.length) / 144) * p.quantity;
-                                    return (
-                                      <tr key={p.id} className={`${isWoodScheduleApproved ? 'hover:bg-emerald-50/30' : 'hover:bg-amber-50/10'} text-center font-semibold text-stone-850`}>
-                                        {/* Name input */}
-                                        <td className={`py-1 px-2 text-left border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                          <input
-                                            type="text"
-                                            required
-                                            disabled={isWoodScheduleApproved}
-                                            value={p.part_name}
-                                            onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
-                                            placeholder="e.g. Backside Legs"
-                                            className="w-full p-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                          />
-                                        </td>
-
-                                        {/* Width (inches) */}
-                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                          <input
-                                            type="number"
-                                            step="0.01"
-                                            required
-                                            disabled={isWoodScheduleApproved}
-                                            min={0}
-                                            value={p.width || ''}
-                                            onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
-                                            placeholder='0.0"'
-                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                          />
-                                        </td>
-
-                                        {/* Breadth (inches) */}
-                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                          <input
-                                            type="number"
-                                            step="0.01"
-                                            required
-                                            disabled={isWoodScheduleApproved}
-                                            min={0}
-                                            value={p.breadth || ''}
-                                            onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
-                                            placeholder='0.0"'
-                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                          />
-                                        </td>
-
-                                        {/* Length (feet) */}
-                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                          <input
-                                            type="number"
-                                            step="0.1"
-                                            required
-                                            disabled={isWoodScheduleApproved}
-                                            min={0}
-                                            value={p.length || ''}
-                                            onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
-                                            placeholder="0.0'"
-                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                          />
-                                        </td>
-
-                                        {/* Quantity */}
-                                        <td className={`py-1 px-1 border-r ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                          <input
-                                            type="number"
-                                            required
-                                            disabled={isWoodScheduleApproved}
-                                            min={1}
-                                            value={p.quantity || ''}
-                                            onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
-                                            placeholder="qty"
-                                            className="w-full p-1 border-0 text-center focus:outline-none focus:ring-1 focus:ring-[#593622] rounded bg-transparent focus:bg-white text-stone-900 font-mono font-bold disabled:cursor-not-allowed disabled:text-stone-800"
-                                          />
-                                        </td>
-
-                                        {/* Computed CFT */}
-                                        <td className={`py-1 px-3 border-r font-mono whitespace-nowrap text-right ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950 font-bold' : 'border-stone-200 text-stone-850'}`}>
-                                          {isNaN(partCft) ? '0.00' : partCft.toFixed(2)} CFT
-                                        </td>
-
-                                        {/* Delete trigger */}
-                                        <td className="py-1 px-1.5">
-                                          {!isWoodScheduleApproved ? (
-                                            <button
-                                              type="button"
-                                              onClick={() => setParts(parts.filter(pt => pt.id !== p.id))}
-                                              className="p-1 text-stone-400 hover:text-red-700 hover:bg-red-50 rounded transition flex items-center justify-center mx-auto cursor-pointer"
-                                              title="Remove part row"
-                                            >
-                                              <Trash2 size={13} />
-                                            </button>
-                                          ) : (
-                                            <span className="text-emerald-600 flex justify-center" title="Approved (Read only)">
-                                              <Lock size={12} />
-                                            </span>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })
-                                ) : (
-                                  <tr>
-                                    <td colSpan={7} className="py-8 text-center text-stone-400 italic font-medium font-sans">
-                                      No components added yet. Tap "+ Add Part Row" above to enter wood schedule items manually.
-                                    </td>
-                                  </tr>
-                                )}
-
-                                {/* Total CFT Summary Row */}
-                                <tr className={`font-bold border-t select-none ${
-                                  isWoodScheduleApproved
-                                    ? 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black'
-                                    : 'bg-amber-50/40 text-[#593622] border-stone-250'
-                                }`}>
-                                  <td colSpan={5} className={`py-3 px-3 uppercase text-right text-[10px] tracking-wider border-r font-bold font-sans ${isWoodScheduleApproved ? 'border-emerald-200' : 'border-stone-200'}`}>
-                                    🛠️ Total Wood Volume Required:
-                                  </td>
-                                  <td className={`py-3 px-3 text-right font-mono text-[13px] border-r font-black ${isWoodScheduleApproved ? 'border-emerald-200 text-emerald-950' : 'border-stone-200'}`}>
-                                    {parts.reduce((tot, p) => tot + (((p.width * p.breadth * p.length) / 144) * p.quantity), 0).toFixed(2)} CFT
-                                  </td>
-                                  <td className={isWoodScheduleApproved ? 'bg-emerald-100' : 'bg-white'}></td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
+                  {/* Wood Presets */}
+                  {!isWoodScheduleApproved && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-stone-400">Presets:</span>
+                      <button
+                        type="button"
+                        onClick={() => loadWoodPreset('bed')}
+                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
+                      >
+                        Bed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => loadWoodPreset('cabinet')}
+                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
+                      >
+                        Cabinet
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => loadWoodPreset('table')}
+                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
+                      >
+                        Table
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => loadWoodPreset('sofa')}
+                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
+                      >
+                        Sofa
+                      </button>
                     </div>
                   )}
+                </div>
 
-                  {/* Add Progress notes */}
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest mb-1.5 font-sans">Add Notes</label>
-                    <textarea
-                      rows={3}
-                      value={updateNotes}
-                      onChange={(e) => setUpdateNotes(e.target.value)}
-                      placeholder="Describe details: carcass work completed. Ready for QC. Materials cut sizes check passed."
-                      className="w-full p-3 bg-stone-50 border border-stone-250 focus:border-[#593622] rounded-xl text-xs focus:outline-none font-semibold text-stone-850"
-                    />
-                  </div>
-
-                  {/* Upload dynamic live photos (Simulated Paste url) */}
-                  <div className="space-y-3 font-sans">
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-widest">Upload progress photographs</label>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Local file and mobile camera buttons */}
-                      <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
-                        <div>
-                          <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Local Attachment</span>
-                          <p className="text-[11px] text-stone-500 leading-normal">Choose existing files from your mobile phone memory or PC desktop gallery.</p>
-                        </div>
-
-                        <div className="flex gap-1.5 pt-1.5">
-                          <label className="flex-1 bg-white border border-stone-300 rounded-lg p-2 flex items-center justify-center gap-1.5 hover:border-[#593622] hover:bg-stone-50 cursor-pointer shadow-3xs font-extrabold text-[11px] text-stone-850 transition-colors">
-                            <UploadCloud size={13} className="text-[#593622]" />
-                            <span>Browse file</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleLocalFileUpload}
-                              className="hidden"
-                            />
-                          </label>
-
-                          <label className="flex-1 bg-[#593622] text-white rounded-lg p-2 flex items-center justify-center gap-1.5 hover:bg-[#402414] cursor-pointer shadow-3xs font-black uppercase text-[10px] tracking-wider transition-colors">
-                            <Camera size={13} />
-                            <span>Direct Camera</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              onChange={handleLocalFileUpload}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Webcam Live Capture block */}
-                      <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col justify-between space-y-3">
-                        <div>
-                          <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block">Workshop Scan</span>
-                          <p className="text-[11px] text-stone-500 leading-normal font-sans">Record snapshots of cut wood or finished polishing stages instantly.</p>
-                        </div>
-
-                        {!isWebcamActive ? (
-                          <button
-                            type="button"
-                            onClick={startWebcam}
-                            className="w-full bg-[#593622]/10 border border-[#593622]/35 text-[#593622] hover:bg-[#593622]/20 font-bold uppercase text-[10px] tracking-widest p-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <Video size={13} />
-                            <span>Start Viewfinder</span>
-                          </button>
-                        ) : (
-                          <div className="bg-stone-950 rounded-lg overflow-hidden relative border border-stone-900 aspect-video flex flex-col justify-end">
-                            {webcamError ? (
-                              <div className="p-2 text-[9px] text-red-400 font-bold text-center flex flex-col items-center justify-center h-full">
-                                <span>{webcamError}</span>
-                                <button
-                                  type="button"
-                                  onClick={stopWebcam}
-                                  className="mt-1.5 p-0.5 px-2 bg-white text-stone-900 rounded font-black text-[8px] uppercase font-sans"
-                                >
-                                  Close
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <video
-                                  ref={videoRef}
-                                  autoPlay
-                                  playsInline
-                                  className="absolute inset-0 object-cover w-full h-full scale-x-[-1]"
-                                />
-                                <div className="absolute top-1 right-1 bg-black/60 p-0.5 px-1.5 rounded font-mono text-[8px] text-stone-300 font-bold tracking-widest animate-pulse flex items-center gap-0.5">
-                                  <span className="h-1 w-1 bg-red-600 rounded-full inline-block" /> WORKSHOP CAM
-                                </div>
-                                <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-1 z-10">
-                                  <button
-                                    type="button"
-                                    onClick={captureSnapshot}
-                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1 rounded font-black uppercase text-[9px] tracking-wider shadow"
-                                  >
-                                    📸 SNAP
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={stopWebcam}
-                                    className="bg-red-700 hover:bg-red-800 text-white p-1 px-2 rounded font-bold text-[9px] uppercase shadow"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                {/* Approved Wood Schedule Banner */}
+                {isWoodScheduleApproved && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-emerald-950">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                      <span className="font-bold text-xs">Wood Schedule Approved by Admin</span>
                     </div>
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
+                      <Lock size={11} /> Locked
+                    </span>
+                  </div>
+                )}
 
-                    {/* Collapsible reference URL */}
-                    <details className="group bg-stone-100 border border-stone-250/70 rounded-xl overflow-hidden text-xs">
-                      <summary className="p-2 font-bold text-stone-500 hover:text-[#593622] cursor-pointer select-none flex items-center justify-between text-[10px] uppercase tracking-wide">
-                        <span>🔗 Paste manual snapshot link</span>
-                        <span className="group-open:rotate-180 transition-transform">▼</span>
-                      </summary>
-                      
-                      <div className="p-3 border-t bg-stone-50 space-y-2">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={simulateUrlInput}
-                            onChange={(e) => setSimulateUrlInput(e.target.value)}
-                            placeholder="https://images.unsplash.com/photo-1595..."
-                            className="flex-1 px-2.5 py-1.5 bg-white border border-stone-250 rounded focus:outline-none text-xs text-stone-850 font-semibold"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleAddPhotos}
-                            className="bg-[#593622] text-white hover:bg-[#402414] px-3.5 py-1.5 font-bold rounded text-[10px] uppercase transition shrink-0"
-                          >
-                            Append Link
-                          </button>
-                        </div>
-                      </div>
-                    </details>
-
-                    {/* Grid gallery of files uploaded */}
-                    {inProgressFiles.length > 0 ? (
-                      <div className="grid grid-cols-3 gap-2 pt-2">
-                        {inProgressFiles.map((url, idx) => (
-                          <div key={idx} className="relative aspect-video rounded-xl overflow-hidden border border-stone-200">
-                            <img referrerPolicy="no-referrer" src={url} alt="Uploaded" className="object-cover w-full h-full" />
-                            <button
-                              type="button"
-                              onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
-                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-md font-bold text-[10px] h-5 w-5 flex items-center justify-center transition shadow"
-                              title="Delete photograph"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="py-8 border-2 border-dashed border-stone-250 rounded-xl flex flex-col items-center justify-center text-stone-400 select-none">
-                        <ImageIcon size={24} className="text-stone-300 mb-1 animate-pulse" />
-                        <p className="font-bold text-stone-500">No progress snapshots attached</p>
-                        <p className="text-[10px] text-stone-400 mt-0.5">Use camera button, local files browser, or paste custom urls.</p>
-                      </div>
-                    )}
+                {/* Wood Schedule Parts Table */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-stone-500">
+                      Components Breakdown ({parts.length} parts)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {!isWoodScheduleApproved && parts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setParts([])}
+                          className="text-[10px] font-bold text-stone-500 hover:text-red-600 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-red-50"
+                        >
+                          <Trash2 size={11} /> Clear
+                        </button>
+                      )}
+                      {!isWoodScheduleApproved && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setParts([
+                              ...parts,
+                              { id: 'part_' + Date.now(), part_name: '', width: 2, breadth: 4, length: 5, quantity: 1 },
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                        >
+                          <Plus size={11} /> + Add Part Row
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Action save brown button */}
-                  <div className="pt-3 border-t border-stone-100 flex justify-end gap-2">
+                  <div className="border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-stone-100 border-b border-stone-200 text-stone-600 font-mono text-[9px] uppercase font-bold text-center">
+                            <th className="py-2 px-3 text-left">Part Name & Purpose</th>
+                            <th className="py-2 px-2 w-20">Width (In)</th>
+                            <th className="py-2 px-2 w-20">Breadth (In)</th>
+                            <th className="py-2 px-2 w-20">Length (Ft)</th>
+                            <th className="py-2 px-2 w-16">QTY</th>
+                            <th className="py-2 px-3 w-24 text-right">CFT Vol</th>
+                            <th className="py-2 px-2 w-12">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-100 bg-white">
+                          {parts.length > 0 ? (
+                            parts.map((p) => {
+                              const partCft = ((p.width * p.breadth * p.length) / 144) * (p.quantity || 1);
+                              return (
+                                <tr key={p.id} className="hover:bg-amber-50/20 text-center font-semibold">
+                                  <td className="py-1.5 px-3 text-left border-r border-stone-100">
+                                    <input
+                                      type="text"
+                                      disabled={isWoodScheduleApproved}
+                                      value={p.part_name}
+                                      onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
+                                      placeholder="e.g. Legs / Side Rails"
+                                      className="w-full p-1 bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-bold text-stone-900 disabled:text-stone-700"
+                                    />
+                                  </td>
+                                  <td className="py-1.5 px-1 border-r border-stone-100">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min={0}
+                                      disabled={isWoodScheduleApproved}
+                                      value={p.width || ''}
+                                      onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
+                                      placeholder="0"
+                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
+                                    />
+                                  </td>
+                                  <td className="py-1.5 px-1 border-r border-stone-100">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min={0}
+                                      disabled={isWoodScheduleApproved}
+                                      value={p.breadth || ''}
+                                      onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
+                                      placeholder="0"
+                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
+                                    />
+                                  </td>
+                                  <td className="py-1.5 px-1 border-r border-stone-100">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min={0}
+                                      disabled={isWoodScheduleApproved}
+                                      value={p.length || ''}
+                                      onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
+                                      placeholder="0"
+                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
+                                    />
+                                  </td>
+                                  <td className="py-1.5 px-1 border-r border-stone-100">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      disabled={isWoodScheduleApproved}
+                                      value={p.quantity || ''}
+                                      onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
+                                      placeholder="1"
+                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
+                                    />
+                                  </td>
+                                  <td className="py-1.5 px-3 border-r border-stone-100 text-right font-mono font-bold text-stone-900">
+                                    {isNaN(partCft) ? '0.00' : partCft.toFixed(2)} CFT
+                                  </td>
+                                  <td className="py-1.5 px-1">
+                                    {!isWoodScheduleApproved ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setParts(parts.filter((pt) => pt.id !== p.id))}
+                                        className="p-1 text-stone-400 hover:text-red-600 rounded transition flex items-center justify-center mx-auto"
+                                        title="Delete row"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    ) : (
+                                      <span className="text-emerald-600 flex justify-center">
+                                        <Lock size={12} />
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={7} className="py-6 text-center text-stone-400 italic">
+                                No timber parts added yet. Click "+ Add Part Row" or select a preset above.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-stone-50 border-t border-stone-200 font-bold text-stone-900">
+                            <td colSpan={5} className="py-2.5 px-3 text-right uppercase text-[10px] text-stone-500">
+                              Total Estimated Wood Volume:
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-black text-amber-900 text-xs">
+                              {totalCft.toFixed(2)} CFT
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: Progress Snapshots & Uploads */}
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Camera size={14} className="text-[#593622]" /> In-Progress Floor Photographs ({inProgressFiles.length})
+                  </span>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setActiveOrder(null)}
-                      className="px-4 py-2.5 border rounded-xl text-stone-500 font-bold hover:bg-stone-50"
+                      onClick={isWebcamActive ? stopWebcam : startWebcam}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-lg text-xs font-bold transition"
                     >
-                      Cancel
+                      <Video size={13} /> {isWebcamActive ? 'Stop Camera' : 'Live Camera'}
                     </button>
-                    <button
-                      type="submit"
-                      disabled={!isOrderInMyStage(activeOrder.current_status)}
-                      className="bg-[#593622] hover:bg-[#402414] disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl shadow transition text-xs cursor-pointer"
-                    >
-                      Save Update
-                    </button>
+                    <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-xs font-bold cursor-pointer transition">
+                      <Upload size={13} /> Upload Photos
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleUploadProgressFiles}
+                      />
+                    </label>
                   </div>
-                </form>
-          </div>
+                </div>
 
-        </div>
-      </div>
+                {/* Live Webcam Stream Window */}
+                {isWebcamActive && (
+                  <div className="p-3 bg-black rounded-xl space-y-2">
+                    <video ref={videoRef} autoPlay playsInline className="w-full max-h-60 object-contain rounded-lg mx-auto" />
+                    {webcamError && <p className="text-xs text-rose-400">{webcamError}</p>}
+                    <div className="flex justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={captureSnapshot}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1"
+                      >
+                        <Camera size={14} /> Snap Photo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopWebcam}
+                        className="px-3 py-1.5 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-lg text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-      {/* Lightbox Modal for Reference Images */}
-      {lightboxImg && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="relative max-w-4xl max-h-[90vh] w-full bg-stone-900 rounded-2xl overflow-hidden border border-stone-700 shadow-2xl flex flex-col">
-            <div className="p-3 bg-stone-950 border-b border-stone-800 flex items-center justify-between text-white">
-              <div className="flex items-center gap-2">
-                <ImageIcon size={16} className="text-amber-400" />
-                <span className="font-bold text-xs uppercase tracking-wider">Design Reference Image Lightbox</span>
+                {/* Progress Images Grid */}
+                {inProgressFiles.length > 0 ? (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
+                    {inProgressFiles.map((url, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-stone-200">
+                        <img referrerPolicy="no-referrer" src={url} alt="Progress" className="object-cover w-full h-full" />
+                        <button
+                          type="button"
+                          onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
+                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white h-5 w-5 rounded-full font-bold text-[10px] flex items-center justify-center shadow"
+                          title="Delete photo"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 border-2 border-dashed border-stone-200 rounded-xl text-center text-stone-400">
+                    <p className="font-bold text-stone-500 text-xs">No progress snapshots attached yet</p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">Use camera or upload photos of cutting, assembly, and jointing</p>
+                  </div>
+                )}
               </div>
-              <button 
-                type="button"
-                onClick={() => setLightboxImg(null)}
-                className="p-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-3 flex-1 flex items-center justify-center overflow-auto bg-black/50 min-h-[300px]">
-              <img referrerPolicy="no-referrer" src={lightboxImg} alt="Reference Full View" className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-lg" />
-            </div>
-            <div className="p-3 bg-stone-950 border-t border-stone-800 flex items-center justify-between text-stone-400 text-[11px]">
-              <span>Article #{activeOrder?.article_no} Blueprint Reference</span>
-              <a href={lightboxImg} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline flex items-center gap-1 font-bold">
-                <ExternalLink size={12} /> Open Full Size
-              </a>
-            </div>
+
+              {/* SECTION: Notes & Parameters */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Labour Rate (INR ₹)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={customLabourRate}
+                    onChange={(e) => setCustomLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. 3500"
+                    className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Target Completion Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customDeliveryDate}
+                    onChange={(e) => setCustomDeliveryDate(e.target.value)}
+                    className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Progress Audit Notes & Remarks
+                </label>
+                <textarea
+                  rows={2}
+                  value={updateNotes}
+                  onChange={(e) => setUpdateNotes(e.target.value)}
+                  placeholder="Record cutting remarks, joint details, or material notes..."
+                  className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-stone-200 flex items-center justify-between">
+                {onDeleteOrder && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete Task #${activeOrder.article_no}?`)) {
+                        onDeleteOrder(activeOrder.id);
+                        setActiveOrder(null);
+                      }
+                    }}
+                    className="px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition flex items-center gap-1"
+                  >
+                    <Trash2 size={13} /> Delete Task
+                  </button>
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setActiveOrder(null)}
+                    className="px-4 py-2.5 border border-stone-200 rounded-xl text-stone-600 font-bold hover:bg-stone-50 text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-[#593622] hover:bg-[#402414] text-white font-black px-6 py-2.5 rounded-xl shadow-sm transition text-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check size={14} /> Save Workbench Update
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
-      )}
-      </>
+
+        {/* Lightbox Modal */}
+        {lightboxImg && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+            <div className="relative max-w-4xl max-h-[90vh] w-full bg-stone-900 rounded-2xl overflow-hidden border border-stone-700 shadow-2xl flex flex-col">
+              <div className="p-3 bg-stone-950 border-b border-stone-800 flex items-center justify-between text-white">
+                <span className="font-bold text-xs uppercase tracking-wider">Drawing Full View</span>
+                <button
+                  type="button"
+                  onClick={() => setLightboxImg(null)}
+                  className="p-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-3 flex-1 flex items-center justify-center overflow-auto bg-black/50 min-h-[300px]">
+                <img
+                  referrerPolicy="no-referrer"
+                  src={lightboxImg}
+                  alt="Full view"
+                  className="max-w-full max-h-[75vh] object-contain rounded-lg"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
-  // --- MODE A: LISTING WINDOW ---
+  // --- MODE A: WORKBENCH LISTING VIEW ---
   return (
     <div className="space-y-6">
-      
-      {/* Worker workbench Header details block */}
-      <div>
-        <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">
-          Workbench: {currentUser.name} ({currentUser.initials})
-        </h1>
-        <p className="text-stone-500 text-xs mt-1">
-          Role: <strong className="uppercase">{currentUser.role.replace('_', ' ')}</strong> | Assigned work orders list overview
-        </p>
+      {/* Workbench Header & Worker Selector for Admins */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-[#593622] text-amber-200">
+              <Hammer size={20} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black font-display text-stone-900 tracking-tight">
+                Carpenter Workbench
+              </h1>
+              <p className="text-stone-500 text-xs">
+                Active worker:{' '}
+                <strong className="text-stone-850 font-bold">
+                  {activeWorkerUser ? activeWorkerUser.name : 'All Workshop Tasks'}
+                </strong>{' '}
+                ({baseAssignedOrders.length} assigned work orders)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Worker Switcher for Admin/Supervisors */}
+          {isAdminOrManager && carpentersList.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-white border border-stone-200 rounded-xl p-1 shadow-2xs">
+              <UserIcon size={14} className="text-stone-400 ml-2" />
+              <select
+                value={selectedWorkerId}
+                onChange={(e) => setSelectedWorkerId(e.target.value)}
+                className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none pr-3 cursor-pointer"
+              >
+                <option value="all">All Carpenters</option>
+                {carpentersList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Quick Add Task Button */}
+          {onAddOrder && (
+            <button
+              type="button"
+              onClick={() => setShowAddTaskModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#593622] hover:bg-[#402414] text-white rounded-xl text-xs font-black shadow-xs transition cursor-pointer"
+            >
+              <Plus size={14} /> + Add Carpentry Task
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Orders Listings segment cards */}
+      {/* KPI Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div
+          onClick={() => setStatusFilter('all')}
+          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+            statusFilter === 'all'
+              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
+              : 'bg-white border-stone-200 hover:border-stone-300'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold text-stone-400 block">Total Work</span>
+          <strong className="text-xl font-black text-stone-900 font-mono mt-0.5 block">{metrics.total}</strong>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('wood_procurement')}
+          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+            statusFilter === 'wood_procurement'
+              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
+              : 'bg-white border-stone-200 hover:border-stone-300'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold text-stone-400 block">Wood Procurement</span>
+          <strong className="text-xl font-black text-amber-800 font-mono mt-0.5 block">{metrics.woodPending}</strong>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('under_carpentry')}
+          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+            statusFilter === 'under_carpentry'
+              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
+              : 'bg-white border-stone-200 hover:border-stone-300'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold text-stone-400 block">Under Carpentry</span>
+          <strong className="text-xl font-black text-amber-700 font-mono mt-0.5 block">{metrics.underCarpentry}</strong>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('qc_1')}
+          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+            statusFilter === 'qc_1'
+              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
+              : 'bg-white border-stone-200 hover:border-stone-300'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold text-stone-400 block">QC 1 Inspection</span>
+          <strong className="text-xl font-black text-indigo-700 font-mono mt-0.5 block">{metrics.qc1Pending}</strong>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('completed')}
+          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+            statusFilter === 'completed'
+              ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-400/20'
+              : 'bg-white border-stone-200 hover:border-stone-300'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold text-stone-400 block">Completed</span>
+          <strong className="text-xl font-black text-emerald-700 font-mono mt-0.5 block">{metrics.completed}</strong>
+        </div>
+      </div>
+
+      {/* Search & Filter Toolbar */}
+      <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 text-stone-400" size={15} />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search Article No, Customer Name, Category, Material..."
+              className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Priority Filter */}
+            <div className="flex items-center gap-1 bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1 text-xs">
+              <span className="text-stone-400 font-bold text-[10px] uppercase">Priority:</span>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none cursor-pointer"
+              >
+                <option value="all">All</option>
+                <option value="urgent">Urgent</option>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+              </select>
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-1 bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1 text-xs">
+              <ArrowUpDown size={12} className="text-stone-400" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none cursor-pointer"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="deadline">Earliest Deadline</option>
+                <option value="priority">Priority First</option>
+                <option value="article">Article Code (A-Z)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Status Filter Badges */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap ${
+              statusFilter === 'all' ? 'bg-[#593622] text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            All Work ({metrics.total})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('needs_update')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap ${
+              statusFilter === 'needs_update'
+                ? 'bg-[#593622] text-white'
+                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            Needs Update
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('wood_procurement')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap ${
+              statusFilter === 'wood_procurement'
+                ? 'bg-[#593622] text-white'
+                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            Wood Procurement ({metrics.woodPending})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('under_carpentry')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap ${
+              statusFilter === 'under_carpentry'
+                ? 'bg-[#593622] text-white'
+                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            Under Carpentry ({metrics.underCarpentry})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('qc_1')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap ${
+              statusFilter === 'qc_1' ? 'bg-[#593622] text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            QC 1 Review ({metrics.qc1Pending})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('completed')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap ${
+              statusFilter === 'completed'
+                ? 'bg-emerald-700 text-white'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+            }`}
+          >
+            Completed ({metrics.completed})
+          </button>
+        </div>
+      </div>
+
+      {/* Orders Table Listing */}
       <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-stone-600 border-collapse" style={{ contentVisibility: 'auto' }}>
+          <table className="w-full text-left text-xs text-stone-600 border-collapse">
             <thead>
               <tr className="bg-stone-50 border-b border-stone-150 font-mono text-[10px] uppercase text-stone-400 font-black">
                 <th className="py-3 px-4">Article No.</th>
-                <th className="py-3 px-4">Customer Name</th>
+                <th className="py-3 px-4">Customer</th>
+                <th className="py-3 px-4">Product Specs</th>
                 <th className="py-3 px-4">Stage Status</th>
                 <th className="py-3 px-4">Delivery Deadline</th>
-                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4">Labour Rate</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 font-sans">
-              {myOrders.length > 0 ? (
-                myOrders.map((ord) => {
+              {filteredOrders.length > 0 ? (
+                filteredOrders.map((ord) => {
                   const matchingCust = customers.find((c) => c.id === ord.customer_id);
+                  const isDone =
+                    ord.carpenter_sub_status === 'completed' ||
+                    ord.qc_1_status === 'passed' ||
+                    ord.current_status === 'Making Completed' ||
+                    ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status);
                   const isStagedMine = isOrderInMyStage(ord.current_status);
+                  const isOverdue =
+                    !isDone &&
+                    ord.carpenter_delivery_date &&
+                    new Date(ord.carpenter_delivery_date) < new Date(new Date().toISOString().split('T')[0]);
+
                   return (
-                    <tr key={ord.id} className="hover:bg-stone-50/50 transition">
-                      <td className="py-3.5 px-4 font-mono font-black text-stone-900">
-                        {ord.article_no}
-                      </td>
-                      <td className="py-3.5 px-4 font-bold text-stone-850">
-                        {matchingCust?.name || 'Walk-In'}
-                      </td>
+                    <tr key={ord.id} className="hover:bg-amber-50/20 transition">
+                      {/* Article No & Priority Badge */}
                       <td className="py-3.5 px-4">
-                        <span className="font-semibold text-stone-700">{ord.current_status}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-stone-900 text-xs">
+                            #{ord.article_no}
+                          </span>
+                          {ord.priority === 'Urgent' && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-100 text-red-800 border border-red-200">
+                              URGENT
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-stone-400 block font-mono mt-0.5">
+                          ID: {ord.id.slice(0, 8)}
+                        </span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-stone-500 font-semibold">
-                        {isCarpenter && ord.carpenter_delivery_date ? (
-                          <div className="text-amber-900 font-bold">{ord.carpenter_delivery_date}</div>
-                        ) : !isCarpenter && ord.polish_delivery_date ? (
-                          <div className="text-teal-900 font-bold">{ord.polish_delivery_date}</div>
-                        ) : (
-                          <div>{ord.delivery_date}</div>
-                        )}
-                        {currentUser.role === 'admin' && (ord.carpenter_delivery_date || ord.polish_delivery_date) && (
-                          <div className="text-[10px] text-stone-400 font-normal">Goal: {ord.delivery_date}</div>
-                        )}
-                      </td>
+
+                      {/* Customer */}
                       <td className="py-3.5 px-4">
-                        {isStagedMine ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-bold text-[9px] animate-pulse">
-                            Needs Update
+                        <strong className="font-bold text-stone-850 block">{matchingCust?.name || 'Walk-In Customer'}</strong>
+                        <span className="text-[10px] text-stone-400 block font-mono">{matchingCust?.phone || 'No phone'}</span>
+                      </td>
+
+                      {/* Product Specs */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-semibold text-stone-900 block">
+                          {ord.category} &rsaquo; {ord.sub_category}
+                        </span>
+                        <span className="text-[10px] text-stone-400 block">
+                          {ord.size === 'Custom' ? ord.custom_size || 'Custom' : ord.size} | {ord.material || 'Teak Wood'}
+                        </span>
+                      </td>
+
+                      {/* Stage Status */}
+                      <td className="py-3.5 px-4">
+                        {isDone ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
+                            <CheckCircle2 size={11} /> Completed
                           </span>
-                        ) : ord.current_status === 'Ready to Dispatch' ? (
-                          <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                            Dispatched
+                        ) : ord.carpenter_sub_status === 'wood_procurement' || ord.current_status === 'Wood Procurement' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
+                            Wood Procurement
+                          </span>
+                        ) : ord.carpenter_sub_status === 'under_carpentry' || ord.current_status === 'Making Started' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5 font-bold text-[10px] animate-pulse">
+                            Under Carpentry
+                          </span>
+                        ) : ord.carpenter_sub_status === 'qc_check_1' || ord.current_status === 'QC 1' ? (
+                          <span className="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
+                            QC 1 Review
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-stone-400 bg-stone-50 border border-stone-200 rounded-full px-2 py-0.5 font-bold text-[9px]">
-                            Staged
+                          <span className="inline-flex items-center gap-1 text-stone-600 bg-stone-100 border border-stone-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
+                            {ord.current_status}
                           </span>
                         )}
                       </td>
+
+                      {/* Delivery Deadline */}
+                      <td className="py-3.5 px-4 font-mono font-semibold">
+                        <div className={`${isOverdue ? 'text-rose-600 font-bold' : 'text-stone-800'}`}>
+                          {ord.carpenter_delivery_date || ord.delivery_date || 'No Date'}
+                        </div>
+                        {isOverdue && (
+                          <span className="text-[9px] text-rose-600 font-bold flex items-center gap-0.5 mt-0.5">
+                            <AlertTriangle size={10} /> Overdue
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Labour Rate */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-stone-850">
+                        ₹{ord.carpenter_labour_rate ?? 0}
+                      </td>
+
+                      {/* Action Buttons */}
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => handleOpenUpdate(ord)}
-                          className={`p-1.5 px-3.5 rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1 ml-auto ${
-                            isStagedMine
-                              ? 'bg-[#593622] hover:bg-[#402414] text-white font-black'
-                              : 'bg-stone-100 text-stone-400 cursor-not-allowed hover:bg-stone-100 hover:text-stone-400'
-                          }`}
-                          disabled={!isStagedMine}
-                        >
-                          <Eye size={12} />
-                          Update Status
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenUpdate(ord)}
+                            className="p-1.5 px-3 rounded-lg text-xs font-bold shadow-2xs transition flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white cursor-pointer"
+                          >
+                            <Eye size={13} /> {isStagedMine ? 'Update Status' : 'View Specs'}
+                          </button>
+
+                          {onDeleteOrder && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete Task #${ord.article_no}?`)) {
+                                  onDeleteOrder(ord.id);
+                                }
+                              }}
+                              className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Delete task"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-stone-400 font-sans italic">
-                    <Clock size={20} className="mx-auto text-stone-300 mb-1" />
-                    No orders currently assigned to your workbench.
+                  <td colSpan={7} className="py-12 text-center text-stone-400 italic">
+                    <Clock size={24} className="mx-auto text-stone-300 mb-2" />
+                    No carpentry tasks matching the selected filters.
                   </td>
                 </tr>
               )}
@@ -1943,17 +2044,218 @@ export default function WorkerDashboard({
         </div>
       </div>
 
-      {/* Persistent warning banner message as shown in screenshot 1 */}
-      <div className="bg-[#eff6ff] border border-blue-200 p-4 rounded-xl flex gap-3 text-xs text-blue-800 leading-normal">
-        <AlertCircle className="text-blue-600 shrink-0 mt-0.5" size={16} />
-        <div>
-          <span className="font-bold">Technical update restriction guidelines</span>
-          <p className="text-stone-600 mt-1">
-            As a <strong>{currentUser.role.replace('_', ' ')}</strong> profile, you can update status and attach completion photos exclusively for orders currently at the <strong>{isCarpenter ? 'Wood Procurement or Making Started' : 'Polish'}</strong> stage. Orders under QC or other departments are read-only.
-          </p>
-        </div>
-      </div>
+      {/* ADD NEW CARPENTRY TASK MODAL */}
+      {showAddTaskModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-stone-200 space-y-5 my-8">
+            <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-[#593622] text-amber-200">
+                  <Plus size={18} />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-stone-900 text-base">Add New Carpentry Task</h3>
+                  <p className="text-stone-500 text-xs">Log a bespoke furniture task piece into the workshop database</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddTaskModal(false)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
+            <form onSubmit={handleCreateNewTask} className="space-y-4 text-xs text-stone-700">
+              {/* Customer Selector / Input */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200">
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider mb-1">
+                    Select Customer
+                  </label>
+                  <select
+                    value={newTaskSelectedCustId}
+                    onChange={(e) => {
+                      setNewTaskSelectedCustId(e.target.value);
+                      if (e.target.value) {
+                        const found = customers.find((c) => c.id === e.target.value);
+                        if (found) {
+                          setNewTaskCustName(found.name);
+                          setNewTaskCustPhone(found.phone || '');
+                        }
+                      }
+                    }}
+                    className="w-full p-2 bg-white border border-stone-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-[#593622]"
+                  >
+                    <option value="">-- Create New Client Below --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.phone || 'No phone'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider mb-1">
+                    Customer Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTaskCustName}
+                    onChange={(e) => setNewTaskCustName(e.target.value)}
+                    placeholder="e.g. Ramesh Patel"
+                    className="w-full p-2 bg-white border border-stone-200 rounded-lg text-xs font-bold focus:ring-1 focus:ring-[#593622]"
+                  />
+                </div>
+              </div>
+
+              {/* Product Specifications */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Article Number *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTaskArticleNo}
+                    onChange={(e) => setNewTaskArticleNo(e.target.value)}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-mono font-bold text-stone-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Category *
+                  </label>
+                  <select
+                    value={newTaskCategory}
+                    onChange={(e) => setNewTaskCategory(e.target.value)}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-bold"
+                  >
+                    <option value="Bedroom">Bedroom</option>
+                    <option value="Living Room">Living Room</option>
+                    <option value="Kitchen">Kitchen</option>
+                    <option value="Dining">Dining</option>
+                    <option value="Custom">Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Sub-Category *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTaskSubCategory}
+                    onChange={(e) => setNewTaskSubCategory(e.target.value)}
+                    placeholder="e.g. King Size Bed"
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Size / Dimensions
+                  </label>
+                  <input
+                    type="text"
+                    value={newTaskSize}
+                    onChange={(e) => setNewTaskSize(e.target.value)}
+                    placeholder="e.g. 6FT X 6.5FT"
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Material
+                  </label>
+                  <input
+                    type="text"
+                    value={newTaskMaterial}
+                    onChange={(e) => setNewTaskMaterial(e.target.value)}
+                    placeholder="e.g. Teak Wood"
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Finish
+                  </label>
+                  <input
+                    type="text"
+                    value={newTaskFinish}
+                    onChange={(e) => setNewTaskFinish(e.target.value)}
+                    placeholder="e.g. Matte PU Polish"
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Labour Rate (INR ₹)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newTaskLabourRate}
+                    onChange={(e) => setNewTaskLabourRate(Number(e.target.value))}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Target Delivery Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newTaskDeliveryDate}
+                    onChange={(e) => setNewTaskDeliveryDate(e.target.value)}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
+                    Priority
+                  </label>
+                  <select
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(e.target.value as OrderPriority)}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-bold"
+                  >
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddTaskModal(false)}
+                  className="px-4 py-2 border border-stone-200 rounded-xl text-stone-600 font-bold hover:bg-stone-50 text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-[#593622] hover:bg-[#402414] text-white font-black px-5 py-2 rounded-xl shadow-xs transition text-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check size={14} /> Register & Save Task
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

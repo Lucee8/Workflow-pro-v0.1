@@ -60,7 +60,7 @@ import CustomersTab from './components/CustomersTab';
 import DetailOrderFormTab from './components/DetailOrderFormTab';
 import MaterialRequirementPlanning from './components/MaterialRequirementPlanning';
 import CRMTab from './components/CRMTab';
-import CloudSyncModal from './components/CloudSyncModel';
+import CloudSyncModal from './components/CloudSyncModal';
 import { Cloud, CloudUpload } from 'lucide-react';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
@@ -1223,10 +1223,13 @@ export default function App() {
             >
               <WorkerDashboard
                 currentUser={currentUser}
+                users={db.users}
                 orders={db.orders}
                 customers={db.customers}
                 statusLogs={db.statusLogs}
                 onUpdateOrder={handleUpdateOrder}
+                onDeleteOrder={handleDeleteOrder}
+                onAddOrder={handleSaveOrder}
               />
             </motion.div>
           )}
