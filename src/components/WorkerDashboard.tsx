@@ -1694,7 +1694,7 @@ export default function WorkerDashboard({
             </div>
           )}
 
-          {/* Quick Add Task Button */}
+          {/* Quick Add Task Button
           {onAddOrder && (
             <button
               type="button"
@@ -1703,7 +1703,7 @@ export default function WorkerDashboard({
             >
               <Plus size={14} /> + Add Carpentry Task
             </button>
-          )}
+          )} */}
         </div>
       </div>
 
