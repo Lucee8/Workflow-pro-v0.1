@@ -297,47 +297,7 @@ export default function Sidebar({
           </button>
         </div>
       </aside>
-
-      {/* High-fidelity Mobile Bottom Tab Bar (Only matches phone viewports) */}
-      <nav className="lg:hidden fixed bottom-y-0 bottom-0 left-0 right-0 bg-stone-950 border-t border-stone-900 z-40 flex justify-around items-center h-14 px-2 shadow-xl safe-bottom">
-        {navItems.slice(0, 4).map((item) => {
-          const IconComponent = item.icon;
-          const isActive = currentTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={`flex flex-col items-center justify-center flex-1 h-full font-sans max-w-[80px] ${
-                isActive ? 'text-amber-400' : 'text-stone-500'
-              }`}
-            >
-              <IconComponent size={18} className={isActive ? 'text-amber-400' : 'text-stone-500'} />
-              <span className="text-[9px] mt-1 font-bold truncate max-w-full">{item.label}</span>
-            </button>
-          );
-        })}
-
-        {/* Plus Order / drawer fallback button */}
-        <button
-          onClick={() => {
-            if (hasPermission(currentUser.role, 'crm')) {
-              onTabChange('crm');
-            } else {
-              setMobileMenuOpen(true);
-            }
-          }}
-          className="flex flex-col items-center justify-center flex-1 h-full text-stone-500"
-        >
-          {hasPermission(currentUser.role, 'crm') ? (
-            <div className="bg-amber-500 text-stone-950 p-2 rounded-full -mt-5 shadow-lg border border-stone-900">
-              <PlusSquare size={16} />
-            </div>
-          ) : (
-            <Menu size={18} />
-          )}
-          <span className="text-[9px] mt-1 font-bold">{hasPermission(currentUser.role, 'crm') ? 'Add via CRM' : 'More...'}</span>
-        </button>
-      </nav>
+      
     </>
   );
 }
