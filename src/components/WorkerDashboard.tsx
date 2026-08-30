@@ -1544,32 +1544,6 @@ export default function WorkerDashboard({
               </div>
 
               {/* SECTION: Notes & Parameters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Labour Rate (INR ₹)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={customLabourRate}
-                    onChange={(e) => setCustomLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="e.g. 3500"
-                    className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Target Completion Date
-                  </label>
-                  <input
-                    type="date"
-                    value={customDeliveryDate}
-                    onChange={(e) => setCustomDeliveryDate(e.target.value)}
-                    className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
-                  />
-                </div>
-              </div>
 
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
