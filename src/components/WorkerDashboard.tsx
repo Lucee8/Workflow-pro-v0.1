@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Order,
   Customer,
@@ -235,6 +236,7 @@ export default function WorkerDashboard({
 
   // Selected order for active edit / staging
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [isMobileSpecsExpanded, setIsMobileSpecsExpanded] = useState(false);
 
   // Form states for active order
   const [progressStatus, setProgressStatus] = useState<string>('in_progress');
@@ -432,6 +434,7 @@ export default function WorkerDashboard({
   // Open active order for staging & specifications update
   const handleOpenUpdate = (ord: Order) => {
     setActiveOrder(ord);
+    setIsMobileSpecsExpanded(false);
 
     // Populate images
     const existingInProgress = ord.images?.filter((img) => img.type === 'In-Progress').map((img) => img.url) || [];
@@ -986,119 +989,173 @@ export default function WorkerDashboard({
         })()}
 
         {/* Staging Layout Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Specs, Drawings & Blueprints */}
-          <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-5">
-            <div>
-              <h3 className="font-display font-black text-stone-900 text-sm border-b border-stone-150 pb-2 flex items-center justify-between">
-                <span>Task Specifications</span>
-                <span className="text-[10px] font-mono bg-stone-100 px-2 py-0.5 rounded text-stone-600">
-                  {activeOrder.design_type || 'Standard'}
-                </span>
-              </h3>
+        {(() => {
+          const renderTaskSpecificationsContent = () => (
+            <div className="space-y-5">
+              <div>
+                <h3 className="font-display font-black text-stone-900 text-sm border-b border-stone-150 pb-2 flex items-center justify-between">
+                  <span>Task Specifications</span>
+                  <span className="text-[10px] font-mono bg-stone-100 px-2 py-0.5 rounded text-stone-600">
+                    {activeOrder.design_type || 'Standard'}
+                  </span>
+                </h3>
 
-              <div className="mt-3 space-y-3 text-xs text-stone-700">
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Customer:</span>
-                  <strong className="text-stone-900 font-bold">{activeCust?.name || 'Walk-In Customer'}</strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Product / Category:</span>
-                  <strong className="text-stone-900 font-semibold">
-                    {activeOrder.category} &rsaquo; {activeOrder.sub_category}
-                  </strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Dimensions:</span>
-                  <strong className="text-stone-900 font-mono font-bold">
-                    {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size}
-                  </strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Material:</span>
-                  <strong className="text-stone-900 font-semibold">{activeOrder.material || 'Teak Wood'}</strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Finish & Polish:</span>
-                  <strong className="text-stone-900 font-semibold">{activeOrder.finish || 'Matte'}</strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Colour Shade:</span>
-                  <strong className="text-stone-900 font-semibold">{activeOrder.color_shade || 'Natural'}</strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Quantity:</span>
-                  <strong className="text-stone-900 font-bold">{activeOrder.no_of_units || 1} Unit(s)</strong>
-                </div>
-                <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Labour Rate:</span>
-                  <strong className="text-amber-900 font-mono font-bold">
-                    ₹{activeOrder.carpenter_labour_rate ?? 0}
-                  </strong>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-stone-400 font-bold uppercase text-[10px]">Target Deadline:</span>
-                  <strong className="text-stone-900 font-mono font-bold">
-                    {activeOrder.carpenter_delivery_date || activeOrder.delivery_date}
-                  </strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Reference Images Gallery */}
-            <div className="pt-2 border-t border-stone-200/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
-                  <ImageIcon size={14} className="text-[#593622]" /> Design Blueprints & Drawings
-                </span>
-                <span className="text-[9px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-200">
-                  {galleryImages.length} Image(s)
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {galleryImages.slice(0, 4).map((img, idx) => (
-                  <div
-                    key={img.id || idx}
-                    onClick={() => setLightboxImg(img.url)}
-                    className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
-                  >
-                    <img
-                      referrerPolicy="no-referrer"
-                      src={img.url}
-                      alt={`Ref ${idx + 1}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
-                    />
-                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[9px] font-bold gap-1">
-                      <Eye size={16} />
-                      <span>Expand</span>
-                    </div>
+                <div className="mt-3 space-y-3 text-xs text-stone-700">
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Customer:</span>
+                    <strong className="text-stone-900 font-bold">{activeCust?.name || 'Walk-In Customer'}</strong>
                   </div>
-                ))}
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Product / Category:</span>
+                    <strong className="text-stone-900 font-semibold">
+                      {activeOrder.category} &rsaquo; {activeOrder.sub_category}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Dimensions:</span>
+                    <strong className="text-stone-900 font-mono font-bold">
+                      {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Material:</span>
+                    <strong className="text-stone-900 font-semibold">{activeOrder.material || 'Teak Wood'}</strong>
+                  </div>
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Finish & Polish:</span>
+                    <strong className="text-stone-900 font-semibold">{activeOrder.finish || 'Matte'}</strong>
+                  </div>
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Colour Shade:</span>
+                    <strong className="text-stone-900 font-semibold">{activeOrder.color_shade || 'Natural'}</strong>
+                  </div>
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Quantity:</span>
+                    <strong className="text-stone-900 font-bold">{activeOrder.no_of_units || 1} Unit(s)</strong>
+                  </div>
+                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Labour Rate:</span>
+                    <strong className="text-amber-900 font-mono font-bold">
+                      ₹{activeOrder.carpenter_labour_rate ?? 0}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-stone-400 font-bold uppercase text-[10px]">Target Deadline:</span>
+                    <strong className="text-stone-900 font-mono font-bold">
+                      {activeOrder.carpenter_delivery_date || activeOrder.delivery_date}
+                    </strong>
+                  </div>
+                </div>
               </div>
 
-              <label className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-stone-50 hover:bg-stone-100 border border-dashed border-stone-300 rounded-xl text-stone-700 text-xs font-bold cursor-pointer transition">
-                <Upload size={13} className="text-[#593622]" />
-                <span>+ Upload Blueprint Photo</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
-              </label>
-            </div>
-          </div>
-
-          {/* Right Column: Interactive Staging & Wood Requirement Calculator */}
-          <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
-            <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
-              {/* Progress Stage Radios */}
-              <div className="space-y-3">
+              {/* Reference Images Gallery */}
+              <div className="pt-2 border-t border-stone-200/80 space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider">
-                    Workbench Progress Stage *
-                  </label>
-                  <span className="text-[10px] text-stone-500 font-semibold">
-                    Current Workshop Stage:{' '}
-                    <strong className="text-stone-900">{activeOrder.current_status}</strong>
+                  <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon size={14} className="text-[#593622]" /> Design Blueprints & Drawings
+                  </span>
+                  <span className="text-[9px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-200">
+                    {galleryImages.length} Image(s)
                   </span>
                 </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {galleryImages.slice(0, 4).map((img, idx) => (
+                    <div
+                      key={img.id || idx}
+                      onClick={() => setLightboxImg(img.url)}
+                      className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
+                    >
+                      <img
+                        referrerPolicy="no-referrer"
+                        src={img.url}
+                        alt={`Ref ${idx + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                      />
+                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[9px] font-bold gap-1">
+                        <Eye size={16} />
+                        <span>Expand</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <label className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-stone-50 hover:bg-stone-100 border border-dashed border-stone-300 rounded-xl text-stone-700 text-xs font-bold cursor-pointer transition">
+                  <Upload size={13} className="text-[#593622]" />
+                  <span>+ Upload Blueprint Photo</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleUploadRefImage} />
+                </label>
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Specs, Drawings & Blueprints (Desktop & Tablet only) */}
+              <div className="hidden lg:block lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
+                {renderTaskSpecificationsContent()}
+              </div>
+
+              {/* Right Column: Interactive Staging & Wood Requirement Calculator */}
+              <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
+                <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
+                  {/* MOBILE ONLY (max-width: 768px/1024px): Collapsible Task Specifications Button & Panel */}
+                  <div className="lg:hidden">
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileSpecsExpanded((prev) => !prev)}
+                      className="w-full p-3.5 bg-stone-50 hover:bg-stone-100/90 border border-stone-200/90 rounded-2xl flex items-center justify-between transition cursor-pointer shadow-2xs active:scale-[0.99] text-left"
+                      aria-expanded={isMobileSpecsExpanded}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-amber-100/80 text-[#593622] flex items-center justify-center shrink-0">
+                          <FileText size={16} />
+                        </div>
+                        <div>
+                          <span className="font-bold text-stone-900 text-xs block leading-tight">Task Specifications</span>
+                          <span className="text-[10px] text-stone-500 font-medium block mt-0.5 truncate">
+                            {activeOrder.category} &rsaquo; {activeOrder.sub_category} ({activeOrder.design_type || 'Standard'})
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <ChevronDown
+                          size={18}
+                          className={`text-stone-500 transition-transform duration-200 ${
+                            isMobileSpecsExpanded ? 'rotate-180 text-amber-800' : ''
+                          }`}
+                        />
+                      </div>
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {isMobileSpecsExpanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25, ease: 'easeInOut' }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-3 bg-stone-50/60 p-4 rounded-2xl border border-stone-200/90 shadow-2xs">
+                            {renderTaskSpecificationsContent()}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Progress Stage Radios */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider">
+                        Workbench Progress Stage *
+                      </label>
+                      <span className="text-[10px] text-stone-500 font-semibold">
+                        Current Workshop Stage:{' '}
+                        <strong className="text-stone-900">{activeOrder.current_status}</strong>
+                      </span>
+                    </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Step 1: Wood Procurement */}
@@ -1543,8 +1600,7 @@ export default function WorkerDashboard({
                 )}
               </div>
 
-              {/* SECTION: Notes & Parameters */}
-
+              {/* SECTION: Progress Audit Notes */}
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
                   Progress Audit Notes & Remarks
@@ -1593,6 +1649,8 @@ export default function WorkerDashboard({
             </form>
           </div>
         </div>
+      );
+    })()}
 
         {/* Lightbox Modal */}
         {lightboxImg && (
@@ -1668,7 +1726,7 @@ export default function WorkerDashboard({
             </div>
           )}
 
-          {/* Quick Add Task Button
+          {/* Quick Add Task Button */}
           {onAddOrder && (
             <button
               type="button"
@@ -1677,7 +1735,7 @@ export default function WorkerDashboard({
             >
               <Plus size={14} /> + Add Carpentry Task
             </button>
-          )} */}
+          )}
         </div>
       </div>
 
