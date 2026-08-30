@@ -871,7 +871,7 @@ export default function App() {
         {/* Dynamic Inner Application Page Canvas */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pb-20 lg:pb-8">
           
-          {/* Workshop Live Status Feed Header Row */}
+          {/* Workshop Live Status Feed Header Row
           {currentTab !== 'profile' && (
             <div className="flex justify-between items-center bg-white border border-stone-200/80 rounded-2xl p-4 mb-6 shadow-xs gap-4 workshop-live-feed-header print:hidden">
               <div className="flex items-center gap-3 min-w-0">
@@ -919,7 +919,7 @@ export default function App() {
                 />
               </div>
             </div>
-          )}
+          )} */}
 
           {/* TAB: DASHBOARD VIEW (Admin Only) */}
           {currentTab === 'dashboard' && hasPermission(currentUser.role, 'dashboard') && (
