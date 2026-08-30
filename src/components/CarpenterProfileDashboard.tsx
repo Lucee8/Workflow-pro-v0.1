@@ -210,6 +210,43 @@ export default function CarpenterProfileDashboard({
     };
   }, [ordersInPeriod, prevOrdersInPeriod, targetUser]);
 
+
+  // Work Stage Status Metrics (Total Work, Wood Procurement, Under Carpentry, QC 1 Inspection, Completed)
+  const stageMetrics = useMemo(() => {
+    const total = carpenterOrders.length;
+    let woodPending = 0;
+    let underCarpentry = 0;
+    let qc1Pending = 0;
+    let completed = 0;
+
+    carpenterOrders.forEach((o) => {
+      const isDone =
+        o.carpenter_sub_status === 'completed' ||
+        o.qc_1_status === 'passed' ||
+        o.current_status === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched', 'Completed', 'Delivered'].includes(o.current_status);
+
+      if (isDone) {
+        completed++;
+      } else if (o.carpenter_sub_status === 'wood_procurement' || o.current_status === 'Wood Procurement') {
+        woodPending++;
+      } else if (o.carpenter_sub_status === 'under_carpentry' || o.current_status === 'Making Started') {
+        underCarpentry++;
+      } else if (o.carpenter_sub_status === 'qc_check_1' || o.current_status === 'QC 1' || o.current_status === 'QC Check 1') {
+        qc1Pending++;
+      }
+    });
+
+    return {
+      total,
+      woodPending,
+      underCarpentry,
+      qc1Pending,
+      completed,
+    };
+  }, [carpenterOrders]);
+
+
   // Workload Status Breakdown
   const workloadStatus = useMemo(() => {
     const active = carpenterOrders.filter(
@@ -555,6 +592,35 @@ export default function CarpenterProfileDashboard({
           </div>
         </div>
       )}
+
+
+      {/* WORKSHOP STAGE METRICS (5 KPI CARDS) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="p-3.5 rounded-2xl border bg-amber-50/50 border-amber-300 ring-2 ring-amber-400/20 shadow-xs">
+          <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">TOTAL WORK</span>
+          <strong className="text-xl font-black text-stone-900 font-mono mt-0.5 block">{stageMetrics.total}</strong>
+        </div>
+
+        <div className="p-3.5 rounded-2xl border bg-white border-stone-200 shadow-xs">
+          <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">WOOD PROCUREMENT</span>
+          <strong className="text-xl font-black text-amber-800 font-mono mt-0.5 block">{stageMetrics.woodPending}</strong>
+        </div>
+
+        <div className="p-3.5 rounded-2xl border bg-white border-stone-200 shadow-xs">
+          <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">UNDER CARPENTRY</span>
+          <strong className="text-xl font-black text-amber-700 font-mono mt-0.5 block">{stageMetrics.underCarpentry}</strong>
+        </div>
+
+        <div className="p-3.5 rounded-2xl border bg-white border-stone-200 shadow-xs">
+          <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">QC 1 INSPECTION</span>
+          <strong className="text-xl font-black text-indigo-700 font-mono mt-0.5 block">{stageMetrics.qc1Pending}</strong>
+        </div>
+
+        <div className="p-3.5 rounded-2xl border bg-white border-stone-200 shadow-xs">
+          <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">COMPLETED</span>
+          <strong className="text-xl font-black text-emerald-700 font-mono mt-0.5 block">{stageMetrics.completed}</strong>
+        </div>
+      </div>
 
       {/* ROW 1: 4 KPI CARDS GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

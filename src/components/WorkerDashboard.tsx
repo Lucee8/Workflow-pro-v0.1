@@ -1707,69 +1707,6 @@ export default function WorkerDashboard({
         </div>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div
-          onClick={() => setStatusFilter('all')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            statusFilter === 'all'
-              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
-              : 'bg-white border-stone-200 hover:border-stone-300'
-          }`}
-        >
-          <span className="text-[10px] uppercase font-bold text-stone-400 block">Total Work</span>
-          <strong className="text-xl font-black text-stone-900 font-mono mt-0.5 block">{metrics.total}</strong>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('wood_procurement')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            statusFilter === 'wood_procurement'
-              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
-              : 'bg-white border-stone-200 hover:border-stone-300'
-          }`}
-        >
-          <span className="text-[10px] uppercase font-bold text-stone-400 block">Wood Procurement</span>
-          <strong className="text-xl font-black text-amber-800 font-mono mt-0.5 block">{metrics.woodPending}</strong>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('under_carpentry')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            statusFilter === 'under_carpentry'
-              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
-              : 'bg-white border-stone-200 hover:border-stone-300'
-          }`}
-        >
-          <span className="text-[10px] uppercase font-bold text-stone-400 block">Under Carpentry</span>
-          <strong className="text-xl font-black text-amber-700 font-mono mt-0.5 block">{metrics.underCarpentry}</strong>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('qc_1')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            statusFilter === 'qc_1'
-              ? 'bg-amber-50/60 border-amber-400 ring-2 ring-amber-400/20'
-              : 'bg-white border-stone-200 hover:border-stone-300'
-          }`}
-        >
-          <span className="text-[10px] uppercase font-bold text-stone-400 block">QC 1 Inspection</span>
-          <strong className="text-xl font-black text-indigo-700 font-mono mt-0.5 block">{metrics.qc1Pending}</strong>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('completed')}
-          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-            statusFilter === 'completed'
-              ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-400/20'
-              : 'bg-white border-stone-200 hover:border-stone-300'
-          }`}
-        >
-          <span className="text-[10px] uppercase font-bold text-stone-400 block">Completed</span>
-          <strong className="text-xl font-black text-emerald-700 font-mono mt-0.5 block">{metrics.completed}</strong>
-        </div>
-      </div>
-
       {/* Search & Filter Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
