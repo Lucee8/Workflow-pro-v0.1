@@ -52,6 +52,7 @@ import {
   Sparkles,
   AlertTriangle,
   ChevronDown,
+  TreePine,
 } from 'lucide-react';
 
 function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
@@ -254,6 +255,14 @@ export default function WorkerDashboard({
   const [imageLink, setImageLink] = useState('');
   const [parts, setParts] = useState<WoodPart[]>([]);
 
+  // Simple Wood Piece Adder states
+  const [isAddingPart, setIsAddingPart] = useState(false);
+  const [newPartName, setNewPartName] = useState('');
+  const [newPartWidth, setNewPartWidth] = useState<number | ''>(3);
+  const [newPartBreadth, setNewPartBreadth] = useState<number | ''>(3);
+  const [newPartLength, setNewPartLength] = useState<number | ''>(4.5);
+  const [newPartQuantity, setNewPartQuantity] = useState<number | ''>(2);
+
   // QC Check 1 verification checkboxes
   const [qcMeasurement, setQcMeasurement] = useState(false);
   const [qcFinishing, setQcFinishing] = useState(false);
@@ -273,6 +282,7 @@ export default function WorkerDashboard({
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
   const [webcamError, setWebcamError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
 
   // Calculate base assigned orders
   const baseAssignedOrders = useMemo(() => {
@@ -492,6 +502,37 @@ export default function WorkerDashboard({
     : false;
 
   // Wood Parts helpers
+  const handleAddWoodPiece = () => {
+    if (isWoodScheduleApproved) return;
+    const w = Number(newPartWidth) || 0;
+    const b = Number(newPartBreadth) || 0;
+    const l = Number(newPartLength) || 0;
+    const q = Number(newPartQuantity) || 1;
+    const name = (newPartName.trim() || 'WOOD PIECE').toUpperCase();
+
+    const newPart: WoodPart = {
+      id: 'part_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      part_name: name,
+      width: w,
+      breadth: b,
+      length: l,
+      quantity: q,
+    };
+
+    setParts((prev) => [...prev, newPart]);
+    setIsAddingPart(false);
+    setNewPartName('');
+  };
+
+  const handleTriggerCamera = () => {
+    // If desktop and webcam supported, open webcam stream, otherwise trigger native camera input
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024 && navigator.mediaDevices?.getUserMedia) {
+      startWebcam();
+    } else if (mobileCameraInputRef.current) {
+      mobileCameraInputRef.current.click();
+    }
+  };
+
   const updatePartField = (id: string, field: keyof WoodPart, value: any) => {
     setParts((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
@@ -990,95 +1031,91 @@ export default function WorkerDashboard({
 
         {/* Staging Layout Grid */}
         {(() => {
-          const renderTaskSpecificationsContent = () => (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-display font-black text-stone-900 text-sm border-b border-stone-150 pb-2 flex items-center justify-between">
-                  <span>Task Specifications</span>
-                  <span className="text-[10px] font-mono bg-stone-100 px-2 py-0.5 rounded text-stone-600">
-                    {activeOrder.design_type || 'Standard'}
-                  </span>
+          const renderJobDetailsContent = () => (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-150 pb-2.5">
+                <h3 className="font-display font-black text-stone-900 text-sm">
+                  Job Details
                 </h3>
+                <span className="text-[10px] font-mono font-bold bg-stone-100 px-2 py-0.5 rounded text-stone-600">
+                  {activeOrder.design_type || 'Standard'}
+                </span>
+              </div>
 
-                <div className="mt-3 space-y-3 text-xs text-stone-700">
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Customer:</span>
-                    <strong className="text-stone-900 font-bold">{activeCust?.name || 'Walk-In Customer'}</strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Product / Category:</span>
-                    <strong className="text-stone-900 font-semibold">
-                      {activeOrder.category} &rsaquo; {activeOrder.sub_category}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Dimensions:</span>
-                    <strong className="text-stone-900 font-mono font-bold">
-                      {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Material:</span>
-                    <strong className="text-stone-900 font-semibold">{activeOrder.material || 'Teak Wood'}</strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Finish & Polish:</span>
-                    <strong className="text-stone-900 font-semibold">{activeOrder.finish || 'Matte'}</strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Colour Shade:</span>
-                    <strong className="text-stone-900 font-semibold">{activeOrder.color_shade || 'Natural'}</strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Quantity:</span>
-                    <strong className="text-stone-900 font-bold">{activeOrder.no_of_units || 1} Unit(s)</strong>
-                  </div>
-                  <div className="flex justify-between border-b border-stone-100 pb-1.5">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Labour Rate:</span>
-                    <strong className="text-amber-900 font-mono font-bold">
-                      ₹{activeOrder.carpenter_labour_rate ?? 0}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-stone-400 font-bold uppercase text-[10px]">Target Deadline:</span>
-                    <strong className="text-stone-900 font-mono font-bold">
-                      {activeOrder.carpenter_delivery_date || activeOrder.delivery_date}
-                    </strong>
-                  </div>
+              <div className="space-y-2.5 text-xs text-stone-700">
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">CUSTOMER:</span>
+                  <strong className="text-stone-900 font-bold">{activeCust?.name || 'MJ'}</strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">PRODUCT:</span>
+                  <strong className="text-stone-900 font-semibold">
+                    {activeOrder.category} &rsaquo; {activeOrder.sub_category}
+                  </strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">SIZE:</span>
+                  <strong className="text-stone-900 font-mono font-bold">
+                    {activeOrder.size === 'Custom' ? activeOrder.custom_size || 'Custom' : activeOrder.size}
+                  </strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">WOOD:</span>
+                  <strong className="text-stone-900 font-semibold">{activeOrder.material || 'Solid Teak Wood'}</strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">FINISH:</span>
+                  <strong className="text-stone-900 font-semibold">{activeOrder.finish || 'Hand Polish'}</strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">COLOUR:</span>
+                  <strong className="text-stone-900 font-semibold">{activeOrder.color_shade || 'Walnut'}</strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">QUANTITY:</span>
+                  <strong className="text-stone-900 font-bold">{activeOrder.no_of_units || 1} Unit</strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">LABOUR:</span>
+                  <strong className="text-amber-900 font-mono font-bold">
+                    ₹{activeOrder.carpenter_labour_rate ?? 1000}
+                  </strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider">DEADLINE:</span>
+                  <strong className="text-rose-600 font-mono font-bold">
+                    {activeOrder.carpenter_delivery_date || activeOrder.delivery_date}
+                  </strong>
                 </div>
               </div>
 
               {/* Reference Images Gallery */}
-              <div className="pt-2 border-t border-stone-200/80 space-y-3">
+              <div className="pt-3 border-t border-stone-200/80 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon size={14} className="text-[#593622]" /> Design Blueprints & Drawings
+                  <span className="text-[10px] text-stone-500 font-extrabold uppercase tracking-wider">
+                    DESIGN PHOTO
                   </span>
-                  <span className="text-[9px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-200">
-                    {galleryImages.length} Image(s)
+                  <span className="text-[9px] font-bold bg-stone-100 text-stone-700 px-2 py-0.5 rounded">
+                    {galleryImages.length} Image{galleryImages.length === 1 ? '' : 's'}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  {galleryImages.slice(0, 4).map((img, idx) => (
-                    <div
-                      key={img.id || idx}
-                      onClick={() => setLightboxImg(img.url)}
-                      className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-square cursor-pointer hover:border-[#593622] transition shadow-2xs"
-                    >
-                      <img
-                        referrerPolicy="no-referrer"
-                        src={img.url}
-                        alt={`Ref ${idx + 1}`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
-                      />
-                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white text-[9px] font-bold gap-1">
-                        <Eye size={16} />
-                        <span>Expand</span>
-                      </div>
+                {galleryImages[0] && (
+                  <div
+                    onClick={() => setLightboxImg(galleryImages[0].url)}
+                    className="relative group rounded-xl overflow-hidden border border-stone-200 bg-stone-100 aspect-video cursor-pointer hover:border-[#593622] transition shadow-2xs"
+                  >
+                    <img
+                      referrerPolicy="no-referrer"
+                      src={galleryImages[0].url}
+                      alt="Design Reference"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold gap-1">
+                      <Eye size={16} /> Expand
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
 
                 <label className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-stone-50 hover:bg-stone-100 border border-dashed border-stone-300 rounded-xl text-stone-700 text-xs font-bold cursor-pointer transition">
                   <Upload size={13} className="text-[#593622]" />
@@ -1091,41 +1128,41 @@ export default function WorkerDashboard({
 
           return (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Specs, Drawings & Blueprints (Desktop & Tablet only) */}
-              <div className="hidden lg:block lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
-                {renderTaskSpecificationsContent()}
+              {/* Left Column: Job Details (Desktop/Laptop) */}
+              <div className="hidden lg:block lg:col-span-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+                {renderJobDetailsContent()}
               </div>
 
-              {/* Right Column: Interactive Staging & Wood Requirement Calculator */}
-              <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs">
-                <form onSubmit={handleSaveStagingUpdate} className="space-y-6 text-xs text-stone-600">
-                  {/* MOBILE ONLY (max-width: 768px/1024px): Collapsible Task Specifications Button & Panel */}
+              {/* Right Column / Mobile Container: Workbench */}
+              <div className="lg:col-span-8">
+                <form onSubmit={handleSaveStagingUpdate} className="space-y-5 text-xs text-stone-600">
+                  {/* Hidden camera input for mobile and file upload */}
+                  <input
+                    ref={mobileCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleUploadProgressFiles}
+                  />
+
+                  {/* MOBILE ONLY: Collapsible Job Details Button & Panel */}
                   <div className="lg:hidden">
                     <button
                       type="button"
                       onClick={() => setIsMobileSpecsExpanded((prev) => !prev)}
-                      className="w-full p-3.5 bg-stone-50 hover:bg-stone-100/90 border border-stone-200/90 rounded-2xl flex items-center justify-between transition cursor-pointer shadow-2xs active:scale-[0.99] text-left"
+                      className="w-full p-3.5 bg-white hover:bg-stone-50 border border-stone-300/80 rounded-2xl flex items-center justify-between transition cursor-pointer shadow-xs text-left"
                       aria-expanded={isMobileSpecsExpanded}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-amber-100/80 text-[#593622] flex items-center justify-center shrink-0">
-                          <FileText size={16} />
-                        </div>
-                        <div>
-                          <span className="font-bold text-stone-900 text-xs block leading-tight">Task Specifications</span>
-                          <span className="text-[10px] text-stone-500 font-medium block mt-0.5 truncate">
-                            {activeOrder.category} &rsaquo; {activeOrder.sub_category} ({activeOrder.design_type || 'Standard'})
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <ChevronDown
-                          size={18}
-                          className={`text-stone-500 transition-transform duration-200 ${
-                            isMobileSpecsExpanded ? 'rotate-180 text-amber-800' : ''
-                          }`}
-                        />
-                      </div>
+                      <span className="font-bold text-stone-900 text-xs sm:text-sm">
+                        Job Details ({activeOrder.category} &gt; {activeOrder.sub_category})
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        className={`text-stone-500 transition-transform duration-200 ${
+                          isMobileSpecsExpanded ? 'rotate-180 text-amber-900' : ''
+                        }`}
+                      />
                     </button>
 
                     <AnimatePresence initial={false}>
@@ -1137,520 +1174,740 @@ export default function WorkerDashboard({
                           transition={{ duration: 0.25, ease: 'easeInOut' }}
                           className="overflow-hidden"
                         >
-                          <div className="mt-3 bg-stone-50/60 p-4 rounded-2xl border border-stone-200/90 shadow-2xs">
-                            {renderTaskSpecificationsContent()}
+                          <div className="mt-2.5 bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
+                            {renderJobDetailsContent()}
                           </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
 
-                  {/* Progress Stage Radios */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider">
-                        Workbench Progress Stage *
-                      </label>
-                      <span className="text-[10px] text-stone-500 font-semibold">
-                        Current Workshop Stage:{' '}
-                        <strong className="text-stone-900">{activeOrder.current_status}</strong>
-                      </span>
+                  {/* SECTION: WHAT ARE YOU DOING NOW? */}
+                  <div className="space-y-2.5">
+                    <h3 className="text-xs sm:text-sm font-bold text-stone-900 tracking-wide uppercase lg:normal-case lg:font-black lg:text-base lg:text-stone-900 lg:tracking-wider">
+                      <span className="lg:hidden">What are you doing now?</span>
+                      <span className="hidden lg:inline">WHAT ARE YOU DOING NOW?</span>
+                    </h3>
+
+                    {/* MOBILE VIEW: 3 Workshop Stage Cards in One Horizontal Row */}
+                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar sm:hidden">
+                      {/* Step 1: Get Wood */}
+                      {(() => {
+                        const isSelected = progressStatus === 'wood_procurement';
+                        const isCompleted =
+                          progressStatus === 'under_carpentry' ||
+                          progressStatus === 'qc_check_1' ||
+                          isWoodScheduleApproved ||
+                          isCarpentryDone;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setProgressStatus('wood_procurement')}
+                            className={`flex-1 min-w-[105px] p-3 rounded-2xl border flex flex-col items-center justify-between text-center transition cursor-pointer active:scale-[0.98] ${
+                              isSelected
+                                ? 'bg-white border-2 border-[#593622] ring-2 ring-[#593622]/10 shadow-xs'
+                                : 'bg-[#F0EEF7]/50 border-stone-200/80 hover:bg-stone-100/70'
+                            }`}
+                          >
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors ${
+                                isSelected
+                                  ? 'bg-[#FEEAD9] text-[#593622]'
+                                  : isCompleted
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-stone-200/70 text-stone-600'
+                              }`}
+                            >
+                              {isCompleted && !isSelected ? <Check size={18} strokeWidth={2.5} /> : <TreePine size={18} />}
+                            </div>
+                            <div className="min-w-0 w-full">
+                              <strong className="text-xs font-bold text-stone-900 block leading-tight mb-1">
+                                Get Wood
+                              </strong>
+                              <span className="text-[10px] text-stone-500 font-medium block leading-tight">
+                                Add wood measurements
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Step 2: Cutting & Making */}
+                      {(() => {
+                        const isSelected = progressStatus === 'under_carpentry';
+                        const isCompleted =
+                          progressStatus === 'qc_check_1' ||
+                          isCarpentryDone ||
+                          activeOrder.current_status === 'Making Completed';
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setProgressStatus('under_carpentry')}
+                            className={`flex-1 min-w-[105px] p-3 rounded-2xl border flex flex-col items-center justify-between text-center transition cursor-pointer active:scale-[0.98] ${
+                              isSelected
+                                ? 'bg-white border-2 border-[#593622] ring-2 ring-[#593622]/10 shadow-xs'
+                                : 'bg-[#F0EEF7]/50 border-stone-200/80 hover:bg-stone-100/70'
+                            }`}
+                          >
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors ${
+                                isSelected
+                                  ? 'bg-[#FEEAD9] text-[#593622]'
+                                  : isCompleted
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-stone-200/70 text-stone-600'
+                              }`}
+                            >
+                              {isCompleted && !isSelected ? <Check size={18} strokeWidth={2.5} /> : <Hammer size={18} />}
+                            </div>
+                            <div className="min-w-0 w-full">
+                              <strong className="text-xs font-bold text-stone-900 block leading-tight mb-1">
+                                Cutting & Making
+                              </strong>
+                              <span className="text-[10px] text-stone-500 font-medium block leading-tight">
+                                Cut and assemble parts
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Step 3: Quality Check */}
+                      {(() => {
+                        const isSelected = progressStatus === 'qc_check_1';
+                        const isCompleted = isCarpentryDone || activeOrder.qc_1_status === 'passed';
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setProgressStatus('qc_check_1')}
+                            className={`flex-1 min-w-[105px] p-3 rounded-2xl border flex flex-col items-center justify-between text-center transition cursor-pointer active:scale-[0.98] ${
+                              isSelected
+                                ? 'bg-white border-2 border-[#593622] ring-2 ring-[#593622]/10 shadow-xs'
+                                : 'bg-[#F0EEF7]/50 border-stone-200/80 hover:bg-stone-100/70'
+                            }`}
+                          >
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors ${
+                                isSelected
+                                  ? 'bg-[#FEEAD9] text-[#593622]'
+                                  : isCompleted
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-stone-200/70 text-stone-600'
+                              }`}
+                            >
+                              {isCompleted && !isSelected ? <Check size={18} strokeWidth={2.5} /> : <ShieldCheck size={18} />}
+                            </div>
+                            <div className="min-w-0 w-full">
+                              <strong className="text-xs font-bold text-stone-900 block leading-tight mb-1">
+                                Quality Check
+                              </strong>
+                              <span className="text-[10px] text-stone-500 font-medium block leading-tight">
+                                Check the finished work
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })()}
                     </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Step 1: Wood Procurement */}
-                  <label
-                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition cursor-pointer ${
-                      progressStatus === 'wood_procurement'
-                        ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
-                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="progressRadios"
-                      checked={progressStatus === 'wood_procurement'}
-                      onChange={() => setProgressStatus('wood_procurement')}
-                      className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
-                    />
-                    <div>
-                      <strong className="text-xs block font-bold">1. Wood Procurement</strong>
-                      <span className="text-[10px] text-stone-400 font-medium">Log timber schedule & calculate CFT</span>
-                    </div>
-                  </label>
+                    {/* DESKTOP / TABLET VIEW: 3 Stages Grid */}
+                    <div className="hidden sm:grid sm:grid-cols-3 gap-3">
+                      {/* Step 1: Get Wood */}
+                      <button
+                        type="button"
+                        onClick={() => setProgressStatus('wood_procurement')}
+                        className={`p-3.5 rounded-2xl border flex items-center gap-3 transition text-left cursor-pointer ${
+                          progressStatus === 'wood_procurement'
+                            ? 'bg-white border-2 border-[#593622] ring-2 ring-[#593622]/10 shadow-sm relative'
+                            : 'bg-stone-50/80 hover:bg-stone-100/70 border-stone-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                            progressStatus === 'wood_procurement'
+                              ? 'bg-amber-100 text-[#593622]'
+                              : 'bg-stone-200/80 text-stone-600'
+                          }`}
+                        >
+                          <TreePine size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <strong className="text-xs font-bold text-stone-900 block leading-tight">Get Wood</strong>
+                          <span className="text-[10px] text-stone-500 block mt-0.5 truncate">
+                            Procurement & CFT
+                          </span>
+                        </div>
+                      </button>
 
-                  {/* Step 2: Under Carpentry */}
-                  <label
-                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition cursor-pointer ${
-                      progressStatus === 'under_carpentry'
-                        ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
-                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="progressRadios"
-                      checked={progressStatus === 'under_carpentry'}
-                      onChange={() => setProgressStatus('under_carpentry')}
-                      className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
-                    />
-                    <div>
-                      <strong className="text-xs block font-bold">2. Under Carpentry</strong>
-                      <span className="text-[10px] text-stone-400 font-medium">Active timber cutting & assembly</span>
-                    </div>
-                  </label>
+                      {/* Step 2: Cutting & Making */}
+                      <button
+                        type="button"
+                        onClick={() => setProgressStatus('under_carpentry')}
+                        className={`p-3.5 rounded-2xl border flex items-center gap-3 transition text-left cursor-pointer ${
+                          progressStatus === 'under_carpentry'
+                            ? 'bg-white border-2 border-[#593622] ring-2 ring-[#593622]/10 shadow-sm relative'
+                            : 'bg-stone-50/80 hover:bg-stone-100/70 border-stone-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                            progressStatus === 'under_carpentry'
+                              ? 'bg-amber-100 text-[#593622]'
+                              : 'bg-stone-200/80 text-stone-600'
+                          }`}
+                        >
+                          <Hammer size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <strong className="text-xs font-bold text-stone-900 block leading-tight">Cutting & Making</strong>
+                          <span className="text-[10px] text-stone-500 block mt-0.5 truncate">
+                            Active Timber Assembly
+                          </span>
+                        </div>
+                      </button>
 
-                  {/* Step 3: QC Check 1 */}
-                  <label
-                    className={`border rounded-xl p-3.5 flex items-center gap-3 transition cursor-pointer ${
-                      progressStatus === 'qc_check_1'
-                        ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/10 text-amber-900'
-                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="progressRadios"
-                      checked={progressStatus === 'qc_check_1'}
-                      onChange={() => setProgressStatus('qc_check_1')}
-                      className="text-amber-700 focus:ring-amber-500 font-bold shrink-0 cursor-pointer"
-                    />
-                    <div>
-                      <strong className="text-xs block font-bold">
-                        3. QC Check 1 {isCarpentryDone ? '(Passed ✔)' : ''}
-                      </strong>
-                      <span className="text-[10px] text-stone-400 font-medium">Check dimensions, finish & buffer</span>
+                      {/* Step 3: Quality Check */}
+                      <button
+                        type="button"
+                        onClick={() => setProgressStatus('qc_check_1')}
+                        className={`p-3.5 rounded-2xl border flex items-center gap-3 transition text-left cursor-pointer ${
+                          progressStatus === 'qc_check_1'
+                            ? 'bg-white border-2 border-[#593622] ring-2 ring-[#593622]/10 shadow-sm relative'
+                            : 'bg-stone-50/80 hover:bg-stone-100/70 border-stone-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                            progressStatus === 'qc_check_1'
+                              ? 'bg-amber-100 text-[#593622]'
+                              : 'bg-stone-200/80 text-stone-600'
+                          }`}
+                        >
+                          <ShieldCheck size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <strong className="text-xs font-bold text-stone-900 block leading-tight">Quality Check</strong>
+                          <span className="text-[10px] text-stone-500 block mt-0.5 truncate">
+                            {isCarpentryDone ? 'Passed ✔' : 'QC Verification'}
+                          </span>
+                        </div>
+                      </button>
                     </div>
-                  </label>
-                </div>
 
-                {/* QC Check 1 Checklist Requirements */}
-                {progressStatus === 'qc_check_1' && (
-                  <div className="mt-3 p-4 bg-amber-50/80 border border-amber-300 rounded-xl space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+                    {/* Quality Check Verification Checklist */}
+                    {progressStatus === 'qc_check_1' && (
+                      <div className="p-3.5 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2.5">
+                        <div className="flex items-center justify-between pb-1.5 border-b border-amber-200">
+                          <div className="flex items-center gap-1.5">
+                            <CheckSquare className="text-[#593622]" size={15} />
+                            <span className="font-bold text-xs text-amber-950">
+                              Quality Verification Checklist
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-200 text-amber-950">
+                            {[qcMeasurement, qcFinishing, qcBuffer].filter(Boolean).length} of 3 Checked
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <label
+                            className={`flex items-center gap-2 p-2 rounded-lg border transition cursor-pointer ${
+                              qcMeasurement
+                                ? 'bg-white border-amber-400 text-amber-950 font-bold shadow-2xs'
+                                : 'bg-white/70 border-stone-200 text-stone-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={qcMeasurement}
+                              onChange={(e) => setQcMeasurement(e.target.checked)}
+                              className="h-4 w-4 rounded text-[#593622] focus:ring-amber-500 cursor-pointer shrink-0"
+                            />
+                            <div className="leading-tight">
+                              <span className="text-xs font-bold block">1. Measurement</span>
+                              <span className="text-[9px] text-stone-500">Dimensions verified</span>
+                            </div>
+                          </label>
+
+                          <label
+                            className={`flex items-center gap-2 p-2 rounded-lg border transition cursor-pointer ${
+                              qcFinishing
+                                ? 'bg-white border-amber-400 text-amber-950 font-bold shadow-2xs'
+                                : 'bg-white/70 border-stone-200 text-stone-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={qcFinishing}
+                              onChange={(e) => setQcFinishing(e.target.checked)}
+                              className="h-4 w-4 rounded text-[#593622] focus:ring-amber-500 cursor-pointer shrink-0"
+                            />
+                            <div className="leading-tight">
+                              <span className="text-xs font-bold block">2. Finishing</span>
+                              <span className="text-[9px] text-stone-500">Smoothness & edges</span>
+                            </div>
+                          </label>
+
+                          <label
+                            className={`flex items-center gap-2 p-2 rounded-lg border transition cursor-pointer ${
+                              qcBuffer
+                                ? 'bg-white border-amber-400 text-amber-950 font-bold shadow-2xs'
+                                : 'bg-white/70 border-stone-200 text-stone-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={qcBuffer}
+                              onChange={(e) => setQcBuffer(e.target.checked)}
+                              className="h-4 w-4 rounded text-[#593622] focus:ring-amber-500 cursor-pointer shrink-0"
+                            />
+                            <div className="leading-tight">
+                              <span className="text-xs font-bold block">3. Buffer & Fit</span>
+                              <span className="text-[9px] text-stone-500">Joint tolerances</span>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* SECTION: Wood Used / Wood Cut Schedule */}
+                  <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
+                    <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <CheckSquare className="text-[#593622]" size={16} />
-                        <span className="font-bold text-xs text-amber-950 uppercase tracking-wide">
-                          QC Check 1 Mandatory Verification
+                        <Layers size={16} className="text-[#593622] hidden sm:inline" />
+                        <div>
+                          <h3 className="font-bold text-stone-900 text-xs sm:text-sm">
+                            <span className="sm:hidden">Wood Used</span>
+                            <span className="hidden sm:inline">Wood Cut Schedule (CFT)</span>
+                          </h3>
+                          <p className="text-[10px] sm:text-[11px] text-stone-500 mt-0.5 sm:hidden">
+                            Add the wood pieces you cut
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-xs sm:text-sm font-black text-[#593622] font-mono">
+                          <span className="sm:hidden">Total Wood: </span>
+                          <span className="hidden sm:inline">Total: </span>
+                          {totalCft.toFixed(2)} CFT
                         </span>
                       </div>
-                      <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-950">
-                        {[qcMeasurement, qcFinishing, qcBuffer].filter(Boolean).length} of 3 Verified
-                      </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      <label
-                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer ${
-                          qcMeasurement
-                            ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
-                            : 'bg-white border-stone-200 text-stone-700'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={qcMeasurement}
-                          onChange={(e) => setQcMeasurement(e.target.checked)}
-                          className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
-                        />
-                        <div className="leading-tight">
-                          <span className="text-xs font-bold block">1. Measurement</span>
-                          <span className="text-[9px] text-stone-500">Dimensions verified</span>
+                    {/* Approved Wood Schedule Banner */}
+                    {isWoodScheduleApproved && (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-emerald-950">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                          <span className="font-bold text-xs">Wood Schedule Approved by Admin</span>
                         </div>
-                      </label>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
+                          <Lock size={11} /> Locked
+                        </span>
+                      </div>
+                    )}
 
-                      <label
-                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer ${
-                          qcFinishing
-                            ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
-                            : 'bg-white border-stone-200 text-stone-700'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={qcFinishing}
-                          onChange={(e) => setQcFinishing(e.target.checked)}
-                          className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
-                        />
-                        <div className="leading-tight">
-                          <span className="text-xs font-bold block">2. Finishing</span>
-                          <span className="text-[9px] text-stone-500">Smoothness & edges</span>
+                    {/* Wood Pieces Cards List */}
+                    <div className="space-y-2">
+                      {parts.length > 0 ? (
+                        parts.map((p) => {
+                          const partCft = ((p.width * p.breadth * p.length) / 144) * (p.quantity || 1);
+                          return (
+                            <div
+                              key={p.id}
+                              className="p-3 bg-stone-50/90 border border-stone-200/90 rounded-xl flex items-center justify-between hover:bg-stone-100/70 transition shadow-2xs"
+                            >
+                              <div className="min-w-0 pr-2">
+                                <h4 className="font-bold text-stone-900 text-xs truncate">
+                                  {p.part_name || 'Wood Piece'}
+                                </h4>
+                                <p className="text-[11px] text-stone-500 font-mono mt-0.5">
+                                  {p.width}x{p.breadth}x{p.length} ft
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                                <span className="bg-stone-200/70 text-stone-800 px-2.5 py-0.5 rounded-md text-[11px] font-bold font-mono">
+                                  {p.quantity || 1} {window?.innerWidth < 640 ? 'qty' : 'pcs'}
+                                </span>
+                                <span className="font-mono font-bold text-stone-900 text-xs">
+                                  {partCft.toFixed(2)} CFT
+                                </span>
+                                {!isWoodScheduleApproved ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setParts(parts.filter((pt) => pt.id !== p.id))}
+                                    className="p-1.5 text-stone-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                                    title="Delete piece"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                ) : (
+                                  <Lock size={14} className="text-emerald-600" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="py-4 text-center text-stone-400 text-xs italic bg-stone-50/50 rounded-xl border border-dashed border-stone-200">
+                          No wood pieces added yet. Click &ldquo;+ Add Wood Piece&rdquo; below.
                         </div>
-                      </label>
-
-                      <label
-                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition cursor-pointer ${
-                          qcBuffer
-                            ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
-                            : 'bg-white border-stone-200 text-stone-700'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={qcBuffer}
-                          onChange={(e) => setQcBuffer(e.target.checked)}
-                          className="h-4 w-4 rounded text-amber-800 focus:ring-amber-500 cursor-pointer shrink-0"
-                        />
-                        <div className="leading-tight">
-                          <span className="text-xs font-bold block">3. Buffer & Fit</span>
-                          <span className="text-[9px] text-stone-500">Joint tolerances</span>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* SECTION: Wood Requirement & Estimation Calculator */}
-              <div className="bg-[#fdfbfc] border border-[#593622]/20 rounded-2xl p-4 md:p-5 space-y-4 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-stone-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-[#593622]/10 border border-[#593622]/30 text-[#593622]">
-                      <Hammer size={16} />
-                    </div>
-                    <div>
-                      <h3 className="font-display font-black text-[#593622] text-sm leading-none">
-                        Wood Cut Schedule & Volume Calculator (CFT)
-                      </h3>
-                      <p className="text-[10px] text-stone-400 mt-0.5">
-                        Formula: <code>(Width" × Breadth" × Length' ÷ 144) × QTY</code>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Wood Presets */}
-                  {!isWoodScheduleApproved && (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-bold text-stone-400">Presets:</span>
-                      <button
-                        type="button"
-                        onClick={() => loadWoodPreset('bed')}
-                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
-                      >
-                        Bed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => loadWoodPreset('cabinet')}
-                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
-                      >
-                        Cabinet
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => loadWoodPreset('table')}
-                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
-                      >
-                        Table
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => loadWoodPreset('sofa')}
-                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-[10px] font-bold text-stone-700"
-                      >
-                        Sofa
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Approved Wood Schedule Banner */}
-                {isWoodScheduleApproved && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-emerald-950">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                      <span className="font-bold text-xs">Wood Schedule Approved by Admin</span>
-                    </div>
-                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
-                      <Lock size={11} /> Locked
-                    </span>
-                  </div>
-                )}
-
-                {/* Wood Schedule Parts Table */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-stone-500">
-                      Components Breakdown ({parts.length} parts)
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {!isWoodScheduleApproved && parts.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setParts([])}
-                          className="text-[10px] font-bold text-stone-500 hover:text-red-600 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-red-50"
-                        >
-                          <Trash2 size={11} /> Clear
-                        </button>
                       )}
+
+                      {/* Add Wood Piece Section */}
                       {!isWoodScheduleApproved && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setParts([
-                              ...parts,
-                              { id: 'part_' + Date.now(), part_name: '', width: 2, breadth: 4, length: 5, quantity: 1 },
-                            ])
-                          }
-                          className="inline-flex items-center gap-1 bg-[#593622] hover:bg-[#402414] text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer"
-                        >
-                          <Plus size={11} /> + Add Part Row
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                        <>
+                          {isAddingPart ? (
+                            <div className="p-3.5 bg-amber-50/60 border-2 border-amber-300 rounded-xl space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-[#593622] uppercase tracking-wider">
+                                  Add Wood Piece
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsAddingPart(false)}
+                                  className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
 
-                  <div className="border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-stone-100 border-b border-stone-200 text-stone-600 font-mono text-[9px] uppercase font-bold text-center">
-                            <th className="py-2 px-3 text-left">Part Name & Purpose</th>
-                            <th className="py-2 px-2 w-20">Width (In)</th>
-                            <th className="py-2 px-2 w-20">Breadth (In)</th>
-                            <th className="py-2 px-2 w-20">Length (Ft)</th>
-                            <th className="py-2 px-2 w-16">QTY</th>
-                            <th className="py-2 px-3 w-24 text-right">CFT Vol</th>
-                            <th className="py-2 px-2 w-12">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-stone-100 bg-white">
-                          {parts.length > 0 ? (
-                            parts.map((p) => {
-                              const partCft = ((p.width * p.breadth * p.length) / 144) * (p.quantity || 1);
-                              return (
-                                <tr key={p.id} className="hover:bg-amber-50/20 text-center font-semibold">
-                                  <td className="py-1.5 px-3 text-left border-r border-stone-100">
-                                    <input
-                                      type="text"
-                                      disabled={isWoodScheduleApproved}
-                                      value={p.part_name}
-                                      onChange={(e) => updatePartField(p.id, 'part_name', e.target.value.toUpperCase())}
-                                      placeholder="e.g. Legs / Side Rails"
-                                      className="w-full p-1 bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-bold text-stone-900 disabled:text-stone-700"
-                                    />
-                                  </td>
-                                  <td className="py-1.5 px-1 border-r border-stone-100">
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      min={0}
-                                      disabled={isWoodScheduleApproved}
-                                      value={p.width || ''}
-                                      onChange={(e) => updatePartField(p.id, 'width', Number(e.target.value))}
-                                      placeholder="0"
-                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
-                                    />
-                                  </td>
-                                  <td className="py-1.5 px-1 border-r border-stone-100">
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      min={0}
-                                      disabled={isWoodScheduleApproved}
-                                      value={p.breadth || ''}
-                                      onChange={(e) => updatePartField(p.id, 'breadth', Number(e.target.value))}
-                                      placeholder="0"
-                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
-                                    />
-                                  </td>
-                                  <td className="py-1.5 px-1 border-r border-stone-100">
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      min={0}
-                                      disabled={isWoodScheduleApproved}
-                                      value={p.length || ''}
-                                      onChange={(e) => updatePartField(p.id, 'length', Number(e.target.value))}
-                                      placeholder="0"
-                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
-                                    />
-                                  </td>
-                                  <td className="py-1.5 px-1 border-r border-stone-100">
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      disabled={isWoodScheduleApproved}
-                                      value={p.quantity || ''}
-                                      onChange={(e) => updatePartField(p.id, 'quantity', Number(e.target.value))}
-                                      placeholder="1"
-                                      className="w-full p-1 text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-[#593622] rounded font-mono font-bold text-stone-900"
-                                    />
-                                  </td>
-                                  <td className="py-1.5 px-3 border-r border-stone-100 text-right font-mono font-bold text-stone-900">
-                                    {isNaN(partCft) ? '0.00' : partCft.toFixed(2)} CFT
-                                  </td>
-                                  <td className="py-1.5 px-1">
-                                    {!isWoodScheduleApproved ? (
+                              {/* Quick Presets / Chips */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {['Headboard Legs', 'Side Rails', 'Plank Beam', 'Corner Legs', 'Panel', 'Frame'].map(
+                                  (chip) => (
+                                    <button
+                                      key={chip}
+                                      type="button"
+                                      onClick={() => setNewPartName(chip)}
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                        newPartName.toLowerCase() === chip.toLowerCase()
+                                          ? 'bg-[#593622] text-white'
+                                          : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
+                                      }`}
+                                    >
+                                      {chip}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
+                                  Piece Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newPartName}
+                                  onChange={(e) => setNewPartName(e.target.value)}
+                                  placeholder="e.g. Headboard Legs"
+                                  className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs font-bold text-stone-900 focus:ring-1 focus:ring-[#593622]"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
+                                    Width (in)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min={0}
+                                    value={newPartWidth}
+                                    onChange={(e) =>
+                                      setNewPartWidth(e.target.value === '' ? '' : Number(e.target.value))
+                                    }
+                                    placeholder="3"
+                                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-900 text-center focus:ring-1 focus:ring-[#593622]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
+                                    Breadth (in)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min={0}
+                                    value={newPartBreadth}
+                                    onChange={(e) =>
+                                      setNewPartBreadth(e.target.value === '' ? '' : Number(e.target.value))
+                                    }
+                                    placeholder="3"
+                                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-900 text-center focus:ring-1 focus:ring-[#593622]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
+                                    Length (ft)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min={0}
+                                    value={newPartLength}
+                                    onChange={(e) =>
+                                      setNewPartLength(e.target.value === '' ? '' : Number(e.target.value))
+                                    }
+                                    placeholder="4.5"
+                                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-900 text-center focus:ring-1 focus:ring-[#593622]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
+                                    Quantity
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={newPartQuantity}
+                                    onChange={(e) =>
+                                      setNewPartQuantity(e.target.value === '' ? '' : Number(e.target.value))
+                                    }
+                                    placeholder="2"
+                                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-900 text-center focus:ring-1 focus:ring-[#593622]"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Calculated CFT Preview & Action Buttons */}
+                              {(() => {
+                                const w = Number(newPartWidth) || 0;
+                                const b = Number(newPartBreadth) || 0;
+                                const l = Number(newPartLength) || 0;
+                                const q = Number(newPartQuantity) || 1;
+                                const calculated = ((w * b * l) / 144) * q;
+                                return (
+                                  <div className="flex items-center justify-between pt-1 border-t border-amber-200/60">
+                                    <span className="text-[11px] font-bold text-stone-700">
+                                      Piece Volume:{' '}
+                                      <strong className="text-amber-900 font-mono font-black">
+                                        {calculated.toFixed(2)} CFT
+                                      </strong>
+                                    </span>
+                                    <div className="flex items-center gap-2">
                                       <button
                                         type="button"
-                                        onClick={() => setParts(parts.filter((pt) => pt.id !== p.id))}
-                                        className="p-1 text-stone-400 hover:text-red-600 rounded transition flex items-center justify-center mx-auto"
-                                        title="Delete row"
+                                        onClick={() => setIsAddingPart(false)}
+                                        className="px-3 py-1.5 text-stone-600 hover:bg-stone-100 rounded-lg text-xs font-bold cursor-pointer"
                                       >
-                                        <Trash2 size={12} />
+                                        Cancel
                                       </button>
-                                    ) : (
-                                      <span className="text-emerald-600 flex justify-center">
-                                        <Lock size={12} />
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })
+                                      <button
+                                        type="button"
+                                        onClick={handleAddWoodPiece}
+                                        className="px-4 py-1.5 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                                      >
+                                        <Plus size={14} /> Add Piece
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           ) : (
-                            <tr>
-                              <td colSpan={7} className="py-6 text-center text-stone-400 italic">
-                                No timber parts added yet. Click "+ Add Part Row" or select a preset above.
-                              </td>
-                            </tr>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddingPart(true);
+                                setNewPartName('');
+                                setNewPartWidth(3);
+                                setNewPartBreadth(3);
+                                setNewPartLength(4.5);
+                                setNewPartQuantity(2);
+                              }}
+                              className="w-full p-3 border-2 border-dashed border-stone-300 hover:border-[#593622] hover:bg-amber-50/20 rounded-xl text-stone-700 hover:text-[#593622] font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                            >
+                              <Plus size={16} /> + Add Wood Piece
+                            </button>
                           )}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-stone-50 border-t border-stone-200 font-bold text-stone-900">
-                            <td colSpan={5} className="py-2.5 px-3 text-right uppercase text-[10px] text-stone-500">
-                              Total Estimated Wood Volume:
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono font-black text-amber-900 text-xs">
-                              {totalCft.toFixed(2)} CFT
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                        </>
+                      )}
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* SECTION: Progress Snapshots & Uploads */}
-              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Camera size={14} className="text-[#593622]" /> In-Progress Floor Photographs ({inProgressFiles.length})
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={isWebcamActive ? stopWebcam : startWebcam}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-lg text-xs font-bold transition"
-                    >
-                      <Video size={13} /> {isWebcamActive ? 'Stop Camera' : 'Live Camera'}
-                    </button>
-                    <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#593622] hover:bg-[#402414] text-white rounded-lg text-xs font-bold cursor-pointer transition">
-                      <Upload size={13} /> Upload Photos
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={handleUploadProgressFiles}
+                  {/* SECTION: Work Photos & Note (Side-by-side on desktop, stacked on mobile) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Work Photos Card */}
+                    <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 space-y-3 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <Camera size={16} className="text-[#593622] hidden sm:inline" />
+                            <h3 className="font-bold text-stone-900 text-xs sm:text-sm">
+                              <span className="sm:hidden">Work Photos</span>
+                              <span className="hidden sm:inline">Work Photos ({inProgressFiles.length})</span>
+                            </h3>
+                          </div>
+                          <p className="text-[10px] sm:text-[11px] text-stone-500 mt-0.5 sm:hidden">
+                            Take photos of your work
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold bg-[#f6eee3] text-[#593622] px-2.5 py-0.5 rounded-full border border-amber-200/60">
+                          {inProgressFiles.length} Photo{inProgressFiles.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      {/* Live Webcam Stream Window if active on desktop */}
+                      {isWebcamActive && (
+                        <div className="p-2.5 bg-black rounded-xl space-y-2">
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            className="w-full max-h-52 object-contain rounded-lg mx-auto"
+                          />
+                          {webcamError && <p className="text-xs text-rose-400">{webcamError}</p>}
+                          <div className="flex justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={captureSnapshot}
+                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Camera size={14} /> Snap Photo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={stopWebcam}
+                              className="px-3 py-1.5 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-lg text-xs cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Attached Photos Grid or Placeholder */}
+                      {inProgressFiles.length > 0 ? (
+                        <div className="grid grid-cols-3 gap-2">
+                          {inProgressFiles.map((url, idx) => (
+                            <div
+                              key={idx}
+                              className="relative aspect-square rounded-xl overflow-hidden border border-stone-200 group bg-stone-100"
+                            >
+                              <img
+                                referrerPolicy="no-referrer"
+                                src={url}
+                                alt="Progress"
+                                className="object-cover w-full h-full"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
+                                className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white h-5 w-5 rounded-full font-bold text-[10px] flex items-center justify-center shadow cursor-pointer"
+                                title="Delete photo"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-6 border-2 border-dashed border-stone-200 rounded-xl text-center text-stone-400">
+                          <ImageIcon size={22} className="mx-auto text-stone-400 mb-1" />
+                          <p className="font-semibold text-stone-500 text-xs">No progress photos yet</p>
+                        </div>
+                      )}
+
+                      {/* Photo Action Buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleTriggerCamera}
+                          className="p-3 bg-stone-50 hover:bg-stone-100 border border-stone-300/80 rounded-xl text-stone-800 font-bold text-xs flex flex-col sm:flex-row items-center justify-center gap-1.5 transition cursor-pointer active:scale-[0.98]"
+                        >
+                          <Camera size={18} className="text-[#593622]" />
+                          <span>Take Photo</span>
+                        </button>
+                        <label className="p-3 bg-stone-50 hover:bg-stone-100 border border-stone-300/80 rounded-xl text-stone-800 font-bold text-xs flex flex-col sm:flex-row items-center justify-center gap-1.5 transition cursor-pointer active:scale-[0.98]">
+                          <Upload size={18} className="text-[#593622]" />
+                          <span>Upload Photo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={handleUploadProgressFiles}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Note / Audit Notes Card */}
+                    <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs flex flex-col">
+                      <div className="flex items-center gap-1.5">
+                        <FileText size={16} className="text-[#593622] hidden sm:inline" />
+                        <h3 className="font-bold text-stone-900 text-xs sm:text-sm">
+                          <span className="sm:hidden">Note</span>
+                          <span className="hidden sm:inline">Audit Notes</span>
+                        </h3>
+                      </div>
+                      <textarea
+                        rows={4}
+                        value={updateNotes}
+                        onChange={(e) => setUpdateNotes(e.target.value)}
+                        placeholder="Write anything important..."
+                        className="w-full flex-1 p-3 bg-stone-50/80 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622] resize-none"
                       />
-                    </label>
+                    </div>
                   </div>
-                </div>
 
-                {/* Live Webcam Stream Window */}
-                {isWebcamActive && (
-                  <div className="p-3 bg-black rounded-xl space-y-2">
-                    <video ref={videoRef} autoPlay playsInline className="w-full max-h-60 object-contain rounded-lg mx-auto" />
-                    {webcamError && <p className="text-xs text-rose-400">{webcamError}</p>}
-                    <div className="flex justify-center gap-2">
+                  {/* Actions & Save Bar */}
+                  {/* Desktop / Tablet Save Row */}
+                  <div className="hidden sm:flex items-center justify-between pt-2">
+                    {onDeleteOrder && (
                       <button
                         type="button"
-                        onClick={captureSnapshot}
-                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1"
+                        onClick={() => {
+                          if (window.confirm(`Are you sure you want to delete Task #${activeOrder.article_no}?`)) {
+                            onDeleteOrder(activeOrder.id);
+                            setActiveOrder(null);
+                          }
+                        }}
+                        className="px-3.5 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
                       >
-                        <Camera size={14} /> Snap Photo
+                        <Trash2 size={13} /> Delete Task
                       </button>
+                    )}
+                    <div className="flex items-center gap-3 ml-auto">
                       <button
                         type="button"
-                        onClick={stopWebcam}
-                        className="px-3 py-1.5 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-lg text-xs"
+                        onClick={() => setActiveOrder(null)}
+                        className="px-5 py-2.5 border border-stone-300 rounded-xl text-stone-700 font-bold hover:bg-stone-50 text-xs cursor-pointer transition"
                       >
                         Cancel
                       </button>
+                      <button
+                        type="submit"
+                        className="bg-[#3d2314] hover:bg-[#2c1810] text-white font-bold px-7 py-2.5 rounded-xl shadow-sm transition text-xs cursor-pointer flex items-center gap-2"
+                      >
+                        <Check size={16} /> Save Progress
+                      </button>
                     </div>
                   </div>
-                )}
 
-                {/* Progress Images Grid */}
-                {inProgressFiles.length > 0 ? (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
-                    {inProgressFiles.map((url, idx) => (
-                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-stone-200">
-                        <img referrerPolicy="no-referrer" src={url} alt="Progress" className="object-cover w-full h-full" />
-                        <button
-                          type="button"
-                          onClick={() => setInProgressFiles(inProgressFiles.filter((_, i) => i !== idx))}
-                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white h-5 w-5 rounded-full font-bold text-[10px] flex items-center justify-center shadow"
-                          title="Delete photo"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                  {/* MOBILE ONLY: Sticky Bottom Save Bar */}
+                  <div className="sm:hidden sticky bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md pt-2 pb-3 px-1 border-t border-stone-200">
+                    <button
+                      type="submit"
+                      className="w-full bg-[#3d2314] hover:bg-[#2c1810] text-white font-bold py-3.5 px-6 rounded-2xl text-sm flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition cursor-pointer"
+                    >
+                      <Check size={18} />
+                      <span>Save</span>
+                    </button>
                   </div>
-                ) : (
-                  <div className="py-6 border-2 border-dashed border-stone-200 rounded-xl text-center text-stone-400">
-                    <p className="font-bold text-stone-500 text-xs">No progress snapshots attached yet</p>
-                    <p className="text-[10px] text-stone-400 mt-0.5">Use camera or upload photos of cutting, assembly, and jointing</p>
-                  </div>
-                )}
+                </form>
               </div>
-
-              {/* SECTION: Progress Audit Notes */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  Progress Audit Notes & Remarks
-                </label>
-                <textarea
-                  rows={2}
-                  value={updateNotes}
-                  onChange={(e) => setUpdateNotes(e.target.value)}
-                  placeholder="Record cutting remarks, joint details, or material notes..."
-                  className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:ring-1 focus:ring-[#593622]"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-3 border-t border-stone-200 flex items-center justify-between">
-                {onDeleteOrder && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Are you sure you want to delete Task #${activeOrder.article_no}?`)) {
-                        onDeleteOrder(activeOrder.id);
-                        setActiveOrder(null);
-                      }
-                    }}
-                    className="px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition flex items-center gap-1"
-                  >
-                    <Trash2 size={13} /> Delete Task
-                  </button>
-                )}
-                <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    type="button"
-                    onClick={() => setActiveOrder(null)}
-                    className="px-4 py-2.5 border border-stone-200 rounded-xl text-stone-600 font-bold hover:bg-stone-50 text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-[#593622] hover:bg-[#402414] text-white font-black px-6 py-2.5 rounded-xl shadow-sm transition text-xs cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Check size={14} /> Save Workbench Update
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      );
-    })()}
+            </div>
+          );
+        })()}
 
         {/* Lightbox Modal */}
         {lightboxImg && (
