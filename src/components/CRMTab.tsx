@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/upi_qr.png';
-import signatureImg from '../assets/images/signature.svg';
+import upiQrImg from '../assets/images/UPI QR code.jpeg';
+import signatureImg from '../assets/images/Authorized Signatory.png';
 import { 
   AppState,
   generateArticleNumber
@@ -3887,14 +3887,14 @@ export default function CRMTab({
                         <div className="flex gap-1 text-[10px]">
                           <button
                             type="button"
-                            onClick={() => setQuotePaymentTerms('40% Advance on order confirmation, 60% before dispatch post-QC inspection.')}
+                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% before dispatch post-QC inspection.')}
                             className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
                           >
-                            40% / 60%
+                            50% / 50%
                           </button>
                           <button
                             type="button"
-                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% before dispatch post-QC inspection.')}
+                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% on final delivery & installation.')}
                             className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
                           >
                             50% / 50%
