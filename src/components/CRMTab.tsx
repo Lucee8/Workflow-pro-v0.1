@@ -6,8 +6,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/UPI QR code.jpeg';
-import signatureImg from '../assets/images/Authorized Signatory.png';
+import upiQrImg from '../assets/images/upi_qr.png';
+import signatureImg from '../assets/images/signature.svg';
 import { 
   AppState,
   generateArticleNumber
@@ -324,7 +324,7 @@ export default function CRMTab({
         setQuoteDiscount(editingQuotation.discount !== undefined ? editingQuotation.discount : (editingQuotation.items?.[0]?.discount || 0));
         setQuoteGst(editingQuotation.gst !== undefined ? editingQuotation.gst : (editingQuotation.items?.[0]?.gst || 0));
         setQuoteValidUntil(editingQuotation.validUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-        setQuotePaymentTerms(editingQuotation.paymentTerms || '40% Advance on order confirmation, 60% before dispatch post-QC inspection.');
+        setQuotePaymentTerms(editingQuotation.paymentTerms || '50% Advance on order confirmation, 50% before dispatch post-QC inspection.');
         setQuoteDeliveryTerms(editingQuotation.deliveryTerms || 'Ex-workshop dispatch / Transport charges extra at actuals.');
         setQuoteNotes(editingQuotation.notes || '');
         setQuoteReceivedAmount(editingQuotation.received_amount || 0);
@@ -349,7 +349,7 @@ export default function CRMTab({
         setQuoteDiscount(0);
         setQuoteGst(0);
         setQuoteValidUntil(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-        setQuotePaymentTerms('40% Advance on order confirmation, 60% before dispatch post-QC inspection.');
+        setQuotePaymentTerms('50% Advance on order confirmation, 50% before dispatch post-QC inspection.');
         setQuoteDeliveryTerms('Ex-workshop dispatch / Transport charges extra at actuals.');
         setQuoteNotes('');
         setQuoteReceivedAmount(0);
@@ -3894,7 +3894,7 @@ export default function CRMTab({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% on final delivery & installation.')}
+                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% before dispatch post-QC inspection.')}
                             className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
                           >
                             50% / 50%
@@ -3905,7 +3905,7 @@ export default function CRMTab({
                         type="text"
                         value={quotePaymentTerms}
                         onChange={(e) => setQuotePaymentTerms(e.target.value)}
-                        placeholder="e.g. 40% Advance on order, 60% post-QC prior to dispatch"
+                        placeholder="e.g. 50% Advance on order confirmation, 50% before dispatch post-QC inspection."
                         className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3.5 py-2 text-stone-800"
                       />
                     </div>
