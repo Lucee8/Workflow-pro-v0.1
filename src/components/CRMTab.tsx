@@ -402,7 +402,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img = new Image();
+          const img: HTMLImageElement = document.createElement('img');
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -1877,7 +1877,7 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val: number) => [`${val} lead(s)`, 'Count']} />
+                          <Tooltip formatter={(val: any) => [`${val || 0} lead(s)`, 'Count']} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -2000,7 +2000,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip formatter={(value: any) => `₹${(value || 0).toLocaleString()}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -2665,7 +2665,7 @@ export default function CRMTab({
                           <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                             {selectedCustQuotes.length > 0 ? (
                               selectedCustQuotes.map(q => {
-                                const qImages = (q.items || []).flatMap(i => i.images || []).filter(Boolean);
+                                const qImages: string[] = (q.items || []).flatMap(i => i.images || []).filter(Boolean).map(img => typeof img === 'string' ? img : img.url);
                                 return (
                                   <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                     <div>
