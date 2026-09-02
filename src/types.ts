@@ -88,14 +88,128 @@ export type OrderStage =
   | 'QC Check 1'
   | 'QC Check 2';
 
-export function normalizeStage(stage: string): OrderStage {
-  if (stage === 'Design') return 'Designing';
-  if (stage === 'Carpentry') return 'Making Started';
-  if (stage === 'QC Check 1') return 'QC 1';
-  if (stage === 'QC Check 2') return 'QC 2';
-  if (stage === 'Dispatched') return 'Dispatched';
-  if (stage === 'Ready To Dispatch') return 'Ready to Dispatch';
-  return stage as OrderStage;
+
+export function normalizeStage(stage: string | null | undefined): OrderStage {
+  if (!stage) return 'Pending';
+  const s = String(stage).trim();
+  const lower = s.toLowerCase();
+  
+  if (
+    s === '1. Pending' ||
+    s === '1. pending' ||
+    s === 'Pending' ||
+    s === 'PENDING' ||
+    s === '1' ||
+    lower === 'pending' ||
+    lower === 'pending orders' ||
+    lower === 'new'
+  ) {
+    return 'Pending';
+  }
+  if (
+    s === '2. Designing' ||
+    s === '2. designing' ||
+    s === 'Design' ||
+    s === 'Designing' ||
+    s === '2' ||
+    lower === 'design' ||
+    lower === 'designing'
+  ) {
+    return 'Designing';
+  }
+  if (
+    s === '3. Wood Procurement' ||
+    s === '3. wood procurement' ||
+    s === 'Wood Procurement' ||
+    s === 'wood_procurement' ||
+    s === '3' ||
+    lower === 'wood procurement' ||
+    lower === 'wood procure'
+  ) {
+    return 'Wood Procurement';
+  }
+  if (
+    s === '4. Making Started' ||
+    s === '4. making started' ||
+    s === 'Making Started' ||
+    s === 'Carpentry' ||
+    s === 'under_carpentry' ||
+    s === 'making_started' ||
+    s === '4' ||
+    lower === 'making started' ||
+    lower === 'carpentry'
+  ) {
+    return 'Making Started';
+  }
+  if (
+    s === '5. QC 1' ||
+    s === '5. qc 1' ||
+    s === 'QC 1' ||
+    s === 'QC Check 1' ||
+    s === 'qc_1' ||
+    s === '5' ||
+    lower === 'qc 1' ||
+    lower === 'qc check 1'
+  ) {
+    return 'QC 1';
+  }
+  if (
+    s === '6. Making Completed' ||
+    s === '6. making completed' ||
+    s === 'Making Completed' ||
+    s === 'making_completed' ||
+    s === '6' ||
+    lower === 'making completed'
+  ) {
+    return 'Making Completed';
+  }
+  if (
+    s === '7. Polish' ||
+    s === '7. polish' ||
+    s === 'Polish' ||
+    s === 'polish' ||
+    s === '7' ||
+    lower === 'polish'
+  ) {
+    return 'Polish';
+  }
+  if (
+    s === '8. QC 2' ||
+    s === '8. qc 2' ||
+    s === 'QC 2' ||
+    s === 'QC Check 2' ||
+    s === 'qc_2' ||
+    s === '8' ||
+    lower === 'qc 2' ||
+    lower === 'qc check 2'
+  ) {
+    return 'QC 2';
+  }
+  if (
+    s === '9. Ready to Dispatch' ||
+    s === '9. ready to dispatch' ||
+    s === 'Ready to Dispatch' ||
+    s === 'Ready To Dispatch' ||
+    s === 'ready_to_dispatch' ||
+    s === 'Ready' ||
+    s === '9' ||
+    lower === 'ready to dispatch' ||
+    lower === 'ready'
+  ) {
+    return 'Ready to Dispatch';
+  }
+  if (
+    s === '10. Dispatched' ||
+    s === '10. dispatched' ||
+    s === 'Dispatched' ||
+    s === 'dispatched' ||
+    s === '10' ||
+    lower === 'dispatched'
+  ) {
+    return 'Dispatched';
+  }
+
+  return s as OrderStage;
 }
 
 export type OrderPriority = 'normal' | 'urgent';
@@ -147,6 +261,7 @@ export interface Order {
   polish_labour_rate?: number;
   polish_delivery_date?: string; // Target delivery date for Polish Person
   current_status: OrderStage;
+  stage?: OrderStage;
   is_delayed: boolean;
   priority: OrderPriority;
   order_date: string; // YYYY-MM-DD
@@ -195,6 +310,8 @@ export interface Order {
   deliveryPersonName?: string;
   deliveryPersonContact?: string;
   vehicleNumber?: string;
+  quotation_ref?: string;
+  quotation_item_id?: string;
 }
 
 export interface StatusLog {

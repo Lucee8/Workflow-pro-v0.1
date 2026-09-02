@@ -424,13 +424,26 @@ export function saveState(state: AppState) {
     localStorage.setItem('bhise_workshop_tracker_db', JSON.stringify(lightweightState));
   } catch (err) {
     try {
-      // If quota exceeded, clean obsolete storage items and store critical metadata only
-      localStorage.removeItem('bhise_workshop_tracker_db');
-      const minimalState: Partial<AppState> = {
-        currentUser: state.currentUser,
-        users: state.users,
+      // If quota exceeded, retain all quotations and core business records with stripped large image previews
+      const safeQuotations = (state.crmQuotations || []).map(q => ({
+        ...q,
+        items: (q.items || []).map(item => ({
+          ...item,
+          images: (item.images || []).map((img: any) => {
+            const url = typeof img === 'string' ? img : (img?.url || '');
+            const description = typeof img === 'object' ? (img?.description || '') : '';
+            // If huge base64, keep thumbnail placeholder or trimmed ref
+            return { url: url.length > 150000 ? '' : url, description };
+          })
+        }))
+      }));
+
+      const safeState: Partial<AppState> = {
+        ...state,
+        auditLogs: (state.auditLogs || []).slice(0, 10),
+        crmQuotations: safeQuotations,
       };
-      localStorage.setItem('bhise_workshop_tracker_db', JSON.stringify(minimalState));
+      localStorage.setItem('bhise_workshop_tracker_db', JSON.stringify(safeState));
     } catch {
       // Silently ignore storage quota limits in restricted iframe/browser environments
     }

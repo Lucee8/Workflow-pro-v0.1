@@ -5,8 +5,8 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { loadState, saveState, AppState, resequenceCRMCustomersInState } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from './types';
+import { loadState, saveState, AppState, resequenceCRMCustomersInState, generateArticleNumber } from './db/store';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -52,7 +52,7 @@ import OrdersTab from './components/OrdersTab';
 import OrderForm from './components/OrderForm';
 import OrderDetailsView from './components/OrderDetailsView';
 import CalendarTab from './components/CalendarTab';
-import { formatToDDMMYYYY, reconcileQuotationsAndCustomers, resolveQuotationCustomer } from './utils';
+import { formatToDDMMYYYY, reconcileQuotationsAndCustomers, resolveQuotationCustomer, detectCategoryFromFurnitureItem } from './utils';
 import UsersTab from './components/UsersTab';
 import WorkerDashboard from './components/WorkerDashboard';
 import NotificationCenter from './components/NotificationCenter';
@@ -628,16 +628,249 @@ export default function App() {
       customer_name: custInfo.name || quote.customer_name,
       items: Array.isArray(quote.items) ? quote.items.map((item, idx) => ({
         ...item,
-        id: item.id || `item_${quote.id}_${idx + 1}`
+        id: item.id || `item_${quote.id}_${idx + 1}`,
+        images: Array.isArray(item.images)
+          ? item.images.map((img: any) => {
+              if (typeof img === 'string') return { url: img, description: '' };
+              if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
+              return null;
+            }).filter((img): img is { url: any; description: any } => img !== null)
+          : []
       })) : []
     };
 
     const exists = db.crmQuotations.some(q => q.id === sanitizedQuote.id);
-    const updated = exists
+    const updatedQuotations = exists
       ? db.crmQuotations.map(q => q.id === sanitizedQuote.id ? sanitizedQuote : q)
       : [sanitizedQuote, ...db.crmQuotations];
-    updateDbState({ ...db, crmQuotations: updated });
     saveCRMQuotationToFirebase(sanitizedQuote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
+
+    const receivedAmt = Number(sanitizedQuote.received_amount) || 0;
+    const grandTotal = Number(sanitizedQuote.totalAmount) || 0;
+    const isInvoice = receivedAmt > 0;
+    const isApproved = sanitizedQuote.status === 'Approved';
+
+    // Auto-create or update production orders whenever receivedAmount > 0 (Invoice) or Approved
+    if ((isInvoice || isApproved) && Array.isArray(sanitizedQuote.items) && sanitizedQuote.items.length > 0) {
+      let freshOrders = [...db.orders];
+      let freshPayments = [...db.payments];
+      let freshLogs = [...db.statusLogs];
+      let freshCustomers = [...db.customers];
+      let freshCrmCustomers = [...(db.crmCustomers || [])];
+      let freshCrmPayments = [...(db.crmPayments || [])];
+
+      // Ensure customer exists in db.customers
+      if (!freshCustomers.some(c => c.id === sanitizedQuote.customer_id)) {
+        const newCust: Customer = {
+          id: sanitizedQuote.customer_id,
+          name: sanitizedQuote.customer_name || 'Customer',
+          phone: custInfo.phone || '',
+          address: custInfo.city || custInfo.address || '',
+          notes: custInfo.productRequirement || '',
+          whatsapp_opt_in: true,
+          created_at: new Date().toISOString(),
+          created_by: currentUser?.id || 'admin',
+        };
+        freshCustomers = [newCust, ...freshCustomers];
+        saveCustomerToFirebase(newCust).catch(err => console.error("Customer save failed:", err));
+      }
+
+      // Update CRM customer status to Order Confirmed if appropriate
+      const crmCustIdx = freshCrmCustomers.findIndex(c => c.id === sanitizedQuote.customer_id);
+      if (crmCustIdx >= 0 && (!freshCrmCustomers[crmCustIdx].status || freshCrmCustomers[crmCustIdx].status === 'Lead' || freshCrmCustomers[crmCustIdx].status === 'Contacted')) {
+        freshCrmCustomers[crmCustIdx] = {
+          ...freshCrmCustomers[crmCustIdx],
+          status: 'Order Confirmed'
+        };
+        saveCRMCustomerToFirebase(freshCrmCustomers[crmCustIdx]).catch(err => console.error("CRM Customer save failed:", err));
+      }
+
+      sanitizedQuote.items.forEach((item, idx) => {
+        const itemTotal = Number(item.totalAmount) || (Number(item.quantity || 1) * Number(item.unitPrice || 0));
+        
+        let itemAdvance = 0;
+        if (receivedAmt >= grandTotal && grandTotal > 0) {
+          itemAdvance = itemTotal; // PAID
+        } else if (receivedAmt > 0 && grandTotal > 0) {
+          const ratio = receivedAmt / grandTotal;
+          itemAdvance = Math.round(itemTotal * ratio);
+          // If overall received is less than grand total, ensure item is PARTIAL
+          if (itemAdvance >= itemTotal && receivedAmt < grandTotal) {
+            itemAdvance = Math.max(0, itemTotal - 1);
+          }
+        }
+        const itemBalance = Math.max(0, itemTotal - itemAdvance);
+
+        // Deduplication lookup: Match by quotationRef + productId/itemId
+        const existingOrderIndex = freshOrders.findIndex(o => {
+          const isParentMatch = o.parent_order_id === sanitizedQuote.id || o.quotation_ref === sanitizedQuote.id || o.id === `${sanitizedQuote.id.replace('QT', 'ORD')}-${idx + 1}` || o.id === `${sanitizedQuote.id.replace('QT', 'ORD')}-${item.id}` || o.id === sanitizedQuote.id.replace('QT', 'ORD');
+          const isItemMatch = o.quotation_item_id === item.id || (o as any).item_id === item.id || o.id.endsWith(`-${item.id}`) || o.id.endsWith(`-${idx + 1}`) || (sanitizedQuote.items.length === 1 && (o.parent_order_id === sanitizedQuote.id || o.quotation_ref === sanitizedQuote.id)) || (o.sub_category === item.furnitureItem && (o.parent_order_id === sanitizedQuote.id || o.quotation_ref === sanitizedQuote.id));
+          return isParentMatch && isItemMatch;
+        });
+
+        if (existingOrderIndex >= 0) {
+          // Update existing order while preserving assigned carpenter/progress if active
+          const existing = freshOrders[existingOrderIndex];
+          const updatedOrder: Order = {
+            ...existing,
+            parent_order_id: sanitizedQuote.id,
+            quotation_ref: sanitizedQuote.id,
+            quotation_item_id: item.id,
+            customer_id: sanitizedQuote.customer_id,
+            sub_category: item.furnitureItem || existing.sub_category,
+            custom_size: item.dimensions || existing.custom_size || 'Custom',
+            material: item.material || existing.material || 'Solid Teak Wood(Sagwan)',
+            no_of_units: Math.max(1, Number(item.quantity) || existing.no_of_units || 1),
+            delivery_date: sanitizedQuote.validUntil || existing.delivery_date,
+            total_amount: itemTotal,
+            advance_paid: itemAdvance,
+            special_notes: `Quotation Ref: ${sanitizedQuote.id} | Product: ${item.furnitureItem}`,
+            updated_at: new Date().toISOString(),
+          };
+          freshOrders[existingOrderIndex] = updatedOrder;
+          saveOrderToFirebase(updatedOrder).catch(err => console.error("Order update failed:", err));
+
+          // Sync payment record
+          const existingPayIdx = freshPayments.findIndex(p => p.order_id === updatedOrder.id);
+          const paymentRecord: Payment = {
+            id: existingPayIdx >= 0 ? freshPayments[existingPayIdx].id : `pay_${updatedOrder.id}`,
+            order_id: updatedOrder.id,
+            total_amount: itemTotal,
+            advance_paid: itemAdvance,
+            balance_due: itemBalance,
+            payment_date: sanitizedQuote.created_at ? sanitizedQuote.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            payment_mode: 'upi',
+            notes: `Payment for Quotation Invoice ${sanitizedQuote.id} - ${item.furnitureItem}`,
+            created_by: currentUser?.id || 'admin',
+            created_at: existingPayIdx >= 0 ? (freshPayments[existingPayIdx].created_at || new Date().toISOString()) : new Date().toISOString(),
+          };
+          if (existingPayIdx >= 0) {
+            freshPayments[existingPayIdx] = paymentRecord;
+          } else {
+            freshPayments = [paymentRecord, ...freshPayments];
+          }
+          savePaymentToFirebase(paymentRecord).catch(err => console.error("Payment save failed:", err));
+        } else {
+          // Create new order
+          const orderId = sanitizedQuote.items.length > 1
+            ? `${sanitizedQuote.id.replace('QT', 'ORD')}-${idx + 1}`
+            : sanitizedQuote.id.replace('QT', 'ORD');
+
+          const cat = detectCategoryFromFurnitureItem(item.furnitureItem);
+          const artNo = generateArticleNumber(cat, '', freshOrders, db.users, idx);
+
+          const normalizedOrderImages = (item.images || []).map((img: any, imgIdx: number) => ({
+            id: `img_${sanitizedQuote.id}_${item.id || idx}_${imgIdx + 1}`,
+            url: typeof img === 'string' ? img : (img?.url || ''),
+            type: 'Design Reference' as const,
+            uploaded_at: new Date().toISOString(),
+            uploaded_by: sanitizedQuote.created_by || currentUser?.name || 'Admin'
+          })).filter((img: any) => Boolean(img.url));
+
+          const newOrder: Order = {
+            id: orderId,
+            parent_order_id: sanitizedQuote.id,
+            quotation_ref: sanitizedQuote.id,
+            quotation_item_id: item.id,
+            article_no: artNo,
+            customer_id: sanitizedQuote.customer_id,
+            category: cat,
+            sub_category: item.furnitureItem,
+            size: item.dimensions || 'Custom',
+            custom_size: item.dimensions || 'Custom',
+            finish: 'Natural Teak Polish',
+            special_notes: `Quotation Ref: ${sanitizedQuote.id} | Product: ${item.furnitureItem}`,
+            design_type: 'Custom',
+            material: item.material || 'Solid Teak Wood(Sagwan)',
+            color_shade: 'Natural Teak / Walnut',
+            no_of_units: Math.max(1, Number(item.quantity) || 1),
+            carpenter_id: '', // assignedTo = null
+            polish_person_id: '',
+            current_status: 'Pending', // Rule 2 & 6: stage: "Pending"
+            stage: 'Pending',
+            wood_schedule_status: 'Pending',
+            is_delayed: false, // Rule 2 & 6: status: "In Progress"
+            priority: 'normal', // Rule 6: priority = "Normal"
+            order_date: sanitizedQuote.created_at ? sanitizedQuote.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            delivery_date: sanitizedQuote.validUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            portal_token: Math.random().toString(36).substring(2, 10),
+            portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            qr_token: `https://bhisesworkshop.com/order/${orderId}`,
+            created_at: new Date().toISOString(),
+            created_by: sanitizedQuote.created_by || currentUser?.name || 'Admin',
+            images: normalizedOrderImages,
+            total_amount: itemTotal,
+            advance_paid: itemAdvance,
+          };
+
+          freshOrders = [newOrder, ...freshOrders];
+          saveOrderToFirebase(newOrder).catch(err => console.error("Order save failed:", err));
+
+          // Create payment record for new order
+          const paymentRecord: Payment = {
+            id: `pay_${orderId}`,
+            order_id: orderId,
+            total_amount: itemTotal,
+            advance_paid: itemAdvance,
+            balance_due: itemBalance,
+            payment_date: sanitizedQuote.created_at ? sanitizedQuote.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            payment_mode: 'upi',
+            notes: `Advance payment for Quotation Invoice ${sanitizedQuote.id} - ${item.furnitureItem}`,
+            created_by: currentUser?.id || 'admin',
+            created_at: new Date().toISOString(),
+          };
+          freshPayments = [paymentRecord, ...freshPayments];
+          savePaymentToFirebase(paymentRecord).catch(err => console.error("Payment save failed:", err));
+
+          // Create status log
+          const log: StatusLog = {
+            id: 'log_' + Math.random().toString(36).substring(2, 9),
+            order_id: orderId,
+            stage: 'Pending',
+            changed_by: currentUser?.id || 'admin',
+            changed_by_name: currentUser?.name || 'Admin',
+            changed_by_role: currentUser?.role || 'admin',
+            timestamp: new Date().toISOString(),
+            note: `Production Order created from Quotation Invoice ${sanitizedQuote.id}. Article: ${artNo}. Item: ${item.furnitureItem}.`,
+          };
+          freshLogs = [log, ...freshLogs];
+          saveStatusLogToFirebase(log).catch(err => console.error("StatusLog save failed:", err));
+        }
+      });
+
+      // Update CRM payments ledger
+      const existingCrmPayIdx = freshCrmPayments.findIndex(cp => cp.order_id === sanitizedQuote.id || cp.id === `pay_${sanitizedQuote.id}`);
+      const crmPaymentRecord: CRMPayment = {
+        id: existingCrmPayIdx >= 0 ? freshCrmPayments[existingCrmPayIdx].id : `pay_${sanitizedQuote.id}`,
+        customer_id: sanitizedQuote.customer_id,
+        order_id: sanitizedQuote.id,
+        total_amount: grandTotal,
+        advance_paid: receivedAmt,
+        balance_due: Math.max(0, grandTotal - receivedAmt),
+        pending_amount: Math.max(0, grandTotal - receivedAmt),
+        payment_method: 'UPI',
+        payment_date: sanitizedQuote.created_at ? sanitizedQuote.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+      };
+      if (existingCrmPayIdx >= 0) {
+        freshCrmPayments[existingCrmPayIdx] = crmPaymentRecord;
+      } else {
+        freshCrmPayments = [crmPaymentRecord, ...freshCrmPayments];
+      }
+      saveCRMPaymentToFirebase(crmPaymentRecord).catch(err => console.error("CRM Payment save failed:", err));
+
+      updateDbState({
+        ...db,
+        crmQuotations: updatedQuotations,
+        orders: freshOrders,
+        payments: freshPayments,
+        statusLogs: freshLogs,
+        customers: freshCustomers,
+        crmCustomers: freshCrmCustomers,
+        crmPayments: freshCrmPayments,
+      });
+    } else {
+      updateDbState({ ...db, crmQuotations: updatedQuotations });
+    }
   };
 
   const handleDeleteCRMQuotation = (id: string) => {
@@ -865,7 +1098,7 @@ export default function App() {
             setCurrentTab(tab);
           }}
           onLogout={handleLogout}
-          notificationsCount={db.orders.filter(o => o.current_status === 'Pending').length}
+          notificationsCount={db.orders.filter(o => normalizeStage(o.current_status || (o as any).stage) === 'Pending').length}
         />
 
         {/* Dynamic Inner Application Page Canvas */}

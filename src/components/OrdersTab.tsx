@@ -57,15 +57,17 @@ export default function OrdersTab({
       (cust && cust.phone.includes(searchTerm)) ||
       (carpenter && carpenter.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
+    const orderStage = normalizeStage(order.current_status || (order as any).stage || (order as any).status);
+
     const matchesStage =
       stageFilter === 'All Stages' ||
-      normalizeStage(order.current_status) === normalizeStage(stageFilter);
+      orderStage === normalizeStage(stageFilter);
 
     let matchesStatus = true;
     if (statusFilter !== 'All Status') {
       if (statusFilter === 'Delayed') matchesStatus = order.is_delayed;
-      else if (statusFilter === 'Ready') matchesStatus = ['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(order.current_status));
-      else if (statusFilter === 'In Progress') matchesStatus = !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(order.current_status));
+      else if (statusFilter === 'Ready') matchesStatus = ['Ready To Dispatch', 'Ready to Dispatch', 'Dispatched'].includes(orderStage);
+      else if (statusFilter === 'In Progress') matchesStatus = !['Ready To Dispatch', 'Ready to Dispatch', 'Dispatched'].includes(orderStage);
     }
 
     const matchesPriority = priorityFilter === 'All Priority' || order.priority === priorityFilter.toLowerCase();

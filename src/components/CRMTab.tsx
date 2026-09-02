@@ -6,13 +6,13 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
-import upiQrImg from '../assets/images/UPI QR code.jpeg';
 import signatureImg from '../assets/images/Authorized Signatory.png';
+import { buildUPIPaymentString, getUPIQRCodeUrl } from '../config';
 import { 
   AppState,
   generateArticleNumber
 } from '../db/store';
-import { compareOrdersByArticleSerialDesc, resolveQuotationCustomer } from '../utils';
+import { compareOrdersByArticleSerialDesc, resolveQuotationCustomer, compareCRMCustomersDesc } from '../utils';
 import { 
   User, 
   CRMCustomer, 
@@ -247,7 +247,7 @@ export default function CRMTab({
   const [quoteReceivedAmount, setQuoteReceivedAmount] = React.useState<number>(0);
 
   const allAvailableCustomers = React.useMemo(() => {
-    const list: Array<{ id: string; name: string; phone?: string; city?: string; productRequirement?: string; status?: string }> = [];
+    const list: Array<{ id: string; name: string; phone?: string; city?: string; productRequirement?: string; status?: string; created_at?: string }> = [];
     const seenIds = new Set<string>();
 
     (db.crmCustomers || []).forEach(c => {
@@ -259,7 +259,8 @@ export default function CRMTab({
           phone: c.phone,
           city: c.city,
           productRequirement: c.productRequirement,
-          status: c.status
+          status: c.status,
+          created_at: c.created_at
         });
       }
     });
@@ -273,16 +274,27 @@ export default function CRMTab({
           phone: c.phone,
           city: c.address,
           productRequirement: c.notes,
-          status: 'Customer'
+          status: 'Customer',
+          created_at: c.created_at
         });
       }
     });
 
-    return list;
+    return list.sort(compareCRMCustomersDesc);
   }, [db.crmCustomers, db.customers]);
+
+  const openedQuoteModalInstanceRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (showAddQuoteModal) {
+      const currentInstanceKey = editingQuotation ? `edit_${editingQuotation.id}` : `new_${selectedCustomerId || 'default'}`;
+      if (openedQuoteModalInstanceRef.current === currentInstanceKey) {
+        // Modal is already open and initialized for this quotation session.
+        // Do NOT overwrite user modifications or uploaded images when background database syncs occur!
+        return;
+      }
+      openedQuoteModalInstanceRef.current = currentInstanceKey;
+
       if (editingQuotation) {
         setQuoteCustomerId(editingQuotation.customer_id || '');
         const loadedItems = editingQuotation.items && editingQuotation.items.length > 0
@@ -304,7 +316,7 @@ export default function CRMTab({
                   url: img?.url || '',
                   description: img?.description || ''
                 };
-              })
+              }).filter((img: CRMQuotationPhoto) => Boolean(img.url))
             }))
           : [{
               id: generateId('item'),
@@ -355,6 +367,7 @@ export default function CRMTab({
         setQuoteReceivedAmount(0);
       }
     } else {
+      openedQuoteModalInstanceRef.current = null;
       setQuoteCustomerId('');
       setQuoteItems([]);
       setQuoteTransportationCharges(0);
@@ -367,7 +380,7 @@ export default function CRMTab({
       setQuoteNotes('');
       setQuoteReceivedAmount(0);
     }
-  }, [showAddQuoteModal, editingQuotation, selectedCustomerId, db.crmCustomers]);
+  }, [showAddQuoteModal, editingQuotation]);
 
   const handleAddProductItem = () => {
     setQuoteItems(prev => [
@@ -408,7 +421,7 @@ export default function CRMTab({
               const canvas = document.createElement('canvas');
               let width = img.width || 800;
               let height = img.height || 600;
-              const maxDim = 1200;
+              const maxDim = 800;
               if (width > maxDim || height > maxDim) {
                 if (width > height) {
                   height = Math.round((height * maxDim) / width);
@@ -423,8 +436,22 @@ export default function CRMTab({
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 ctx.drawImage(img, 0, 0, width, height);
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                resolve(compressedDataUrl || rawDataUrl);
+                let compressedDataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                // If base64 length is still large (>80KB ~110,000 chars), compress further to 600px @ 0.50
+                if (compressedDataUrl.length > 110000) {
+                  const scale = 600 / Math.max(width, height);
+                  const w2 = Math.max(1, Math.round(width * scale));
+                  const h2 = Math.max(1, Math.round(height * scale));
+                  const canvas2 = document.createElement('canvas');
+                  canvas2.width = w2;
+                  canvas2.height = h2;
+                  const ctx2 = canvas2.getContext('2d');
+                  if (ctx2) {
+                    ctx2.drawImage(img, 0, 0, w2, h2);
+                    compressedDataUrl = canvas2.toDataURL('image/jpeg', 0.50);
+                  }
+                }
+                                resolve(compressedDataUrl || rawDataUrl);
               } else {
                 resolve(rawDataUrl);
               }
@@ -1277,6 +1304,12 @@ export default function CRMTab({
       checkAndTriggerOrderCreation(newCust);
     }
 
+    if (showAddQuoteModal) {
+      setQuoteCustomerId(newCust.id);
+      if (newCust.productRequirement && quoteItems.length === 1 && !quoteItems[0].furnitureItem) {
+        setQuoteItems([{ ...quoteItems[0], furnitureItem: newCust.productRequirement }]);
+      }
+    }
     setShowAddCustModal(false);
     setEditingCustomer(null);
     alert(`Success: Customer ${newCust.name} saved successfully!`);
@@ -1536,12 +1569,7 @@ export default function CRMTab({
         default: return matchesSearch;
       }
     })
-    .sort((a, b) => {
-      if (a.created_at && b.created_at) {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      return (b.id || '').localeCompare(a.id || '');
-    });
+    .sort(compareCRMCustomersDesc);
 
   const filteredQuotationsList = (db.crmQuotations || [])
     .filter(quote => {
@@ -3164,7 +3192,7 @@ export default function CRMTab({
       
       {/* 1. ADD / EDIT CUSTOMER MODAL */}
       {showAddCustModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -4141,7 +4169,7 @@ export default function CRMTab({
 
       {/* 3. SCHEDULE FOLLOWUP MODAL */}
       {showAddFollowupModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -4166,8 +4194,8 @@ export default function CRMTab({
                   className="w-full bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-xl px-3 py-2 focus:outline-none font-bold"
                 >
                   <option value="" disabled>-- Select Customer --</option>
-                  {db.crmCustomers?.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                  {allAvailableCustomers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.id}) {c.phone ? `• ${c.phone}` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -4229,7 +4257,7 @@ export default function CRMTab({
 
       {/* 4. CUSTOMER FILE ATTACHMENT MODAL */}
       {showAttachmentModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -4485,6 +4513,12 @@ export default function CRMTab({
         const receivedAmt = Math.max(0, activeQuote.received_amount || 0);
         const balanceAmt = Math.max(0, activeQuote.totalAmount - receivedAmt);
 
+        const upiPaymentString = buildUPIPaymentString({
+          amount: balanceAmt,
+          invoiceRef: quoteDisplayId,
+        });
+        const qrCodeUrl = getUPIQRCodeUrl(upiPaymentString, 250);
+
         const shareText = `Hello ${customer.name},\n\nPlease find the custom price ${docTitle} from *Bhisez Furniture*:\n\n*${docTitle} No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(activeQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Grand Total:* ₹${activeQuote.totalAmount.toLocaleString('en-IN')}${receivedAmt > 0 ? `\n*Received Amount:* ₹${receivedAmt.toLocaleString('en-IN')}\n*Balance Amount:* ₹${balanceAmt.toLocaleString('en-IN')}` : ''}\n\nThank you for choosing Bhisez Furniture!`;
         const phoneForWa = customer.phone ? customer.phone.replace(/\D/g, '') : '';
         const whatsappUrl = phoneForWa
@@ -4519,7 +4553,7 @@ export default function CRMTab({
         };
 
         return (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-3 overflow-y-auto">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[60] p-3 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -4850,22 +4884,38 @@ export default function CRMTab({
                         <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[95px] print:min-h-[85px]">
                           <div className="col-span-7 space-y-0.5 text-[11px] text-slate-700 font-semibold">
                             <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
-                            <p>Account No.: <span className="text-slate-900 font-extrabold">50100705616156</span></p>
+                            <p>Account No.: <span className="text-slate-900 font-extrabold">aradhyabhise-1@okhdfcbank</span></p>
                             <p>IFSC code: <span className="text-slate-900 font-extrabold">HDFC0009348</span></p>
                             <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
                           </div>
                           <div 
                             className="col-span-5 flex flex-col items-center justify-center border-l border-slate-200 pl-2 group relative"
-                            title="UPI QR Code Image"
+                             title={balanceAmt <= 0 ? 'Invoice Fully Paid' : `UPI Payment QR (Balance: ₹${balanceAmt.toFixed(2)})`}
                           >
-                            <img 
-                              src={customQR || upiQrImg} 
-                              alt="UPI QR Code Image" 
-                              className="w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20 object-contain" 
-                            />
-                            <div className="mt-1 bg-[#1b9a59] text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600">
-                              UPI Click to Pay
-                            </div>
+                            {balanceAmt <= 0 ? (
+                              <div className="flex flex-col items-center justify-center py-2.5 px-3 border-2 border-emerald-600 bg-emerald-50 rounded-xl text-center shadow-xs">
+                                <span className="text-emerald-700 font-black text-sm tracking-widest uppercase">PAID</span>
+                                <span className="text-[9px] text-emerald-800 font-bold mt-0.5">No Balance Due</span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center">
+                                <img 
+                                  src={qrCodeUrl} 
+                                  alt={`UPI QR Code for ${docTitle} ${quoteDisplayId}`} 
+                                  className="w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20 object-contain" 
+                                  crossOrigin="anonymous"
+                                />
+                                <a
+                                  href={upiPaymentString}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-1 bg-[#1b9a59] hover:bg-[#158047] text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600 inline-block transition cursor-pointer"
+                                  title={`Click to pay ₹${balanceAmt.toFixed(2)} via UPI`}
+                                >
+                                  UPI Click to Pay
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -5005,7 +5055,7 @@ export default function CRMTab({
       {/* GLOBAL FULL-SCREEN IMAGE LIGHTBOX MODAL */}
       {previewImageModalUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setPreviewImageModalUrl(null)}
         >
           <div

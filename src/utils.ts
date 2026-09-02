@@ -114,11 +114,33 @@ export function compareOrdersByArticleSerialDesc<T extends { article_no?: string
   a: T,
   b: T
 ): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+
+  // 1. Compare creation timestamps if available (newest first)
+  const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+  const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+  if (!isNaN(timeA) && !isNaN(timeB) && timeA > 0 && timeB > 0 && Math.abs(timeA - timeB) > 1000) {
+    return timeB - timeA;
+  }
+
+  // 2. Compare order_date if dates are distinct
+  const dateA = a.order_date ? new Date(a.order_date).getTime() : 0;
+  const dateB = b.order_date ? new Date(b.order_date).getTime() : 0;
+  if (!isNaN(dateA) && !isNaN(dateB) && dateA > 0 && dateB > 0 && Math.abs(dateA - dateB) > 86400000) {
+    return dateB - dateA;
+  }
+
   const artA = a.article_no || a.articleNumber || '';
   const artB = b.article_no || b.articleNumber || '';
 
   const serialA = getArticleSerial(artA);
   const serialB = getArticleSerial(artB);
+
+  // If one has legacy 4-digit outlier (>1000) while other is normal serial (<=500), don't let 6841 supersede newer orders
+  if (serialA > 1000 && serialB <= 500) return 1; // B is newer
+  if (serialB > 1000 && serialA <= 500) return -1; // A is newer
 
   if (serialB !== serialA) {
     return serialB - serialA; // Descending order: 0008, 0007, 0006...
@@ -129,9 +151,7 @@ export function compareOrdersByArticleSerialDesc<T extends { article_no?: string
   if (strCompare !== 0) return strCompare;
 
   // Final fallback to date
-  const dateA = new Date(a.created_at || a.order_date || 0).getTime();
-  const dateB = new Date(b.created_at || b.order_date || 0).getTime();
-  return dateB - dateA;
+  return (timeB || dateB) - (timeA || dateA);
 }
 
 /**
@@ -311,6 +331,7 @@ export interface ResolvedCustomerInfo {
   address: string;
   city: string;
   email?: string;
+  productRequirement?: string;
 }
 
 /**
@@ -356,6 +377,7 @@ export function resolveQuotationCustomer(
       address: found.address || '',
       city: found.city || found.address || '',
       email: found.email || '',
+      productRequirement: found.productRequirement || found.notes || '',
     };
   }
 
@@ -365,6 +387,8 @@ export function resolveQuotationCustomer(
     phone: '',
     address: '',
     city: '',
+    email: '',
+    productRequirement: '',
   };
 }
 
@@ -408,10 +432,21 @@ export function reconcileQuotationsAndCustomers(state: any): any {
     const resolvedCustId = matchedCustomer ? matchedCustomer.id : q.customer_id;
     const resolvedCustName = matchedCustomer ? (matchedCustomer.name || q.customer_name) : q.customer_name;
 
-    const formattedItems = Array.isArray(q.items) ? q.items.map((item: any, idx: number) => ({
-      ...item,
-      id: item.id || `item_${q.id}_${idx + 1}`
-    })) : [];
+    const formattedItems = Array.isArray(q.items) ? q.items.map((item: any, idx: number) => {
+      const normalizedImages = Array.isArray(item?.images)
+        ? item.images.map((img: any) => {
+            if (typeof img === 'string') return { url: img, description: '' };
+            if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
+            return null;
+          }).filter(Boolean)
+        : [];
+
+      return {
+        ...item,
+        id: item.id || `item_${q.id}_${idx + 1}`,
+        images: normalizedImages
+      };
+    }) : [];
 
     if (q.customer_id !== resolvedCustId || q.customer_name !== resolvedCustName) {
       hasChanges = true;
@@ -425,11 +460,231 @@ export function reconcileQuotationsAndCustomers(state: any): any {
     };
   });
 
-  if (!hasChanges) return state;
+  // Also self-heal and generate missing production orders for any invoiced or approved quotations
+  let updatedOrders = Array.isArray(state.orders) ? [...state.orders] : [];
+  let updatedPayments = Array.isArray(state.payments) ? [...state.payments] : [];
+  let ordersChanged = false;
+
+  updatedQuotations.forEach((q: any) => {
+    if (!q || !Array.isArray(q.items) || q.items.length === 0) return;
+    const receivedAmt = Number(q.received_amount) || 0;
+    const isInvoice = receivedAmt > 0;
+    const isApproved = q.status === 'Approved';
+
+    if (isInvoice || isApproved) {
+      const grandTotal = Number(q.totalAmount) || 0;
+
+      q.items.forEach((item: any, idx: number) => {
+        if (!item) return;
+
+        const isMatch = updatedOrders.some((o: any) => {
+          const isParentMatch = o.parent_order_id === q.id || o.quotation_ref === q.id || o.id === `${q.id.replace('QT', 'ORD')}-${idx + 1}` || o.id === `${q.id.replace('QT', 'ORD')}-${item.id}` || o.id === q.id.replace('QT', 'ORD');
+          const isItemMatch = o.quotation_item_id === item.id || o.item_id === item.id || o.id.endsWith(`-${item.id}`) || o.id.endsWith(`-${idx + 1}`) || (q.items.length === 1 && (o.parent_order_id === q.id || o.quotation_ref === q.id)) || (o.sub_category === item.furnitureItem && (o.parent_order_id === q.id || o.quotation_ref === q.id));
+          return isParentMatch && isItemMatch;
+        });
+
+        if (!isMatch) {
+          ordersChanged = true;
+          const orderId = q.items.length > 1 ? `${q.id.replace('QT', 'ORD')}-${idx + 1}` : q.id.replace('QT', 'ORD');
+          
+          // Compute sequential article number
+          let maxSerial = 0;
+          updatedOrders.forEach((o: any) => {
+            if (o && o.article_no) {
+              const parts = String(o.article_no).split('/');
+              const num = parseInt(parts[parts.length - 1], 10);
+              if (!isNaN(num) && num > maxSerial && num <= 1000) {
+                maxSerial = num;
+              }
+            }
+          });
+          const nextSerial = Math.max(1, maxSerial + 1);
+          const now = new Date();
+          const dd = String(now.getDate()).padStart(2, '0');
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const nnnn = String(nextSerial).padStart(4, '0');
+          const artNo = `${dd}/${mm}/XX/${nnnn}`;
+
+          const itemTotal = Number(item.total) || Math.round(grandTotal / (q.items.length || 1));
+          const itemAdvance = grandTotal > 0 ? Math.round((itemTotal / grandTotal) * receivedAmt) : 0;
+
+          const newOrder: any = {
+            id: orderId,
+            parent_order_id: q.id,
+            quotation_ref: q.id,
+            quotation_item_id: item.id,
+            article_no: artNo,
+            customer_id: q.customer_id,
+            category: detectCategoryFromFurnitureItem(item.furnitureItem),
+            sub_category: item.furnitureItem || 'Custom Furniture',
+            size: item.dimensions || 'Custom',
+            custom_size: item.dimensions || 'Custom',
+            finish: 'Natural Teak Polish',
+            special_notes: `Quotation Ref: ${q.id} | Product: ${item.furnitureItem || ''}`,
+            design_type: 'Custom',
+            material: item.material || 'Solid Teak Wood(Sagwan)',
+            color_shade: 'Natural Teak / Walnut',
+            no_of_units: Math.max(1, Number(item.quantity) || 1),
+            carpenter_id: '',
+            polish_person_id: '',
+            current_status: 'Pending',
+            stage: 'Pending',
+            wood_schedule_status: 'Pending',
+            is_delayed: false,
+            priority: 'normal',
+            order_date: q.created_at ? q.created_at.split('T')[0] : now.toISOString().split('T')[0],
+            delivery_date: q.validUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            portal_token: Math.random().toString(36).substring(2, 10),
+            portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            qr_token: `https://bhisesworkshop.com/order/${orderId}`,
+            created_at: q.created_at || now.toISOString(),
+            created_by: q.created_by || 'Admin',
+            images: item.images || [],
+            total_amount: itemTotal,
+            advance_paid: itemAdvance,
+          };
+
+          updatedOrders = [newOrder, ...updatedOrders];
+
+          if (itemAdvance > 0) {
+            const paymentId = `PAY_${orderId}_ADV`;
+            if (!updatedPayments.some((p: any) => p.id === paymentId || p.order_id === orderId)) {
+              updatedPayments = [
+                {
+                  id: paymentId,
+                  order_id: orderId,
+                  amount: itemAdvance,
+                  date: q.created_at ? q.created_at.split('T')[0] : now.toISOString().split('T')[0],
+                  payment_mode: 'Cash',
+                  notes: `Advance payment for quotation invoice ${q.id}`,
+                  receipt_no: `REC-${orderId}`,
+                  created_at: q.created_at || now.toISOString(),
+                },
+                ...updatedPayments
+              ];
+            }
+          }
+        }
+      });
+    }
+  });
+
+  if (!hasChanges && !ordersChanged) return state;
 
   return {
     ...state,
     crmQuotations: updatedQuotations,
+    orders: updatedOrders,
+    payments: updatedPayments,
   };
 }
 
+/**
+ * Calculates a comparable numeric rank for CRM Customer Lead numbers.
+ * Supports patterns like CRM-YY-MM-SSS (e.g. CRM-26-08-019 -> 260800019).
+ */
+export function getCRMCustomerLeadRank(id?: string): number {
+  if (!id) return -1;
+  const str = String(id).trim();
+
+  // Standard format: CRM-YY-MM-SSS or CRM-YYYY-MM-SSS
+  const matchFull = str.match(/^CRM-(?:20)?(\d{2})-(\d{1,2})-(\d+)/i);
+  if (matchFull) {
+    const yy = parseInt(matchFull[1], 10) || 0;
+    const mm = parseInt(matchFull[2], 10) || 0;
+    const serial = parseInt(matchFull[3], 10) || 0;
+    return yy * 10000000 + mm * 100000 + serial;
+  }
+
+  // Format: CRM-NNNN
+  const matchSimple = str.match(/^CRM-(\d+)/i);
+  if (matchSimple) {
+    return parseInt(matchSimple[1], 10) || 0;
+  }
+
+  return -1;
+}
+
+/**
+ * Comparator function to sort CRM customer leads in strict DESCENDING order:
+ * - Newest lead number first (e.g. CRM-26-08-019 before CRM-26-08-018, CRM-26-09-001 before CRM-26-08-019)
+ * - Fallback to created_at timestamp descending
+ * - Fallback to alphanumeric ID descending
+ */
+export function compareCRMCustomersDesc<T extends { id?: string; created_at?: string; name?: string }>(
+  a: T,
+  b: T
+): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+
+  const rankA = getCRMCustomerLeadRank(a.id);
+  const rankB = getCRMCustomerLeadRank(b.id);
+
+  // If both have CRM lead numbers, higher/newer number comes first
+  if (rankA > 0 && rankB > 0 && rankA !== rankB) {
+    return rankB - rankA;
+  }
+
+  // If only one has a structured CRM lead number, prioritize structured CRM leads
+  if (rankA > 0 && rankB <= 0) return -1;
+  if (rankB > 0 && rankA <= 0) return 1;
+
+  // Fallback to creation timestamp descending
+  const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+  const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+  if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB && (timeA > 0 || timeB > 0)) {
+    return timeB - timeA;
+  }
+
+  // Fallback to natural alphanumeric ID comparison descending
+  const idA = a.id || '';
+  const idB = b.id || '';
+  const idComp = idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+  if (idComp !== 0) return idComp;
+
+  // Final fallback to name
+  return (a.name || '').localeCompare(b.name || '');
+}
+
+/**
+ * Automatically classifies a furniture item name into standard workshop category.
+ */
+export function detectCategoryFromFurnitureItem(name: string): string {
+  if (!name || typeof name !== 'string') return 'Living Room';
+  const lower = name.toLowerCase().trim();
+
+  if (lower.includes('door') || lower.includes('frame') || lower.includes('safety door')) {
+    return 'Door Frames';
+  }
+  if (lower.includes('bed') || lower.includes('wardrobe') || lower.includes('dressing') || lower.includes('cupboard') || lower.includes('side table') || lower.includes('bedroom')) {
+    return 'Beds';
+  }
+  if (lower.includes('mandir') || lower.includes('temple') || lower.includes('pooja') || lower.includes('rajasan')) {
+    return 'Wooden Mandirs';
+  }
+  if (lower.includes('sofa') || lower.includes('couch') || lower.includes('living')) {
+    return 'Wooden Sofas';
+  }
+  if (lower.includes('swing') || lower.includes('jhula') || lower.includes('zula')) {
+    return 'Wooden Swings';
+  }
+  if (lower.includes('dining') || lower.includes('chair') || lower.includes('crockery')) {
+    return 'Dining Tables';
+  }
+  if (lower.includes('teapoy') || lower.includes('coffee table') || lower.includes('center table')) {
+    return 'Teapoys & Coffee Tables';
+  }
+  if (lower.includes('tv') || lower.includes('unit') || lower.includes('entertainment')) {
+    return 'TV Units';
+  }
+  if (lower.includes('diwan') || lower.includes('khat')) {
+    return 'Diwans';
+  }
+  if (lower.includes('kitchen') || lower.includes('cabinet') || lower.includes('pantry')) {
+    return 'Kitchen';
+  }
+
+  return 'Living Room';
+}

@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage } from '../types';
 
 // Connect with proper authentication securely or proceed with existing auth session
 export async function authenticateFirebase(): Promise<boolean> {
@@ -194,10 +194,22 @@ export async function fetchFullFirestoreState(): Promise<Partial<AppState>> {
     try {
       const colRef = collection(db, name);
       const snapshot = await getDocs(colRef);
-      return snapshot.docs.map((docSnap) => ({
-        ...docSnap.data(),
-        id: docSnap.id,
-      }));
+      return snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        if (name === 'orders') {
+          const norm = normalizeStage(data.current_status || data.stage || data.status || data.production_stage || data.stage_name || 'Pending');
+          return {
+            ...data,
+            id: docSnap.id,
+            current_status: norm,
+            stage: norm,
+          };
+        }
+        return {
+          ...data,
+          id: docSnap.id,
+        };
+      });
     } catch (err) {
       console.warn(`Could not fetch collection ${name}:`, err);
       return [];
@@ -272,6 +284,15 @@ export function syncFirestore(
             const docId = docSnap.id;
             // Retain all non-empty documents safely without executing destructive auto-deletes
             if (!data) return null;
+            if (name === 'orders') {
+              const norm = normalizeStage(data.current_status || data.stage || data.status || data.production_stage || data.stage_name || 'Pending');
+              return {
+                ...data,
+                id: docId,
+                current_status: norm,
+                stage: norm,
+              };
+            }
             return {
               ...data,
               id: docId // Firestore document ID is authoritative
@@ -367,9 +388,12 @@ export async function fetchOrdersFromFirestore(): Promise<Order[]> {
     const snapshot = await getDocs(colRef);
     return snapshot.docs.map(docSnap => {
       const data = docSnap.data();
+      const norm = normalizeStage(data.current_status || data.stage || data.status || data.production_stage || data.stage_name || 'Pending');
       return {
         ...data,
-        id: docSnap.id
+        id: docSnap.id,
+        current_status: norm,
+        stage: norm,
       } as Order;
     });
   } catch (error) {
@@ -416,8 +440,14 @@ export async function fetchPaymentsFromFirestore(): Promise<Payment[]> {
 
 export async function saveOrderToFirebase(order: Order): Promise<void> {
   const path = `orders/${order.id}`;
+  const norm = normalizeStage(order.current_status || (order as any).stage || 'Pending');
+  const payload = {
+    ...order,
+    current_status: norm,
+    stage: norm,
+  };
   try {
-    await setDoc(doc(db, 'orders', order.id), cleanUndefined(order));
+    await setDoc(doc(db, 'orders', order.id), cleanUndefined(payload));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
@@ -610,8 +640,22 @@ export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
 export async function saveCRMQuotationToFirebase(quote: CRMQuotation): Promise<void> {
   const path = `crmQuotations/${quote.id}`;
   try {
-    await setDoc(doc(db, 'crmQuotations', quote.id), cleanUndefined(quote));
-  } catch (error) {
+    const sanitizedQuote: CRMQuotation = {
+      ...quote,
+      items: Array.isArray(quote.items) ? quote.items.map((item, idx) => ({
+        ...item,
+        id: item.id || `item_${quote.id}_${idx + 1}`,
+        images: Array.isArray(item.images)
+          ? item.images.map((img: any) => {
+              if (typeof img === 'string') return { url: img, description: '' };
+              if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
+              return null;
+            }).filter((img): img is { url: any; description: any } => img !== null)
+          : []
+      })) : []
+    };
+    await setDoc(doc(db, 'crmQuotations', quote.id), cleanUndefined(sanitizedQuote));
+    } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
   }

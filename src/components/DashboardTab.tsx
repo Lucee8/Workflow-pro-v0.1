@@ -353,7 +353,7 @@ export default function DashboardTab({
   // 3. Ongoing in factory: Count of orders whose current stage is not 'Pending'
   const ongoingInFactory = React.useMemo(() => {
     return filteredOrders.filter((o) => {
-      const stage = normalizeStage(o.current_status);
+      const stage = normalizeStage(o.current_status || (o as any).stage || (o as any).status);
       return stage !== 'Pending';
     }).length;
   }, [filteredOrders]);
@@ -397,7 +397,7 @@ export default function DashboardTab({
 
   // 5. Production stages counts
   const getStageCount = (stage: OrderStage) =>
-    filteredOrders.filter((o) => normalizeStage(o.current_status) === normalizeStage(stage)).length;
+    filteredOrders.filter((o) => normalizeStage(o.current_status || (o as any).stage || (o as any).status) === normalizeStage(stage)).length;
 
   const productionStages: {
     name: OrderStage;
