@@ -465,7 +465,7 @@ export default function DetailOrderFormTab({
 
   const approvedQuotations = React.useMemo(() => {
     return (crmQuotations || [])
-      .filter((q) => q.status === 'Approved')
+      .filter((q) => q.status === 'Approved' || q.status === 'INVOICED' || q.status === 'Invoiced')
       .sort((a, b) => {
         if (a.created_at && b.created_at) {
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -593,18 +593,27 @@ export default function DetailOrderFormTab({
       // Extract reference images uploaded during quotation stage for this specific item
       const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
       
-      const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> = rawItemImages.map((img: any, imgIdx: number) => {
-        const urlStr = typeof img === 'string' ? img : (img?.url || '');
-        const imgObj = {
-          id: `ref_q_${item.id || itemIdx}_${imgIdx}_${Math.random().toString(36).substring(2, 6)}`,
-          url: urlStr,
-          type: 'Design Reference' as const,
-        };
-        if (urlStr && !allExtractedImages.some((existing) => existing.url === urlStr)) {
-          allExtractedImages.push(imgObj);
-        }
-        return imgObj;
-      }).filter(img => Boolean(img.url));
+const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> =
+  rawItemImages
+    .map((img: any, imgIdx: number) => {
+      const urlStr = typeof img === 'string' ? img : (img?.url || '');
+
+      const imgObj = {
+        id: `ref_q_${item.id || itemIdx}_${imgIdx}_${Math.random().toString(36).substring(2, 6)}`,
+        url: urlStr,
+        type: 'Design Reference' as const,
+      };
+
+      if (urlStr && !allExtractedImages.some((existing) => existing.url === urlStr)) {
+        allExtractedImages.push(imgObj);
+      }
+
+      return imgObj;
+    })
+    .filter(
+      (img: { id: string; url: string; type: 'Design Reference' }) =>
+        Boolean(img.url),
+    );
       
       let matchedCat = 'Beds';
       for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
@@ -1000,8 +1009,8 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               className="px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#593622] text-stone-750 font-semibold w-full sm:w-64 max-w-sm"
             >
               <option value="">-- Select active order or approved quotation --</option>
-              <optgroup label="Approved Quotations (Pending Production)">
-                {crmQuotations?.filter((q) => q.status === 'Approved').map((quote) => (
+              <optgroup label="Approved & Invoiced Quotations">
+                {crmQuotations?.filter((q) => q.status === 'Approved' || q.status === 'INVOICED' || q.status === 'Invoiced').map((quote) => (
                   <option key={`quote_${quote.id}`} value={`quote_${quote.id}`}>
                     {quote.id} • {quote.customer_name}
                   </option>

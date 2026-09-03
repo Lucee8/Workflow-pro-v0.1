@@ -476,7 +476,7 @@ export interface CRMQuotation {
   notes?: string;
   paymentTerms?: string;
   deliveryTerms?: string;
-  status: 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Expired';
+  status: 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Expired' | 'INVOICED' | 'Invoiced';
   created_at: string;
   created_by: string;
   estimateNo?: number;

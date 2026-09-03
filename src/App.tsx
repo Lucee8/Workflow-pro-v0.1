@@ -622,8 +622,14 @@ export default function App() {
 
   const handleSaveCRMQuotation = (quote: CRMQuotation) => {
     const custInfo = resolveQuotationCustomer(quote, db.crmCustomers, db.customers);
+    const receivedAmt = Number(quote.received_amount) || 0;
+    const isApproved = quote.status === 'Approved';
+    const isInvoice = !isApproved && (receivedAmt > 0 || quote.status === 'INVOICED' || quote.status === 'Invoiced');
+    const finalStatus = isApproved ? 'Approved' : (isInvoice ? 'INVOICED' : quote.status);
+
     const sanitizedQuote: CRMQuotation = {
       ...quote,
+      status: finalStatus,
       customer_id: custInfo.id || quote.customer_id,
       customer_name: custInfo.name || quote.customer_name,
       items: Array.isArray(quote.items) ? quote.items.map((item, idx) => ({
@@ -645,10 +651,7 @@ export default function App() {
       : [sanitizedQuote, ...db.crmQuotations];
     saveCRMQuotationToFirebase(sanitizedQuote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
 
-    const receivedAmt = Number(sanitizedQuote.received_amount) || 0;
     const grandTotal = Number(sanitizedQuote.totalAmount) || 0;
-    const isInvoice = receivedAmt > 0;
-    const isApproved = sanitizedQuote.status === 'Approved';
 
     // Auto-create or update production orders whenever receivedAmount > 0 (Invoice) or Approved
     if ((isInvoice || isApproved) && Array.isArray(sanitizedQuote.items) && sanitizedQuote.items.length > 0) {

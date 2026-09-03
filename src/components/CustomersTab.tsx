@@ -130,7 +130,7 @@ export default function CustomersTab({
       // 2. Process any approved quotations for this customer that haven't been converted to active orders yet
       if (crmQuotations && crmQuotations.length > 0) {
         const approvedQuotes = crmQuotations.filter(
-          (q) => q.customer_id === activeCustomer.id && q.status === 'Approved'
+          (q) => q.customer_id === activeCustomer.id && (q.status === 'Approved' || q.status === 'INVOICED' || q.status === 'Invoiced')
         );
 
         approvedQuotes.forEach((quote) => {

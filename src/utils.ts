@@ -448,12 +448,20 @@ export function reconcileQuotationsAndCustomers(state: any): any {
       };
     }) : [];
 
+    const isApproved = q.status === 'Approved';
+    const isInvoice = !isApproved && ((Number(q.received_amount) || 0) > 0 || q.status === 'INVOICED' || q.status === 'Invoiced');
+    const normalizedStatus = isApproved ? 'Approved' : (isInvoice ? 'INVOICED' : q.status);
+    if (q.status !== normalizedStatus) {
+      hasChanges = true;
+    }
+
     if (q.customer_id !== resolvedCustId || q.customer_name !== resolvedCustName) {
       hasChanges = true;
     }
 
     return {
       ...q,
+      status: normalizedStatus,
       customer_id: resolvedCustId,
       customer_name: resolvedCustName,
       items: formattedItems
@@ -468,7 +476,7 @@ export function reconcileQuotationsAndCustomers(state: any): any {
   updatedQuotations.forEach((q: any) => {
     if (!q || !Array.isArray(q.items) || q.items.length === 0) return;
     const receivedAmt = Number(q.received_amount) || 0;
-    const isInvoice = receivedAmt > 0;
+    const isInvoice = receivedAmt > 0 || q.status === 'INVOICED' || q.status === 'Invoiced';
     const isApproved = q.status === 'Approved';
 
     if (isInvoice || isApproved) {

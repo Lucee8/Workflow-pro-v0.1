@@ -86,6 +86,7 @@ import {
   Loader2,
   Truck,
   RefreshCw,
+  Receipt,
   PieChart as PieChartIcon
 } from 'lucide-react';
 
@@ -823,7 +824,7 @@ export default function CRMTab({
 
     const custQuotes = db.crmQuotations?.filter(q => q.customer_id === cust.id) || [];
     if (custQuotes.length > 0) {
-      if (custQuotes.some(q => q.status === 'Approved')) {
+      if (custQuotes.some(q => q.status === 'Approved' || q.status === 'INVOICED' || q.status === 'Invoiced')) {
         return 'Order Confirmed';
       }
       if (custQuotes.some(q => q.status === 'Sent')) {
@@ -1353,6 +1354,31 @@ export default function CRMTab({
     }
   };
 
+  const handleGenerateInvoiceForQuotation = (quote: CRMQuotation) => {
+    if (!hasWriteAccess) return;
+
+    const updatedQuote: CRMQuotation = {
+      ...quote,
+      status: 'INVOICED',
+      received_amount: (Number(quote.received_amount) || 0) > 0 ? quote.received_amount : 0
+    };
+    onSaveCRMQuotation(updatedQuote);
+
+    // Add Timeline Event
+    const timelineEvent: CRMTimelineEvent = {
+      id: generateId('evt'),
+      customer_id: quote.customer_id,
+      type: 'quotation_approved',
+      title: 'Invoice Generated',
+      description: `Invoice generated for Quotation ${quote.id}. Total: ₹${(quote.totalAmount ?? 0).toLocaleString('en-IN')}. Status set to INVOICED. "Approve & Convert" is now enabled.`,
+      timestamp: new Date().toISOString(),
+      operator: currentUser.name
+    };
+    onSaveCRMTimelineEvent(timelineEvent);
+
+    alert(`Success: Invoice for Quotation ${quote.id} generated successfully! Status updated to INVOICED. "Approve & Convert" is now available.`);
+  };
+
   const handleAddManualTimelineEvent = (custId: string, type: 'phone_call' | 'whatsapp_msg' | 'email_sent', details: string) => {
     if (!hasWriteAccess) return;
     const evt: CRMTimelineEvent = {
@@ -1416,7 +1442,7 @@ export default function CRMTab({
     });
   };
 
-  const handleSaveQuotation = (statusToSave: 'Draft' | 'Sent') => {
+  const handleSaveQuotation = (statusToSave: 'Draft' | 'Sent' | 'INVOICED') => {
     if (!hasWriteAccess) return;
     if (!quoteCustomerId) {
       alert('Please select a Customer Lead.');
@@ -1472,6 +1498,16 @@ export default function CRMTab({
     const resolvedCustId = customer.id || quoteCustomerId;
     const resolvedCustName = customer.name || 'Customer';
 
+    const isInvoice = statusToSave === 'INVOICED' || quoteReceivedAmount > 0;
+    const determinedStatus: 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'INVOICED' = 
+      isInvoice 
+        ? 'INVOICED' 
+        : (statusToSave === 'Draft'
+            ? 'Draft'
+            : (statusToSave === 'Sent'
+                ? 'Sent'
+                : (editingQuotation?.status === 'Approved' ? 'Approved' : 'Sent')));
+
     const newQuote: CRMQuotation = {
       id: quoteId,
       customer_id: resolvedCustId,
@@ -1487,7 +1523,7 @@ export default function CRMTab({
       paymentTerms: quotePaymentTerms,
       deliveryTerms: quoteDeliveryTerms,
       notes: quoteNotes,
-      status: editingQuotation ? (editingQuotation.status === 'Approved' ? 'Approved' : statusToSave) : statusToSave,
+      status: determinedStatus,
       created_at: editingQuotation ? editingQuotation.created_at : new Date().toISOString(),
       created_by: editingQuotation ? editingQuotation.created_by : currentUser.name,
       estimateNo: editingQuotation ? editingQuotation.estimateNo : nextEstimateNo,
@@ -1502,16 +1538,22 @@ export default function CRMTab({
     onSaveCRMTimelineEvent({
       id: generateId('evt'),
       customer_id: quoteCustomerId,
-      type: statusToSave === 'Draft' ? 'note_added' : 'quotation_sent',
-      title: editingQuotation ? 'Price Quotation Updated' : (statusToSave === 'Draft' ? 'Quotation Draft Saved' : 'Quotation Issued to Client'),
-      description: `Quotation ${quoteId} (${quoteItems.length} product${quoteItems.length > 1 ? 's' : ''}: ${quoteItems.map(i => i.furnitureItem).join(', ')}) saved for ₹${quoteGrandTotal.toLocaleString('en-IN')}.`,
+      type: isInvoice ? 'quotation_approved' : (statusToSave === 'Draft' ? 'note_added' : 'quotation_sent'),
+      title: isInvoice ? 'Invoice Generated' : (editingQuotation ? 'Price Quotation Updated' : (statusToSave === 'Draft' ? 'Quotation Draft Saved' : 'Quotation Issued to Client')),
+      description: `Quotation ${quoteId} (${quoteItems.length} product${quoteItems.length > 1 ? 's' : ''}: ${quoteItems.map(i => i.furnitureItem).join(', ')}) saved for ₹${quoteGrandTotal.toLocaleString('en-IN')}.${isInvoice ? ' Status set to INVOICED.' : ''}`,
       timestamp: new Date().toISOString(),
       operator: currentUser.name
     });
 
     setShowAddQuoteModal(false);
     setEditingQuotation(null);
-    alert(`Success: Quotation ${quoteId} ${editingQuotation ? 'updated' : 'created'} successfully (${statusToSave}).`);
+    if (determinedStatus === 'INVOICED') {
+      alert(`Success: Invoice for ${quoteId} generated successfully! Current Status: INVOICED. "Approve & Convert" is now available.`);
+    } else if (determinedStatus === 'Draft') {
+      alert(`Success: Quotation ${quoteId} saved as Draft.`);
+    } else {
+      alert(`Success: Quotation ${quoteId} ${editingQuotation ? 'updated' : 'issued'} successfully (Status: Sent).`);
+    }
   };
 
   const handleCreateFollowup = (e: React.FormEvent<HTMLFormElement>) => {
@@ -2721,17 +2763,29 @@ export default function CRMTab({
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                        q.status === 'Approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                       q.status === 'INVOICED' || q.status === 'Invoiced' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                        q.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                                        q.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-amber-100 text-amber-700'
                                       }`}>
                                         {q.status}
                                       </span>
-                                      {q.status === 'Sent' && hasWriteAccess && (
+                                      {(q.status === 'INVOICED' || q.status === 'Invoiced') && hasWriteAccess && (
                                         <button
                                           onClick={() => handleConvertQuotationToOrder(q)}
-                                          className="bg-[#593622] hover:bg-[#4d2f1e] text-white p-1 rounded transition"
-                                          title="Convert to Order"
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white p-1 rounded transition"
+                                          title="Approve & Convert to Production Order"
                                         >
                                           <FileCheck size={12} />
+                                        </button>
+                                      )}
+                                      {(q.status === 'Sent' || q.status === 'Draft') && hasWriteAccess && (
+                                        <button
+                                          onClick={() => handleGenerateInvoiceForQuotation(q)}
+                                          className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 p-1 rounded transition"
+                                          title="Generate Invoice (Unlocks Approve & Convert)"
+                                        >
+                                          <Receipt size={12} />
                                         </button>
                                       )}
                                     </div>
@@ -3010,6 +3064,7 @@ export default function CRMTab({
                           <td className="p-4 font-mono font-bold text-stone-950">₹{(quote.totalAmount ?? 0).toLocaleString('en-IN')}</td>
                           <td className="p-4">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                              quote.status === 'INVOICED' || quote.status === 'Invoiced' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                               quote.status === 'Approved' ? 'bg-green-100 text-green-700' :
                               quote.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
                               quote.status === 'Draft' ? 'bg-amber-100 text-amber-700' :
@@ -3021,14 +3076,25 @@ export default function CRMTab({
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex justify-end gap-1.5 items-center">
-                              {quote.status === 'Sent' && hasWriteAccess && (
-                                <button
+                              {/* Approve & Convert: ONLY visible when status is INVOICED */}
+                              {(quote.status === 'INVOICED' || quote.status === 'Invoiced') && hasWriteAccess && (
+                            <button
                                   onClick={() => handleConvertQuotationToOrder(quote)}
                                   className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition shadow-xs whitespace-nowrap"
                                   title="Approve & Convert to Production Order"
                                 >
                                   <FileCheck size={12} />
                                   <span>Approve & Convert</span>
+                                </button>
+                              )}
+                              {(quote.status === 'Sent' || quote.status === 'Draft') && hasWriteAccess && (
+                                <button
+                                  onClick={() => handleGenerateInvoiceForQuotation(quote)}
+                                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition whitespace-nowrap"
+                                  title="Generate Invoice (Unlocks Approve & Convert)"
+                                >
+                                  <Receipt size={12} />
+                                  <span>Generate Invoice</span>
                                 </button>
                               )}
                               {hasWriteAccess && (
@@ -4150,18 +4216,29 @@ export default function CRMTab({
                   type="button"
                   onClick={() => handleSaveQuotation('Draft')}
                   className="px-4 py-2.5 rounded-xl border border-amber-600 text-amber-900 bg-amber-50 hover:bg-amber-100 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
-                >
+                  title="Save as Draft (Approve & Convert will remain hidden)"
+                 >
                   <span>Save as Draft</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSaveQuotation('Sent')}
                   className="px-5 py-2.5 rounded-xl bg-[#593622] hover:bg-[#482b1b] text-white font-bold text-xs transition shadow-md cursor-pointer flex items-center gap-1.5"
+                  title="Issue Quotation (Approve & Convert will remain hidden until Invoiced)"
                 >
                   <FileCheck size={15} />
                   <span>{editingQuotation ? 'Update Price Quotation' : 'Issue Quotation'}</span>
                 </button>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => handleSaveQuotation('INVOICED')}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition shadow-md cursor-pointer flex items-center gap-1.5"
+                  title="Generate Invoice (Immediately activates Approve & Convert)"
+                >
+                  <Receipt size={15} />
+                  <span>Generate Invoice</span>
+                </button>              
+                </div>
             </div>
           </motion.div>
         </div>
@@ -4580,6 +4657,19 @@ export default function CRMTab({
                     Share via WhatsApp
                   </a>
 
+                  {hasWriteAccess && activeQuote.status !== 'INVOICED' && activeQuote.status !== 'Invoiced' && activeQuote.status !== 'Approved' && (
+                    <button
+                      onClick={() => {
+                        handleGenerateInvoiceForQuotation(activeQuote);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      title="Generate official Invoice and set status to INVOICED"
+                    >
+                      <Receipt size={13} />
+                      Generate Invoice
+                    </button>
+                  )}
+                  
                   <button
                     onClick={handlePrintEstimate}
                     className="bg-[#593622] hover:bg-[#4d2f1e] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
