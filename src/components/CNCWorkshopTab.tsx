@@ -25,7 +25,6 @@ import {
   Search, 
   Filter, 
   ArrowRight, 
-  FileText, 
   Printer, 
   TrendingUp, 
   Check, 
@@ -38,12 +37,17 @@ import {
   Sparkles,
   ExternalLink,
   ChevronDown,
+  ChevronUp,
+  X,
+  Save,
+  FileCode,
   Info,
   Lock,
   Sliders,
   LayoutDashboard,
   TrendingDown,
-  Gauge
+  Gauge,
+  Pencil
 } from 'lucide-react';
 import { generateUUID } from '../db/store';
 import { formatToDDMMYYYY } from '../utils';
@@ -87,6 +91,22 @@ const DEFAULT_MACHINES = [
   '4-Axis Rotary Carver',
   'Vertical Spindle Router',
   'Manual Assist Carver',
+];
+
+// Approved Stitch Form Options
+const FORM_JOB_TYPES: CNCJobType[] = ['Cutting', 'Carving', 'Turning', 'Pillar'];
+const FORM_MACHINES = ['Machine 1', 'Machine 2'];
+const FORM_TOOLS = [
+  'mm',
+  '1.5mm',
+  '2mm',
+  '2mm Taper',
+  '3mm',
+  '4mm',
+  '5mm',
+  '5mm Endmill',
+  '6mm',
+  'Turning',
 ];
 
 const DEFAULT_JOB_TYPES: CNCJobType[] = [
@@ -137,7 +157,7 @@ export default function CNCWorkshopTab({
   onUpdateOrder,
 }: CNCWorkshopTabProps) {
   // Navigation Sub-tabs
-  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'queue' | 'daily_log' | 'inventory' | 'reports'>('dashboard');
+  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'queue' | 'inventory' | 'reports'>('dashboard');
 
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -160,32 +180,90 @@ export default function CNCWorkshopTab({
   const [jobFormData, setJobFormData] = useState<Partial<CNCJob>>({
     job_number: '',
     job_date: new Date().toISOString().split('T')[0],
-    job_type: '3D Relief',
-    machine_name: 'CNC Router #1 (Heavy 8x4)',
-    tool_name: '6mm Ball Nose Bit',
+    job_type: 'Carving',
+    machine_name: 'Machine 1',
+    tool_name: '2mm Taper',
     run_time_minutes: 90,
-    amount: 1500,
-    status: 'Queued',
-    operator_name: currentUser.name || 'CNC Supervisor',
+    design_time_minutes: 45,
+    completion_time_minutes: 90,
+    amount: 1850,
+    status: 'In Progress',
+    operator_name: currentUser.name || 'Lucee Admin',
     material: 'Teak Wood',
-    dimensions: '36" x 18" x 1.5"',
-    design_file: '',
-    notes: '',
+    dimensions: '',
+    design_file: 'mandir_panel_relief_v2.nc',
+    notes: '3D relief floral mandir jaali carving on 1.25" seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit.',
   });
 
-  // Form State for CNC Tool
-  const [toolFormData, setToolFormData] = useState<Partial<CNCTool>>({
-    tool_code: '',
+  // Mobile expandable card state for Job Queue
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+
+  const toggleExpandJob = (jobId: string) => {
+    setExpandedJobIds(prev => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  };
+
+  // Tool Inventory Filters & Expansion State
+  const [toolSearchTerm, setToolSearchTerm] = useState('');
+  const [toolStatusFilter, setToolStatusFilter] = useState<string>('all');
+  const [toolConditionFilter, setToolConditionFilter] = useState<string>('all');
+  const [toolTypeFilter, setToolTypeFilter] = useState<string>('all');
+  const [expandedToolIds, setExpandedToolIds] = useState<Set<string>>(new Set());
+
+  const toggleExpandTool = (toolId: string) => {
+    setExpandedToolIds(prev => {
+      const next = new Set(prev);
+      if (next.has(toolId)) next.delete(toolId);
+      else next.add(toolId);
+      return next;
+    });
+  };
+
+  // Stock status determination: Stock Qty = 0 -> Out of Stock, Stock Qty <= Min. Stock -> Low Stock
+  const getToolStatus = (tool: { quantity_in_stock?: number; min_stock_level?: number; reorder_level?: number; status?: string }): 'In stock' | 'Low stock' | 'Out of stock' => {
+    const qty = Number(tool.quantity_in_stock) ?? 0;
+    const min = Number(tool.min_stock_level ?? tool.reorder_level ?? 1);
+    if (qty <= 0) return 'Out of stock';
+    if (qty <= min) return 'Low stock';
+    if (tool.status === 'Low stock' || tool.status === 'Out of stock') {
+      return tool.status;
+    }
+    return 'In stock';
+  };
+
+  // Form State for CNC Tool (Google Stitch design)
+  const [toolFormData, setToolFormData] = useState<{
+    name: string;
+    tool_type: string;
+    specification: string;
+    quantity_in_stock: number;
+    min_stock_level: number;
+    condition: CNCToolCondition;
+    total_run_hours: number;
+    unit_cost: number;
+    last_replaced_date: string;
+    status: 'In stock' | 'Low stock' | 'Out of stock';
+    notes: string;
+    // Legacy fields preserved silently
+    tool_code?: string;
+    diameter_mm?: string;
+    shank_mm?: string;
+    reorder_level?: number;
+  }>({
     name: '',
     tool_type: 'Ball Nose',
-    diameter_mm: '6mm',
-    shank_mm: '1/2"',
-    quantity_in_stock: 3,
-    reorder_level: 2,
+    specification: '',
+    quantity_in_stock: 2,
+    min_stock_level: 1,
     condition: 'Good',
     total_run_hours: 0,
     unit_cost: 650,
-    status: 'In Service',
+    last_replaced_date: new Date().toISOString().split('T')[0],
+    status: 'In stock',
     notes: '',
   });
 
@@ -200,6 +278,88 @@ export default function CNCWorkshopTab({
   const pendingQueueOrders = useMemo(() => {
     return orders.filter(o => o.requires_cnc === true && o.current_status === 'CNC Wood Carving');
   }, [orders]);
+
+  // Unified Job Queue list (combines recorded CNC jobs and pending orders for CNC)
+  const queueItems = useMemo(() => {
+    // 1. All recorded CNC jobs
+    const items: Array<{
+      id: string;
+      article_no: string;
+      job_date: string;
+      job_type: string;
+      machine_name: string;
+      tool_name: string;
+      design_time: number;
+      completion_time: number;
+      amount: number;
+      operator_name: string;
+      status: CNCJobStatus;
+      isOrderPendingOnly?: boolean;
+      rawJob?: CNCJob;
+      rawOrder?: Order;
+    }> = cncJobs.map(job => ({
+      id: job.id,
+      article_no: job.article_no || job.job_number || 'CNC-JOB',
+      job_date: job.job_date || '',
+      job_type: job.job_type || 'Carving',
+      machine_name: job.machine_name || 'Machine 1',
+      tool_name: job.tool_name || '2mm Taper',
+      design_time: job.design_time_minutes ?? 0,
+      completion_time: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
+      amount: job.amount || 0,
+      operator_name: job.operator_name || 'Lucee Admin',
+      status: job.status || 'Queued',
+      isOrderPendingOnly: false,
+      rawJob: job,
+      rawOrder: orders.find(o => o.id === job.order_id),
+    }));
+
+    // 2. Add pending queue orders that do not have a CNC job record yet
+    pendingQueueOrders.forEach(ord => {
+      const alreadyHasJob = cncJobs.some(j => j.order_id === ord.id);
+      if (!alreadyHasJob) {
+        items.push({
+          id: `pending_ord_${ord.id}`,
+          article_no: ord.article_no || 'ORD-CNC',
+          job_date: ord.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+          job_type: (ord.cnc_job_type as any) || 'Carving',
+          machine_name: 'Machine 1',
+          tool_name: ord.cnc_tool_used || '2mm Taper',
+          design_time: 0,
+          completion_time: ord.cnc_duration_minutes || 60,
+          amount: ord.cnc_amount || 0,
+          operator_name: 'Unassigned',
+          status: ord.cnc_status === 'in_progress' ? 'In Progress' : ord.cnc_status === 'completed' ? 'Completed' : 'Queued',
+          isOrderPendingOnly: true,
+          rawOrder: ord,
+        });
+      }
+    });
+
+    return items;
+  }, [cncJobs, pendingQueueOrders, orders]);
+
+  // Filtered queue items based on search and statusFilter
+  const filteredQueueItems = useMemo(() => {
+    return queueItems.filter(item => {
+      const q = searchTerm.toLowerCase();
+      const matchSearch =
+        !q ||
+        item.article_no.toLowerCase().includes(q) ||
+        item.job_type.toLowerCase().includes(q) ||
+        item.machine_name.toLowerCase().includes(q) ||
+        item.tool_name.toLowerCase().includes(q) ||
+        item.operator_name.toLowerCase().includes(q);
+
+      const matchStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'Queued' && (item.status === 'Queued' || item.status === 'Pending')) ||
+        (statusFilter === 'In Progress' && item.status === 'In Progress') ||
+        (statusFilter === 'Completed' && item.status === 'Completed');
+
+      return matchSearch && matchStatus;
+    }).sort((a, b) => (b.job_date || '').localeCompare(a.job_date || ''));
+  }, [queueItems, searchTerm, statusFilter]);
 
   // Orders that have CNC requirements or logs
   const cncEligibleOrders = useMemo(() => {
@@ -237,7 +397,7 @@ export default function CNCWorkshopTab({
       t.condition === 'Needs Resharpening' || 
       t.condition === 'Worn Out' || 
       t.condition === 'Dull' ||
-      (t.quantity_in_stock <= t.reorder_level)
+      (t.quantity_in_stock <= (t.min_stock_level ?? t.reorder_level ?? 1))
     );
 
     return {
@@ -252,6 +412,66 @@ export default function CNCWorkshopTab({
       activeQueueCount: pendingQueueOrders.length,
     };
   }, [cncJobs, cncTools, selectedMonth, pendingQueueOrders]);
+
+  // Available unique tool types for inventory filter
+  const availableToolTypes = useMemo(() => {
+    const typesSet = new Set<string>(DEFAULT_TOOL_TYPES);
+    cncTools.forEach(t => {
+      if (t.tool_type && t.tool_type.trim()) typesSet.add(t.tool_type.trim());
+    });
+    return Array.from(typesSet);
+  }, [cncTools]);
+
+  // Filtered & Sorted Tools List for Tool Inventory
+  const filteredTools = useMemo(() => {
+    return cncTools
+      .filter(tool => {
+        // 1. Search Query
+        const q = toolSearchTerm.toLowerCase().trim();
+        if (q) {
+          const matchesName = tool.name?.toLowerCase().includes(q);
+          const matchesSpec = tool.specification?.toLowerCase().includes(q);
+          const matchesType = tool.tool_type?.toLowerCase().includes(q);
+          const matchesNotes = tool.notes?.toLowerCase().includes(q);
+          const matchesSupplier = tool.supplier?.toLowerCase().includes(q);
+          if (!matchesName && !matchesSpec && !matchesType && !matchesNotes && !matchesSupplier) {
+            return false;
+          }
+        }
+
+        // 2. Status filter
+        const status = getToolStatus(tool);
+        if (toolStatusFilter !== 'all' && status !== toolStatusFilter) {
+          return false;
+        }
+
+        // 3. Condition filter
+        if (toolConditionFilter !== 'all' && tool.condition !== toolConditionFilter) {
+          return false;
+        }
+
+        // 4. Tool Type filter
+        if (toolTypeFilter !== 'all' && tool.tool_type !== toolTypeFilter) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        // Sort low/out-of-stock tools first
+        const statusScore = (t: CNCTool) => {
+          const s = getToolStatus(t);
+          if (s === 'Out of stock') return 0;
+          if (s === 'Low stock') return 1;
+          return 2;
+        };
+
+        const diff = statusScore(a) - statusScore(b);
+        if (diff !== 0) return diff;
+
+        return (a.name || '').localeCompare(b.name || '');
+      });
+  }, [cncTools, toolSearchTerm, toolStatusFilter, toolConditionFilter, toolTypeFilter]);
 
   // Workshop Cost Structure Configuration (Admin-editable only)
   const [costConfig, setCostConfig] = useState<WorkshopCostConfig>(() => {
@@ -370,14 +590,6 @@ export default function CNCWorkshopTab({
 
   const projectedProfit = projectedMonthRevenue - monthlyCostTarget;
 
-  // User Initials
-  const userInitials = useMemo(() => {
-    const name = currentUser?.name || 'Master Operator';
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return name.slice(0, 2).toUpperCase() || 'WM';
-  }, [currentUser]);
-
   // Admin Cost Structure Handler
   const handleSaveCostConfig = (e: React.FormEvent) => {
     e.preventDefault();
@@ -410,39 +622,44 @@ export default function CNCWorkshopTab({
       setJobFormData({
         job_number: nextJobNo,
         order_id: order.id,
-        article_no: order.article_no,
-        customer_name: cust?.name || 'Bhisez Client',
+        article_no: order.article_no || nextJobNo,
+        customer_name: cust?.name || 'Walk-in Client',
         product_name: order.sub_category || order.category || 'Furniture Item',
-        job_type: order.cnc_job_type || '3D Relief',
-        machine_name: 'CNC Router #1 (Heavy 8x4)',
-        tool_name: order.cnc_tool_used || (cncTools[0]?.name || '6mm Ball Nose Bit'),
+        job_type: 'Carving',
+        machine_name: 'Machine 1',
+        tool_name: '2mm Taper',
         run_time_minutes: order.cnc_duration_minutes || 90,
-        amount: order.cnc_amount || 1500,
+        design_time_minutes: 45,
+        completion_time_minutes: order.cnc_duration_minutes || 90,
+        amount: order.cnc_amount || 1850,
         status: 'In Progress',
-        operator_name: currentUser.name || 'CNC Supervisor',
+        operator_name: currentUser.name || 'Lucee Admin',
         job_date: new Date().toISOString().split('T')[0],
         material: order.material || 'Teak Wood',
-        dimensions: order.size === 'Custom' ? (order.custom_size || 'Custom Size') : (order.size || '36" x 18"'),
-        design_file: '',
-        notes: order.cnc_notes || order.special_notes || '',
+        dimensions: '',
+        design_file: 'mandir_panel_relief_v2.nc',
+        notes: order.cnc_notes || '3D relief floral mandir jaali carving on 1.25" seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit.',
       });
     } else {
       setSelectedOrderForJob(null);
       setEditingJob(null);
       setJobFormData({
         job_number: nextJobNo,
+        article_no: nextJobNo,
         job_date: new Date().toISOString().split('T')[0],
-        job_type: '3D Relief',
-        machine_name: 'CNC Router #1 (Heavy 8x4)',
-        tool_name: cncTools[0]?.name || '6mm Ball Nose Bit',
-        run_time_minutes: 60,
-        amount: 1200,
-        status: 'Queued',
-        operator_name: currentUser.name || 'CNC Supervisor',
+        job_type: 'Carving',
+        machine_name: 'Machine 1',
+        tool_name: '2mm Taper',
+        run_time_minutes: 90,
+        design_time_minutes: 45,
+        completion_time_minutes: 90,
+        amount: 1850,
+        status: 'In Progress',
+        operator_name: currentUser.name || 'Lucee Admin',
         material: 'Teak Wood',
-        dimensions: 'Standard Panel',
-        design_file: '',
-        notes: '',
+        dimensions: '',
+        design_file: 'mandir_panel_relief_v2.nc',
+        notes: '3D relief floral mandir jaali carving on 1.25" seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit.',
       });
     }
     setIsJobModalOpen(true);
@@ -453,39 +670,72 @@ export default function CNCWorkshopTab({
     setEditingJob(job);
     const linkedOrder = orders.find(o => o.id === job.order_id);
     setSelectedOrderForJob(linkedOrder || null);
-    setJobFormData({ ...job });
+    setJobFormData({
+      ...job,
+      job_number: job.job_number || job.article_no || '',
+      article_no: job.article_no || job.job_number || '',
+      job_type: (job.job_type as CNCJobType) || 'Carving',
+      machine_name: job.machine_name || 'Machine 1',
+      tool_name: job.tool_name || '2mm Taper',
+      design_time_minutes: job.design_time_minutes ?? 0,
+      completion_time_minutes: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
+      material: job.material || 'Teak Wood',
+      amount: job.amount || 0,
+      operator_name: job.operator_name || currentUser.name || 'Lucee Admin',
+      design_file: job.design_file || '',
+      notes: job.notes || '',
+    });
     setIsJobModalOpen(true);
+  };
+
+  // Start job in queue
+  const handleStartJob = async (job: CNCJob) => {
+    const inProgressJob: CNCJob = {
+      ...job,
+      status: 'In Progress',
+    };
+    await onSaveJob(inProgressJob);
+    if (job.order_id) {
+      const targetOrder = orders.find(o => o.id === job.order_id);
+      if (targetOrder) {
+        await handleStartCNCWorking(targetOrder);
+      }
+    }
   };
 
   // Submit CNC Job Form
   const handleSubmitJobForm = async (e: React.FormEvent) => {
     e.preventDefault();
     const jobId = editingJob ? editingJob.id : `cnc_job_${generateUUID().split('-')[0]}`;
-    const autoJobNo = jobFormData.job_number || `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+    const autoJobNo = jobFormData.article_no || jobFormData.job_number || `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+    const compTime = Number(jobFormData.completion_time_minutes) || Number(jobFormData.run_time_minutes) || 0;
+    const desTime = Number(jobFormData.design_time_minutes) || 0;
 
     const jobToSave: CNCJob = {
       id: jobId,
       job_number: autoJobNo,
       order_id: jobFormData.order_id || selectedOrderForJob?.id || undefined,
-      article_no: jobFormData.article_no || selectedOrderForJob?.article_no || 'CNC-ADHOC',
-      customer_name: jobFormData.customer_name || 'Bespoke Client',
-      product_name: jobFormData.product_name || 'CNC Wooden Component',
-      job_type: jobFormData.job_type || '3D Relief',
-      machine_name: jobFormData.machine_name || 'CNC Router #1 (Heavy 8x4)',
-      tool_name: jobFormData.tool_name || '6mm Ball Nose Bit',
+      article_no: autoJobNo,
+      customer_name: editingJob?.customer_name || 'Walk-in Client',
+      product_name: editingJob?.product_name || 'CNC Component',
+      job_type: (jobFormData.job_type as CNCJobType) || 'Carving',
+      machine_name: jobFormData.machine_name || 'Machine 1',
+      tool_name: jobFormData.tool_name || '2mm Taper',
       tool_id: jobFormData.tool_id,
-      run_time_minutes: Number(jobFormData.run_time_minutes) || 0,
+      run_time_minutes: compTime,
+      design_time_minutes: desTime,
+      completion_time_minutes: compTime,
       amount: Number(jobFormData.amount) || 0,
-      status: (jobFormData.status as CNCJobStatus) || 'In Progress',
-      operator_name: jobFormData.operator_name || currentUser.name || 'CNC Operator',
+      status: (editingJob?.status) || (jobFormData.status as CNCJobStatus) || 'In Progress',
+      operator_name: jobFormData.operator_name || currentUser.name || 'Lucee Admin',
       job_date: jobFormData.job_date || new Date().toISOString().split('T')[0],
       material: jobFormData.material || 'Teak Wood',
-      dimensions: jobFormData.dimensions || '',
+      dimensions: editingJob?.dimensions || '',
       design_file: jobFormData.design_file || '',
       notes: jobFormData.notes || '',
       created_at: editingJob?.created_at || new Date().toISOString(),
       created_by: editingJob?.created_by || currentUser.id,
-      completed_at: jobFormData.status === 'Completed' ? new Date().toISOString() : editingJob?.completed_at,
+      completed_at: editingJob?.status === 'Completed' ? (editingJob?.completed_at || new Date().toISOString()) : undefined,
     };
 
     await onSaveJob(jobToSave);
@@ -629,98 +879,95 @@ export default function CNCWorkshopTab({
     await onUpdateOrder(updatedOrder, log);
   };
 
-  // Complete and hand off job directly to QC 1 (Crucial Stage Progression requirement)
-  const handleCompleteAndHandoffToQC1 = async (job: CNCJob) => {
-    if (!window.confirm(`Mark CNC job "${job.article_no}" complete and advance linked production order to QC 1?`)) {
-      return;
-    }
-
-    // 1. Update job to completed
-    const completedJob: CNCJob = {
-      ...job,
-      status: 'Completed',
-      completed_at: new Date().toISOString(),
-    };
-    await onSaveJob(completedJob);
-
-    // 2. Advance linked Order to QC 1
-    if (job.order_id) {
-      const targetOrder = orders.find(o => o.id === job.order_id);
-      if (targetOrder) {
-        const updatedOrder: Order = {
-          ...targetOrder,
-          requires_cnc: true,
-          cnc_status: 'completed',
-          current_status: 'QC 1',
-          carpenter_sub_status: 'qc_check_1',
-          qc_1_status: 'pending_admin_approval',
-        };
-
-        const log: StatusLog = {
-          id: 'log_' + generateUUID().split('-')[0],
-          order_id: targetOrder.id,
-          stage: 'QC 1',
-          changed_by: currentUser.id,
-          changed_by_name: currentUser.name || 'CNC Supervisor',
-          changed_by_role: currentUser.role,
-          timestamp: new Date().toISOString(),
-          note: `CNC Wood Carving completed by ${currentUser.name}. Order successfully forwarded to QC 1 verification.`,
-        };
-
-        await onUpdateOrder(updatedOrder, log);
-      }
-    }
-  };
-
   // Tool Inventory Handlers
   const handleOpenNewToolModal = () => {
     const nextCode = `BIT-${String(cncTools.length + 1).padStart(2, '0')}`;
     setEditingTool(null);
     setToolFormData({
-      tool_code: nextCode,
       name: '',
       tool_type: 'Ball Nose',
-      diameter_mm: '6mm',
-      shank_mm: '1/2"',
+      specification: '',
       quantity_in_stock: 2,
-      reorder_level: 1,
+      min_stock_level: 1,
       condition: 'Good',
       total_run_hours: 0,
       unit_cost: 650,
-      status: 'In Service',
+      last_replaced_date: new Date().toISOString().split('T')[0],
+      status: 'In stock',
       notes: '',
+      tool_code: nextCode,
+      diameter_mm: '6mm',
+      shank_mm: '1/2"',
+      reorder_level: 1,
     });
     setIsToolModalOpen(true);
   };
 
   const handleOpenEditToolModal = (tool: CNCTool) => {
     setEditingTool(tool);
-    setToolFormData({ ...tool });
+    const calculatedStatus = getToolStatus(tool);
+    setToolFormData({
+      name: tool.name || '',
+      tool_type: tool.tool_type || 'Ball Nose',
+      specification: tool.specification || '',
+      quantity_in_stock: tool.quantity_in_stock ?? 0,
+      min_stock_level: tool.min_stock_level ?? tool.reorder_level ?? 1,
+      condition: tool.condition || 'Good',
+      total_run_hours: tool.total_run_hours ?? 0,
+      unit_cost: tool.unit_cost ?? 0,
+      last_replaced_date: tool.last_replaced_date || (tool.updated_at ? tool.updated_at.split('T')[0] : ''),
+      status: (tool.status === 'In stock' || tool.status === 'Low stock' || tool.status === 'Out of stock')
+        ? (tool.status as 'In stock' | 'Low stock' | 'Out of stock')
+        : calculatedStatus,
+      notes: tool.notes || tool.supplier || '',
+      tool_code: tool.tool_code,
+      diameter_mm: tool.diameter_mm,
+      shank_mm: tool.shank_mm,
+      reorder_level: tool.min_stock_level ?? tool.reorder_level ?? 1,
+    });
     setIsToolModalOpen(true);
   };
 
   const handleSubmitToolForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!toolFormData.name) {
-      alert('Tool name/spec is required.');
+    if (!toolFormData.name?.trim()) {
+      alert('Tool Name is required.');
+      return;
+    }
+    if (!toolFormData.tool_type?.trim()) {
+      alert('Tool Type is required.');
       return;
     }
 
     const toolId = editingTool ? editingTool.id : `cnc_tool_${generateUUID().split('-')[0]}`;
+    const stockQty = Number(toolFormData.quantity_in_stock) ?? 0;
+    const minStock = Number(toolFormData.min_stock_level) ?? 1;
+
+    // Status logic: Stock Qty = 0 -> Out of Stock, Stock Qty <= Min. Stock -> Low Stock
+    let finalStatus: 'In stock' | 'Low stock' | 'Out of stock' = toolFormData.status || 'In stock';
+    if (stockQty === 0) {
+      finalStatus = 'Out of stock';
+    } else if (stockQty <= minStock && finalStatus === 'In stock') {
+      finalStatus = 'Low stock';
+    }
+
     const toolToSave: CNCTool = {
       id: toolId,
-      tool_code: toolFormData.tool_code || `BIT-${String(cncTools.length + 1).padStart(2, '0')}`,
-      name: toolFormData.name,
-      tool_type: (toolFormData.tool_type as CNCToolType) || 'Ball Nose',
-      diameter_mm: String(toolFormData.diameter_mm || '6mm'),
-      shank_mm: String(toolFormData.shank_mm || '1/2"'),
-      quantity_in_stock: Number(toolFormData.quantity_in_stock) || 1,
-      reorder_level: Number(toolFormData.reorder_level) || 1,
+      tool_code: editingTool?.tool_code || toolFormData.tool_code || `BIT-${String(cncTools.length + 1).padStart(2, '0')}`,
+      diameter_mm: editingTool?.diameter_mm || toolFormData.diameter_mm || '',
+      shank_mm: editingTool?.shank_mm || toolFormData.shank_mm || '',
+      reorder_level: minStock,
+      min_stock_level: minStock,
+      name: toolFormData.name.trim(),
+      tool_type: toolFormData.tool_type.trim(),
+      specification: toolFormData.specification?.trim() || '',
+      quantity_in_stock: stockQty,
       condition: (toolFormData.condition as CNCToolCondition) || 'Good',
       total_run_hours: Number(toolFormData.total_run_hours) || 0,
       unit_cost: Number(toolFormData.unit_cost) || 0,
-      status: (toolFormData.status as any) || 'In Service',
-      notes: toolFormData.notes || '',
+      last_replaced_date: toolFormData.last_replaced_date || new Date().toISOString().split('T')[0],
+      status: finalStatus,
+      notes: toolFormData.notes?.trim() || '',
       updated_at: new Date().toISOString(),
     };
 
@@ -738,17 +985,9 @@ export default function CNCWorkshopTab({
             <Cpu size={22} className="text-white" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight font-display">
-                CNC Wood Workshop Manager
-              </h1>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                v2.4
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Workshop Operating System • Live Telemetry
-            </p>
+            <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight font-display">
+              CNC Wood Workshop Manager
+            </h1>
           </div>
         </div>
 
@@ -784,18 +1023,6 @@ export default function CNCWorkshopTab({
           </button>
 
           <button
-            onClick={() => setActiveSubTab('daily_log')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeSubTab === 'daily_log'
-                ? 'bg-[#115e59] text-white shadow-xs'
-                : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
-            }`}
-          >
-            <FileText size={14} />
-            <span>Daily Manager Log</span>
-          </button>
-
-          <button
             onClick={() => setActiveSubTab('inventory')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer relative ${
               activeSubTab === 'inventory'
@@ -825,7 +1052,7 @@ export default function CNCWorkshopTab({
           </button>
         </div>
 
-        {/* Right Ad-hoc Job & User Profile */}
+        {/* Right Ad-hoc Job Action */}
         <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-stone-100">
           <button
             onClick={() => handleOpenNewJobModal()}
@@ -834,21 +1061,6 @@ export default function CNCWorkshopTab({
             <Plus size={14} />
             <span>+ Record Ad-hoc Job</span>
           </button>
-
-          <div className="flex items-center gap-2.5 pl-2 sm:border-l sm:border-stone-200">
-            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0">
-              {userInitials}
-            </div>
-            <div className="hidden sm:block text-left">
-              <div className="text-xs font-bold text-slate-900 leading-tight">
-                {currentUser?.name || 'Master Operator'}
-              </div>
-              <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{currentUser?.role === 'admin' ? 'Admin Access' : 'Shift A'} • Active</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1539,188 +1751,24 @@ export default function CNCWorkshopTab({
       {/* SUB-VIEW 2: JOB QUEUE */}
       {activeSubTab === 'queue' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
-                <input
-                  type="text"
-                  placeholder="Search Article No, Customer, Category..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs w-64 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-800/20"
-                />
-              </div>
-
-              <div className="text-xs font-bold text-stone-600">
-                Total in Queue: <span className="text-cyan-800">{pendingQueueOrders.length}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleOpenNewJobModal()}
-              className="px-3.5 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <Plus size={14} />
-              <span>Record New CNC Job</span>
-            </button>
-          </div>
-
-          {/* Table / Cards of Queue Orders */}
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="p-3.5">Article / Order</th>
-                    <th className="p-3.5">Customer</th>
-                    <th className="p-3.5">Product & Specs</th>
-                    <th className="p-3.5">Production Stage</th>
-                    <th className="p-3.5">CNC Requirement</th>
-                    <th className="p-3.5">CNC Job Status</th>
-                    <th className="p-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-200">
-                  {pendingQueueOrders
-                    .filter(ord => {
-                      const cust = customerMap.get(ord.customer_id);
-                      const q = searchTerm.toLowerCase();
-                      return (
-                        !q ||
-                        ord.article_no.toLowerCase().includes(q) ||
-                        (cust?.name && cust.name.toLowerCase().includes(q)) ||
-                        ord.category.toLowerCase().includes(q) ||
-                        (ord.sub_category && ord.sub_category.toLowerCase().includes(q))
-                      );
-                    })
-                    .map(ord => {
-                      const cust = customerMap.get(ord.customer_id);
-                      const existingJob = cncJobs.find(j => j.order_id === ord.id);
-                      const isComplete = ord.cnc_status === 'completed';
-
-                      return (
-                        <tr key={ord.id} className="hover:bg-cyan-50/30 transition">
-                          <td className="p-3.5 font-bold text-stone-900">
-                            <div>{ord.article_no}</div>
-                            <div className="text-[10px] text-stone-400 font-normal">ID: {ord.id}</div>
-                          </td>
-                          <td className="p-3.5 text-stone-700">
-                            <div className="font-semibold">{cust?.name || 'Walk-in Client'}</div>
-                            <div className="text-[10px] text-stone-400">{cust?.phone || '-'}</div>
-                          </td>
-                          <td className="p-3.5">
-                            <div className="font-bold text-stone-800">{ord.sub_category || ord.category}</div>
-                            <div className="text-[10px] text-stone-500">
-                              {ord.material} • {ord.size === 'Custom' ? ord.custom_size : ord.size}
-                            </div>
-                          </td>
-                          <td className="p-3.5">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-900 border border-cyan-300">
-                              {ord.current_status}
-                            </span>
-                          </td>
-                          <td className="p-3.5">
-                            <span className="font-semibold text-stone-800">
-                              {ord.cnc_job_type || 'Carving'}
-                            </span>
-                            {ord.cnc_notes && (
-                              <div className="text-[10px] text-stone-500 max-w-xs truncate">{ord.cnc_notes}</div>
-                            )}
-                          </td>
-                          <td className="p-3.5">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold flex items-center gap-1.5 w-fit ${
-                              ord.cnc_status === 'in_progress'
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                : isComplete
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : 'bg-cyan-100 text-cyan-900 border border-cyan-200'
-                            }`}>
-                              {ord.cnc_status === 'in_progress' ? (
-                                <>
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
-                                  CNC working ⚙
-                                </>
-                              ) : isComplete ? (
-                                'Complete ✔'
-                              ) : (
-                                'Queued'
-                              )}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
-                            {ord.cnc_status !== 'in_progress' && !isComplete && (
-                              <button
-                                onClick={() => handleStartCNCWorking(ord)}
-                                className="px-3 py-1.5 bg-cyan-800 hover:bg-cyan-900 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer shadow-xs"
-                              >
-                                <Play size={12} />
-                                <span>Start</span>
-                              </button>
-                            )}
-                            {ord.cnc_status === 'in_progress' && (
-                              <button
-                                onClick={() => handleCompleteOrderAndMoveToQC1(ord)}
-                                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer shadow-xs"
-                              >
-                                <CheckCircle2 size={12} />
-                                <span>Complete → QC 1</span>
-                              </button>
-                            )}
-                            {existingJob ? (
-                              <button
-                                onClick={() => handleOpenEditJobModal(existingJob)}
-                                className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-bold transition cursor-pointer"
-                              >
-                                Edit Log
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleOpenNewJobModal(ord)}
-                                className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-bold transition cursor-pointer"
-                              >
-                                Log Specs
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  {pendingQueueOrders.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-stone-400">
-                        No orders currently awaiting or undergoing CNC Wood Carving.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-VIEW 3: DAILY JOB RECORD LOG (Digital Mirror of Client Google Sheets) */}
-      {activeSubTab === 'daily_log' && (
-        <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Top Filter & Action Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
                 <input
                   type="text"
-                  placeholder="Filter job logs..."
+                  placeholder="Search Article/Job No, Machine, Tool, Operator..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs w-56 focus:bg-white focus:outline-none"
+                  className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-64 md:w-72 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
                 />
               </div>
 
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-700 focus:bg-white focus:outline-none"
+                className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:bg-white focus:outline-none"
               >
                 <option value="all">All Statuses</option>
                 <option value="Queued">Queued</option>
@@ -1728,127 +1776,144 @@ export default function CNCWorkshopTab({
                 <option value="Completed">Completed</option>
               </select>
 
-              <span className="text-xs text-stone-500 font-semibold">
-                Total Logs: <strong className="text-stone-900">{cncJobs.length}</strong>
-              </span>
+              <div className="text-xs font-medium text-stone-500">
+                Total in Queue: <span className="font-bold text-teal-800">{filteredQueueItems.length}</span>
+              </div>
             </div>
 
             <button
               onClick={() => handleOpenNewJobModal()}
-              className="px-3.5 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-4 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs self-start sm:self-auto"
             >
               <Plus size={14} />
-              <span>Record CNC Entry</span>
+              <span>Record New CNC Job</span>
             </button>
           </div>
 
-          {/* CNC Daily Manager Table */}
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+          {/* Desktop Table View */}
+          <div className="hidden md:block bg-white rounded-2xl border border-stone-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-cyan-900 text-white font-bold uppercase tracking-wider text-[10px]">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-[#115e59]/5 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="p-3.5">Date</th>
-                    <th className="p-3.5">Job / Article No</th>
-                    <th className="p-3.5">Customer & Product</th>
-                    <th className="p-3.5">Job Type</th>
-                    <th className="p-3.5">Machine & Tool</th>
-                    <th className="p-3.5">Duration</th>
-                    <th className="p-3.5">Amount (₹)</th>
-                    <th className="p-3.5">Status</th>
-                    <th className="p-3.5">Operator</th>
-                    <th className="p-3.5 text-right">Action</th>
+                    <th className="py-3 px-3.5">Article / Job No.</th>
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">Job Type</th>
+                    <th className="py-3 px-3">Machine</th>
+                    <th className="py-3 px-3">Tool Used</th>
+                    <th className="py-3 px-3">Design Time</th>
+                    <th className="py-3 px-3">Completion Time</th>
+                    <th className="py-3 px-3 text-right">Amount (₹)</th>
+                    <th className="py-3 px-3">Operator</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-200">
-                  {cncJobs
-                    .filter(job => {
-                      const q = searchTerm.toLowerCase();
-                      const matchSearch =
-                        !q ||
-                        (job.article_no && job.article_no.toLowerCase().includes(q)) ||
-                        (job.customer_name && job.customer_name.toLowerCase().includes(q)) ||
-                        (job.product_name && job.product_name.toLowerCase().includes(q)) ||
-                        (job.job_type && job.job_type.toLowerCase().includes(q));
-
-                      const matchStatus = statusFilter === 'all' || job.status === statusFilter;
-                      return matchSearch && matchStatus;
-                    })
-                    .sort((a, b) => (b.job_date || '').localeCompare(a.job_date || ''))
-                    .map(job => (
-                      <tr key={job.id} className="hover:bg-stone-50/80 transition">
-                        <td className="p-3.5 font-bold text-stone-700 whitespace-nowrap">
-                          {job.job_date ? formatToDDMMYYYY(job.job_date) : '-'}
-                        </td>
-                        <td className="p-3.5 font-bold text-cyan-900">
-                          {job.article_no || job.job_number}
-                        </td>
-                        <td className="p-3.5">
-                          <div className="font-bold text-stone-800">{job.product_name}</div>
-                          <div className="text-[10px] text-stone-500">{job.customer_name}</div>
-                        </td>
-                        <td className="p-3.5">
-                          <span className="font-semibold text-stone-700">{job.job_type}</span>
-                        </td>
-                        <td className="p-3.5">
-                          <div className="font-semibold text-stone-800">{job.machine_name}</div>
-                          <div className="text-[10px] text-cyan-800 font-bold">{job.tool_name}</div>
-                        </td>
-                        <td className="p-3.5 font-semibold text-stone-700 whitespace-nowrap">
-                          {job.run_time_minutes} mins
-                        </td>
-                        <td className="p-3.5 font-bold text-stone-900 whitespace-nowrap">
-                          ₹{Number(job.amount || 0).toLocaleString('en-IN')}
-                        </td>
-                        <td className="p-3.5 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            job.status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : job.status === 'In Progress'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-stone-200 text-stone-700'
-                          }`}>
-                            {job.status}
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-stone-600 text-[11px] whitespace-nowrap">
-                          {job.operator_name}
-                        </td>
-                        <td className="p-3.5 text-right space-x-1 whitespace-nowrap">
+                <tbody className="divide-y divide-stone-100">
+                  {filteredQueueItems.map(item => (
+                    <tr key={item.id} className="hover:bg-stone-50/70 transition">
+                      <td className="py-3 px-3.5 font-bold text-stone-900 font-mono">
+                        {item.article_no}
+                      </td>
+                      <td className="py-3 px-3 text-stone-600 whitespace-nowrap">
+                        {formatToDDMMYYYY(item.job_date)}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="font-semibold text-stone-800">
+                          {item.job_type}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-stone-600">
+                        {item.machine_name}
+                      </td>
+                      <td className="py-3 px-3 text-stone-600 font-mono text-[11px]">
+                        {item.tool_name}
+                      </td>
+                      <td className="py-3 px-3 text-stone-600">
+                        {item.design_time ? `${item.design_time} mins` : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-stone-600">
+                        {item.completion_time ? `${item.completion_time} mins` : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-right font-bold text-stone-900">
+                        ₹{Number(item.amount || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-3 px-3 text-stone-600">
+                        {item.operator_name}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                          item.status === 'In Progress'
+                            ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                            : item.status === 'Completed'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}>
+                          {item.status === 'In Progress' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-600 animate-pulse" />
+                          )}
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3.5 text-right whitespace-nowrap space-x-1.5">
+                        {item.status !== 'In Progress' && item.status !== 'Completed' && (
                           <button
-                            onClick={() => handleOpenEditJobModal(job)}
-                            className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded text-xs font-bold transition cursor-pointer"
+                            onClick={async () => {
+                              if (item.rawJob) {
+                                await handleStartJob(item.rawJob);
+                              } else if (item.rawOrder) {
+                                await handleStartCNCWorking(item.rawOrder);
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <Play size={12} />
+                            <span>Start</span>
+                          </button>
+                        )}
+                        {item.status === 'In Progress' && (
+                          <button
+                            onClick={async () => {
+                              if (item.rawOrder) {
+                                await handleCompleteOrderAndMoveToQC1(item.rawOrder);
+                              }
+                              if (item.rawJob) {
+                                await onSaveJob({
+                                  ...item.rawJob,
+                                  status: 'Completed',
+                                  completed_at: new Date().toISOString(),
+                                });
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <CheckCircle2 size={12} />
+                            <span>Complete</span>
+                          </button>
+                        )}
+                        {item.rawJob ? (
+                          <button
+                            onClick={() => handleOpenEditJobModal(item.rawJob!)}
+                            className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-semibold transition cursor-pointer"
                           >
                             Edit
                           </button>
-                          {job.status !== 'Completed' && (
-                            <button
-                              onClick={() => handleCompleteAndHandoffToQC1(job)}
-                              className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-bold transition cursor-pointer shadow-2xs"
-                              title="Complete CNC work and advance linked order to QC 1"
-                            >
-                              Done → QC 1
-                            </button>
-                          )}
+                        ) : item.rawOrder ? (
                           <button
-                            onClick={() => {
-                              if (window.confirm('Delete this CNC job record?')) {
-                                onDeleteJob(job.id);
-                              }
-                            }}
-                            className="p-1 text-stone-400 hover:text-rose-600 transition cursor-pointer"
-                            title="Delete entry"
+                            onClick={() => handleOpenNewJobModal(item.rawOrder)}
+                            className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-semibold transition cursor-pointer"
                           >
-                            <Trash2 size={13} />
+                            Log Specs
                           </button>
-                        </td>
-                      </tr>
-                    ))}
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
 
-                  {cncJobs.length === 0 && (
+                  {filteredQueueItems.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="p-8 text-center text-stone-400">
-                        No daily CNC job logs entered yet. Click "Record CNC Entry" to add the first log.
+                      <td colSpan={11} className="py-8 text-center text-stone-400">
+                        No CNC jobs match the filter criteria.
                       </td>
                     </tr>
                   )}
@@ -1856,124 +1921,653 @@ export default function CNCWorkshopTab({
               </table>
             </div>
           </div>
+
+          {/* Mobile Expandable Job Cards */}
+          <div className="block md:hidden space-y-3">
+            {filteredQueueItems.map(item => {
+              const isExpanded = expandedJobIds.has(item.id);
+              return (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl border border-stone-200 p-4 shadow-2xs space-y-3"
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-sm text-stone-900 font-mono">
+                        {item.article_no}
+                      </div>
+                      <div className="text-[11px] text-stone-500 font-medium">
+                        {formatToDDMMYYYY(item.job_date)} • {item.job_type} • {item.machine_name}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                        item.status === 'In Progress'
+                          ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                          : item.status === 'Completed'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}>
+                        {item.status === 'In Progress' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-600 animate-pulse" />
+                        )}
+                        {item.status}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandJob(item.id)}
+                        className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition cursor-pointer"
+                        aria-label="Toggle details"
+                      >
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary row */}
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-100">
+                    <span className="text-stone-500 font-medium">Billing Amount:</span>
+                    <span className="font-bold text-stone-900">
+                      ₹{Number(item.amount || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  {/* Expanded Telemetry & Specs */}
+                  {isExpanded && (
+                    <div className="pt-2 border-t border-stone-100 space-y-2.5 text-xs animate-in fade-in duration-100">
+                      <div className="grid grid-cols-2 gap-2 bg-stone-50 p-3 rounded-xl border border-stone-150">
+                        <div>
+                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Tool Used</span>
+                          <span className="font-mono text-stone-800 font-semibold">{item.tool_name}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Operator</span>
+                          <span className="text-stone-800 font-medium">{item.operator_name}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Design Time</span>
+                          <span className="text-stone-800 font-medium">{item.design_time ? `${item.design_time} mins` : '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Completion Time</span>
+                          <span className="text-stone-800 font-medium">{item.completion_time ? `${item.completion_time} mins` : '-'}</span>
+                        </div>
+                      </div>
+
+                      {/* Mobile Actions */}
+                      <div className="flex items-center gap-2 pt-1">
+                        {item.status !== 'In Progress' && item.status !== 'Completed' && (
+                          <button
+                            onClick={async () => {
+                              if (item.rawJob) {
+                                await handleStartJob(item.rawJob);
+                              } else if (item.rawOrder) {
+                                await handleStartCNCWorking(item.rawOrder);
+                              }
+                            }}
+                            className="flex-1 py-1.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <Play size={12} />
+                            <span>Start</span>
+                          </button>
+                        )}
+                        {item.status === 'In Progress' && (
+                          <button
+                            onClick={async () => {
+                              if (item.rawOrder) {
+                                await handleCompleteOrderAndMoveToQC1(item.rawOrder);
+                              }
+                              if (item.rawJob) {
+                                await onSaveJob({
+                                  ...item.rawJob,
+                                  status: 'Completed',
+                                  completed_at: new Date().toISOString(),
+                                });
+                              }
+                            }}
+                            className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <CheckCircle2 size={12} />
+                            <span>Complete</span>
+                          </button>
+                        )}
+                        {item.rawJob ? (
+                          <button
+                            onClick={() => handleOpenEditJobModal(item.rawJob!)}
+                            className="flex-1 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold text-center transition cursor-pointer"
+                          >
+                            Edit Log
+                          </button>
+                        ) : item.rawOrder ? (
+                          <button
+                            onClick={() => handleOpenNewJobModal(item.rawOrder)}
+                            className="flex-1 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold text-center transition cursor-pointer"
+                          >
+                            Log Specs
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {filteredQueueItems.length === 0 && (
+              <div className="p-8 text-center bg-white rounded-2xl border border-stone-200 text-stone-400 text-xs">
+                No CNC jobs match the filter criteria.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* SUB-VIEW 4: TOOL INVENTORY & BIT MANAGEMENT */}
       {activeSubTab === 'inventory' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Header & Controls Bar */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider">
-                CNC Bits & Cutters Toolroom
-              </h2>
-              <p className="text-xs text-stone-500">
-                Track cutter diameters, wear cycles, resharpening status, and low-stock replacement alerts.
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                  Toolroom & Bit Inventory
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-100 text-slate-700 border border-stone-200">
+                  {cncTools.length} {cncTools.length === 1 ? 'tool' : 'tools'}
+                </span>
+                {filteredTools.length !== cncTools.length && (
+                  <span className="text-[11px] font-medium text-slate-500">
+                    ({filteredTools.length} filtered)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Cutter inventory, wear condition, unit costs, and real-time stock alert thresholds.
               </p>
             </div>
 
             <button
               onClick={handleOpenNewToolModal}
-              className="px-3.5 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-4 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
             >
-              <Plus size={14} />
+              <Plus size={15} />
               <span>Add New Bit / Cutter</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cncTools.map(tool => {
-              const isLowStock = tool.quantity_in_stock <= tool.reorder_level;
-              const needsCare = tool.condition === 'Needs Resharpening' || tool.condition === 'Worn Out' || tool.condition === 'Dull';
+          {/* Search and Filters Strip */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Search Box */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={toolSearchTerm}
+                onChange={(e) => setToolSearchTerm(e.target.value)}
+                placeholder="Search tool name, type, specification, notes..."
+                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+              />
+              {toolSearchTerm && (
+                <button
+                  onClick={() => setToolSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Filter Dropdowns */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+              {/* Status Filter */}
+              <div className="w-full sm:w-auto">
+                <select
+                  value={toolStatusFilter}
+                  onChange={(e) => setToolStatusFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59]"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="In stock">In stock</option>
+                  <option value="Low stock">Low stock</option>
+                  <option value="Out of stock">Out of stock</option>
+                </select>
+              </div>
+
+              {/* Condition Filter */}
+              <div className="w-full sm:w-auto">
+                <select
+                  value={toolConditionFilter}
+                  onChange={(e) => setToolConditionFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59]"
+                >
+                  <option value="all">All Conditions</option>
+                  {DEFAULT_TOOL_CONDITIONS.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tool Type Filter */}
+              <div className="w-full sm:w-auto">
+                <select
+                  value={toolTypeFilter}
+                  onChange={(e) => setToolTypeFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59]"
+                >
+                  <option value="all">All Tool Types</option>
+                  {availableToolTypes.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(toolSearchTerm || toolStatusFilter !== 'all' || toolConditionFilter !== 'all' || toolTypeFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setToolSearchTerm('');
+                    setToolStatusFilter('all');
+                    setToolConditionFilter('all');
+                    setToolTypeFilter('all');
+                  }}
+                  className="px-2.5 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer hover:bg-stone-100 rounded-xl whitespace-nowrap"
+                  title="Reset all filters"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* DESKTOP: Clean Compact List View Table */}
+          <div className="hidden md:block bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[11px] border-b border-stone-200">
+                  <tr>
+                    <th className="py-3 px-4">Tool Name</th>
+                    <th className="py-3 px-3">Tool Type</th>
+                    <th className="py-3 px-3 text-center">Stock</th>
+                    <th className="py-3 px-3 text-center">Min. Stock</th>
+                    <th className="py-3 px-3">Condition</th>
+                    <th className="py-3 px-3">Hours Used</th>
+                    <th className="py-3 px-3">Unit Cost</th>
+                    <th className="py-3 px-3">Last Replaced</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {filteredTools.map(tool => {
+                    const status = getToolStatus(tool);
+                    const minStock = tool.min_stock_level ?? tool.reorder_level ?? 1;
+
+                    return (
+                      <tr key={tool.id} className="hover:bg-slate-50/70 transition-colors">
+                        {/* 1. Tool Name */}
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900 text-xs">{tool.name}</div>
+                          {tool.specification ? (
+                            <div className="text-[11px] text-slate-500 font-normal mt-0.5">{tool.specification}</div>
+                          ) : null}
+                        </td>
+
+                        {/* 2. Tool Type */}
+                        <td className="py-3 px-3">
+                          <span className="font-semibold text-slate-700">{tool.tool_type}</span>
+                        </td>
+
+                        {/* 3. Stock */}
+                        <td className="py-3 px-3 text-center">
+                          <span className={`font-black text-xs ${
+                            status === 'Out of stock'
+                              ? 'text-rose-600'
+                              : status === 'Low stock'
+                              ? 'text-amber-700'
+                              : 'text-slate-900'
+                          }`}>
+                            {tool.quantity_in_stock}
+                          </span>
+                        </td>
+
+                        {/* 4. Min. Stock */}
+                        <td className="py-3 px-3 text-center font-medium text-slate-600">
+                          {minStock}
+                        </td>
+
+                        {/* 5. Condition */}
+                        <td className="py-3 px-3">
+                          {(() => {
+                            switch (tool.condition) {
+                              case 'New':
+                              case 'Good':
+                                return (
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">
+                                    {tool.condition}
+                                  </span>
+                                );
+                              case 'Fair':
+                                return (
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                                    {tool.condition}
+                                  </span>
+                                );
+                              case 'Dull':
+                              case 'Needs Resharpening':
+                                return (
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/80 whitespace-nowrap">
+                                    {tool.condition}
+                                  </span>
+                                );
+                              case 'Worn Out':
+                              case 'Broken/Retired':
+                                return (
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/80 whitespace-nowrap">
+                                    {tool.condition}
+                                  </span>
+                                );
+                              default:
+                                return (
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-stone-200 whitespace-nowrap">
+                                    {tool.condition || 'Good'}
+                                  </span>
+                                );
+                            }
+                          })()}
+                        </td>
+
+                        {/* 6. Hours Used */}
+                        <td className="py-3 px-3 font-medium text-slate-700">
+                          {tool.total_run_hours ?? 0} hrs
+                        </td>
+
+                        {/* 7. Unit Cost */}
+                        <td className="py-3 px-3 font-semibold text-slate-900">
+                          ₹{(tool.unit_cost || 0).toLocaleString('en-IN')}
+                        </td>
+
+                        {/* 8. Last Replaced */}
+                        <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                          {tool.last_replaced_date
+                            ? formatToDDMMYYYY(tool.last_replaced_date)
+                            : (tool.updated_at ? formatToDDMMYYYY(tool.updated_at.split('T')[0]) : '—')}
+                        </td>
+
+                        {/* 9. Status */}
+                        <td className="py-3 px-3">
+                          {status === 'Out of stock' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200/80 whitespace-nowrap">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                              Out of stock
+                            </span>
+                          ) : status === 'Low stock' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 whitespace-nowrap">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                              Low stock
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 whitespace-nowrap">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                              In stock
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 10. Actions */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenEditToolModal(tool)}
+                              className="p-1.5 text-stone-600 hover:text-[#115e59] hover:bg-stone-100 rounded-lg transition cursor-pointer"
+                              title="Edit Tool"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Delete tool "${tool.name}"?`)) {
+                                  onDeleteTool(tool.id);
+                                }
+                              }}
+                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              title="Delete Tool"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredTools.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="p-8 text-center text-stone-400 bg-white">
+                        {cncTools.length === 0
+                          ? 'No tools or bits cataloged in inventory. Click "Add New Bit / Cutter" to populate workshop tooling.'
+                          : 'No tools match the selected filters or search keyword.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* MOBILE: Compact Expandable Tool Rows (No horizontal overflow) */}
+          <div className="block md:hidden space-y-2.5">
+            {filteredTools.map(tool => {
+              const status = getToolStatus(tool);
+              const isExpanded = expandedToolIds.has(tool.id);
+              const minStock = tool.min_stock_level ?? tool.reorder_level ?? 1;
 
               return (
                 <div
                   key={tool.id}
-                  className={`p-4 rounded-2xl border transition bg-white shadow-xs ${
-                    needsCare || isLowStock ? 'border-amber-300 ring-1 ring-amber-300/40' : 'border-stone-200'
-                  }`}
+                  className="bg-white rounded-xl border border-stone-200/80 shadow-2xs overflow-hidden transition"
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
-                        {tool.tool_type} • {tool.tool_code}
-                      </span>
-                      <h3 className="font-bold text-stone-900 text-sm">{tool.name}</h3>
+                  {/* Compact Header Row */}
+                  <div
+                    onClick={() => toggleExpandTool(tool.id)}
+                    className="p-3.5 flex items-center justify-between gap-2.5 cursor-pointer hover:bg-stone-50/60 transition select-none"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="text-slate-400 shrink-0">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-900 text-xs truncate">{tool.name}</div>
+                        <div className="text-[11px] text-slate-500 font-medium truncate">{tool.tool_type}</div>
+                      </div>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                      tool.condition === 'Good' || tool.condition === 'New'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : tool.condition === 'Needs Resharpening' || tool.condition === 'Worn Out' || tool.condition === 'Broken/Retired'
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}>
-                      {tool.condition}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Stock</div>
+                        <div className={`text-xs font-black ${
+                          status === 'Out of stock'
+                            ? 'text-rose-600'
+                            : status === 'Low stock'
+                            ? 'text-amber-700'
+                            : 'text-slate-900'
+                        }`}>
+                          {tool.quantity_in_stock}
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-stone-100 text-xs">
-                    <div>
-                      <span className="text-[10px] text-stone-400 block">Diameter / Shank</span>
-                      <strong className="text-stone-800">{tool.diameter_mm} / {tool.shank_mm}</strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-stone-400 block">Stock Qty</span>
-                      <strong className={`${isLowStock ? 'text-rose-600' : 'text-stone-800'}`}>
-                        {tool.quantity_in_stock} units
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-stone-400 block">Machining Hours</span>
-                      <strong className="text-stone-800">{tool.total_run_hours} hrs</strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-stone-400 block">Unit Cost</span>
-                      <strong className="text-stone-800">₹{tool.unit_cost || 0}</strong>
-                    </div>
-                  </div>
+                      {status === 'Out of stock' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/80">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          Out
+                        </span>
+                      ) : status === 'Low stock' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          Low
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          In stock
+                        </span>
+                      )}
 
-                  {tool.notes && (
-                    <div className="mt-2 text-[11px] text-stone-500 bg-stone-50 p-2 rounded-lg border border-stone-100">
-                      {tool.notes}
-                    </div>
-                  )}
-
-                  <div className="mt-3 pt-2 border-t border-stone-100 flex items-center justify-between text-xs">
-                    {isLowStock ? (
-                      <span className="text-[10px] font-bold text-rose-600 flex items-center gap-1">
-                        <AlertTriangle size={12} /> Low Stock Alert
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-stone-400">Reorder level: {tool.reorder_level}</span>
-                    )}
-
-                    <div className="space-x-1.5">
                       <button
-                        onClick={() => handleOpenEditToolModal(tool)}
-                        className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditToolModal(tool);
+                        }}
+                        className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Delete tool "${tool.name}"?`)) {
-                            onDeleteTool(tool.id);
-                          }
-                        }}
-                        className="p-1 text-stone-400 hover:text-rose-600 transition cursor-pointer"
-                      >
-                        <Trash2 size={13} />
-                      </button>
                     </div>
                   </div>
+
+                  {/* Expanded Detail Panel */}
+                  {isExpanded && (
+                    <div className="px-3.5 pb-3.5 pt-2.5 border-t border-stone-100 bg-slate-50/50 space-y-3 text-xs">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Tool Specification
+                          </span>
+                          <span className="font-semibold text-slate-800 break-words">
+                            {tool.specification || '—'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Min. Stock Level
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {minStock} units
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Condition
+                          </span>
+                          <div className="mt-0.5">
+                            {(() => {
+                              switch (tool.condition) {
+                                case 'New':
+                                case 'Good':
+                                  return (
+                                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                      {tool.condition}
+                                    </span>
+                                  );
+                                case 'Fair':
+                                  return (
+                                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                                      {tool.condition}
+                                    </span>
+                                  );
+                                case 'Dull':
+                                case 'Needs Resharpening':
+                                  return (
+                                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/80">
+                                      {tool.condition}
+                                    </span>
+                                  );
+                                case 'Worn Out':
+                                case 'Broken/Retired':
+                                  return (
+                                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/80">
+                                      {tool.condition}
+                                    </span>
+                                  );
+                                default:
+                                  return (
+                                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-stone-200">
+                                      {tool.condition || 'Good'}
+                                    </span>
+                                  );
+                              }
+                            })()}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Hours Used
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {tool.total_run_hours ?? 0} hrs
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Unit Cost
+                          </span>
+                          <span className="font-bold text-slate-900">
+                            ₹{(tool.unit_cost || 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Last Replaced
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {tool.last_replaced_date
+                              ? formatToDDMMYYYY(tool.last_replaced_date)
+                              : (tool.updated_at ? formatToDDMMYYYY(tool.updated_at.split('T')[0]) : '—')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Notes / Supplier */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                          Notes / Supplier
+                        </span>
+                        <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 text-slate-700 text-[11px]">
+                          {tool.notes || tool.supplier || 'No notes or supplier info logged.'}
+                        </div>
+                      </div>
+
+                      {/* Expanded Row Action Footer */}
+                      <div className="flex items-center justify-between pt-1 border-t border-stone-200/60">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete tool "${tool.name}"?`)) {
+                              onDeleteTool(tool.id);
+                            }
+                          }}
+                          className="text-rose-600 hover:text-rose-700 font-semibold text-xs flex items-center gap-1 cursor-pointer py-1"
+                        >
+                          <Trash2 size={13} />
+                          <span>Delete Tool</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditToolModal(tool)}
+                          className="text-[#115e59] hover:text-[#0f4c4a] font-bold text-xs flex items-center gap-1 cursor-pointer py-1"
+                        >
+                          <Pencil size={13} />
+                          <span>Edit Details</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
-            {cncTools.length === 0 && (
-              <div className="col-span-full p-8 text-center text-stone-400 bg-white rounded-2xl border border-stone-200">
-                No tools or bits cataloged in inventory. Click "Add New Bit / Cutter" to populate workshop tooling.
+            {filteredTools.length === 0 && (
+              <div className="p-8 text-center text-stone-400 bg-white rounded-2xl border border-stone-200">
+                {cncTools.length === 0
+                  ? 'No tools or bits cataloged in inventory. Click "Add New Bit / Cutter" to populate workshop tooling.'
+                  : 'No tools match the selected filters or search keyword.'}
               </div>
             )}
           </div>
@@ -2104,224 +2698,268 @@ export default function CNCWorkshopTab({
 
       {/* MODAL: CNC JOB RECORD / EDIT */}
       {isJobModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-stone-200 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 bg-cyan-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Cpu size={18} />
-                <h3 className="font-bold text-sm">
-                  {editingJob ? `Edit CNC Job: ${editingJob.article_no || editingJob.job_number}` : 'Record CNC Workshop Job'}
-                </h3>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="p-4 md:p-5 bg-[#115e59] text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-800/80 border border-teal-600/50 flex items-center justify-center text-teal-100 shadow-inner">
+                  <Cpu size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm md:text-base leading-tight text-white">
+                    {editingJob ? `Edit CNC Job: ${editingJob.article_no || editingJob.job_number}` : 'Record CNC Workshop Job'}
+                  </h3>
+                  <p className="text-[11px] text-teal-100/70 font-medium">
+                    Workshop Floor Entry Log
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsJobModalOpen(false)}
-                className="text-stone-300 hover:text-white text-lg font-bold cursor-pointer"
+                className="p-1.5 rounded-lg text-teal-200 hover:text-white hover:bg-teal-800/50 transition cursor-pointer"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitJobForm} className="p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Modal Form */}
+            <form onSubmit={handleSubmitJobForm} className="p-4 md:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 md:gap-4">
+                {/* Field 1: Date */}
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Date</label>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">1. </span>Date <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="date"
                     required
-                    value={jobFormData.job_date}
+                    value={jobFormData.job_date || new Date().toISOString().split('T')[0]}
                     onChange={(e) => setJobFormData({ ...jobFormData, job_date: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold"
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                   />
                 </div>
 
+                {/* Field 2: Article / Job No. */}
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Article / Job No</label>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">2. </span>Article / Job No. <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
-                    value={jobFormData.article_no || jobFormData.job_number}
+                    value={jobFormData.article_no || jobFormData.job_number || ''}
                     onChange={(e) => setJobFormData({ ...jobFormData, article_no: e.target.value, job_number: e.target.value })}
-                    placeholder="e.g. ART-2026-001"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold"
+                    placeholder="e.g. CNC-2026-084"
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs font-mono"
                   />
                 </div>
 
+                {/* Field 3: Job Type */}
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Job Status</label>
-                  <select
-                    value={jobFormData.status}
-                    onChange={(e) => setJobFormData({ ...jobFormData, status: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold"
-                  >
-                    <option value="Queued">Queued</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Rework">Rework</option>
-                  </select>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">3. </span>Job Type <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={jobFormData.job_type}
+                      onChange={(e) => setJobFormData({ ...jobFormData, job_type: e.target.value as any })}
+                      className="w-full appearance-none px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8"
+                    >
+                      {FORM_JOB_TYPES.map(jt => (
+                        <option key={jt} value={jt}>{jt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Field 4: Machine Assigned */}
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Customer / Client</label>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">4. </span>Machine Assigned <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={jobFormData.machine_name}
+                      onChange={(e) => setJobFormData({ ...jobFormData, machine_name: e.target.value })}
+                      className="w-full appearance-none px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8"
+                    >
+                      {FORM_MACHINES.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Field 5: Tool Used */}
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">5. </span>Tool Used <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={jobFormData.tool_name}
+                      onChange={(e) => setJobFormData({ ...jobFormData, tool_name: e.target.value })}
+                      className="w-full appearance-none px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8 font-mono"
+                    >
+                      {FORM_TOOLS.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Field 6: Wood / Material */}
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">6. </span>Wood / Material
+                  </label>
                   <input
                     type="text"
-                    required
-                    value={jobFormData.customer_name}
-                    onChange={(e) => setJobFormData({ ...jobFormData, customer_name: e.target.value })}
-                    placeholder="Client name"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Furniture Product / Component</label>
-                  <input
-                    type="text"
-                    required
-                    value={jobFormData.product_name}
-                    onChange={(e) => setJobFormData({ ...jobFormData, product_name: e.target.value })}
-                    placeholder="e.g. Mandir Jaali Panel"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Job Type</label>
-                  <select
-                    value={jobFormData.job_type}
-                    onChange={(e) => setJobFormData({ ...jobFormData, job_type: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold"
-                  >
-                    {DEFAULT_JOB_TYPES.map(jt => (
-                      <option key={jt} value={jt}>{jt}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Machine Assigned</label>
-                  <select
-                    value={jobFormData.machine_name}
-                    onChange={(e) => setJobFormData({ ...jobFormData, machine_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold"
-                  >
-                    {DEFAULT_MACHINES.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Tool / Bit Used</label>
-                  <input
-                    type="text"
-                    value={jobFormData.tool_name}
-                    onChange={(e) => setJobFormData({ ...jobFormData, tool_name: e.target.value })}
-                    placeholder="e.g. 6mm Ball Nose Bit"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Duration (Minutes)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={jobFormData.run_time_minutes}
-                    onChange={(e) => setJobFormData({ ...jobFormData, run_time_minutes: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Wood / Material</label>
-                  <input
-                    type="text"
-                    value={jobFormData.material}
+                    value={jobFormData.material || ''}
                     onChange={(e) => setJobFormData({ ...jobFormData, material: e.target.value })}
-                    placeholder="e.g. Teak Wood, MDF"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
+                    placeholder="e.g. Teak Wood"
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                   />
                 </div>
 
+                {/* Field 7: Amount / Billing (₹) */}
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Dimensions / Panel Size</label>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">7. </span>Amount / Billing (₹)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 font-bold text-xs">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={jobFormData.amount ?? ''}
+                      onChange={(e) => setJobFormData({ ...jobFormData, amount: Number(e.target.value) })}
+                      placeholder="0"
+                      className="w-full pl-8 pr-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Field 8: Operator / CNC Manager */}
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">8. </span>Operator / CNC Manager
+                  </label>
                   <input
                     type="text"
-                    value={jobFormData.dimensions}
-                    onChange={(e) => setJobFormData({ ...jobFormData, dimensions: e.target.value })}
-                    placeholder="e.g. 48 x 24 x 1 inch"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Amount / Billing (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={jobFormData.amount}
-                    onChange={(e) => setJobFormData({ ...jobFormData, amount: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-900"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Operator / CNC Manager</label>
-                  <input
-                    type="text"
-                    value={jobFormData.operator_name}
+                    value={jobFormData.operator_name || ''}
                     onChange={(e) => setJobFormData({ ...jobFormData, operator_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
+                    placeholder="e.g. Lucee Admin"
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                   />
                 </div>
 
+                {/* Field 9: Time For Designing */}
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Program File Ref (.dxf / .nc)</label>
-                  <input
-                    type="text"
-                    value={jobFormData.design_file}
-                    onChange={(e) => setJobFormData({ ...jobFormData, design_file: e.target.value })}
-                    placeholder="e.g. mandir_door_v2.nc"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono"
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    Time For Designing
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={jobFormData.design_time_minutes ?? ''}
+                      onChange={(e) => setJobFormData({ ...jobFormData, design_time_minutes: Number(e.target.value) })}
+                      placeholder="45"
+                      className="w-full pl-3.5 pr-14 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-stone-100 text-stone-500 rounded text-[10px] font-semibold border border-stone-200">
+                      mins
+                    </span>
+                  </div>
+                </div>
+
+                {/* Field 10: Job Completion Time */}
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    Job Completion Time
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={jobFormData.completion_time_minutes ?? jobFormData.run_time_minutes ?? ''}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setJobFormData({ ...jobFormData, completion_time_minutes: val, run_time_minutes: val });
+                      }}
+                      placeholder="90"
+                      className="w-full pl-3.5 pr-14 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-stone-100 text-stone-500 rounded text-[10px] font-semibold border border-stone-200">
+                      mins
+                    </span>
+                  </div>
+                </div>
+
+                {/* Field 11: Program File Ref (.dxf / .nc) */}
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    Program File Ref (.dxf / .nc)
+                  </label>
+                  <div className="relative">
+                    <FileCode size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                    <input
+                      type="text"
+                      value={jobFormData.design_file || ''}
+                      onChange={(e) => setJobFormData({ ...jobFormData, design_file: e.target.value })}
+                      placeholder="e.g. mandir_panel_relief_v2.nc"
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-mono text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Telemetry status badge */}
+                <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs self-end h-[42px]">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                    <CheckCircle2 size={14} className="text-emerald-600" />
+                    <span>Ready for Spindle</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-stone-500 bg-white/80 px-2 py-0.5 rounded border border-emerald-100">
+                    Post-P: Syntec G-Code
+                  </span>
+                </div>
+
+                {/* Field 12: Job Description */}
+                <div className="col-span-1 md:col-span-2">
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    Job Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={jobFormData.notes || ''}
+                    onChange={(e) => setJobFormData({ ...jobFormData, notes: e.target.value })}
+                    placeholder="3D relief floral mandir jaali carving on 1.25&quot; seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit."
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs resize-none leading-relaxed"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">Carving Instructions & Notes</label>
-                <textarea
-                  rows={2}
-                  value={jobFormData.notes}
-                  onChange={(e) => setJobFormData({ ...jobFormData, notes: e.target.value })}
-                  placeholder="Additional tool paths, feed rates, or custom notes..."
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+              {/* Modal Footer Actions */}
+              <div className="pt-4 border-t border-stone-100 flex items-center justify-between md:justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsJobModalOpen(false)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                  className="px-4 py-2 border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 rounded-xl text-xs font-semibold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs"
+                  className="px-5 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  Save CNC Entry
+                  <Save size={14} />
+                  <span>Save CNC Entry</span>
                 </button>
               </div>
             </form>
@@ -2329,175 +2967,236 @@ export default function CNCWorkshopTab({
         </div>
       )}
 
-      {/* MODAL: TOOL & BIT ENTRY / EDIT */}
+      {/* MODAL: TOOL & BIT ENTRY / EDIT (Google Stitch Design) */}
       {isToolModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-stone-200 overflow-hidden flex flex-col">
-            <div className="p-4 bg-cyan-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Wrench size={18} />
-                <h3 className="font-bold text-sm">
-                  {editingTool ? `Edit Tool: ${editingTool.name}` : 'Add Tool / Cutter Bit'}
-                </h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-[#115e59] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-teal-700/60 text-teal-100 flex items-center justify-center shrink-0">
+                  <Wrench size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white tracking-tight">
+                    {editingTool ? `Edit Tool / Cutter Bit` : 'Add New Bit / Cutter'}
+                  </h3>
+                  <p className="text-[11px] text-teal-100/80 font-medium">
+                    {editingTool ? editingTool.name : 'Toolroom Bit & Cutter Specification'}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsToolModalOpen(false)}
-                className="text-stone-300 hover:text-white text-lg font-bold cursor-pointer"
+                className="text-teal-200 hover:text-white hover:bg-teal-700/50 p-1.5 rounded-lg transition text-base font-bold cursor-pointer"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitToolForm} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Tool Code</label>
+            {/* Modal Body / Form */}
+            <form onSubmit={handleSubmitToolForm} className="p-4 sm:p-6 overflow-y-auto space-y-4">
+              {/* Responsive Form Grid: Desktop 2-column, Mobile single-column */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. Tool Name */}
+                <div className="sm:col-span-1">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Tool Name <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
-                    value={toolFormData.tool_code}
-                    onChange={(e) => setToolFormData({ ...toolFormData, tool_code: e.target.value })}
-                    placeholder="e.g. BIT-BN06-01"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono"
+                    value={toolFormData.name}
+                    onChange={(e) => setToolFormData({ ...toolFormData, name: e.target.value })}
+                    placeholder="e.g. 6mm 2-Flute Spiral Ballnose"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Tool Type</label>
-                  <select
+                {/* 2. Tool Type */}
+                <div className="sm:col-span-1">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Tool Type <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    list="tool-types-list"
+                    required
                     value={toolFormData.tool_type}
-                    onChange={(e) => setToolFormData({ ...toolFormData, tool_type: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold"
-                  >
+                    onChange={(e) => setToolFormData({ ...toolFormData, tool_type: e.target.value })}
+                    placeholder="e.g. Ball Nose, End Mill, V-Bit"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+                  />
+                  <datalist id="tool-types-list">
                     {DEFAULT_TOOL_TYPES.map(tt => (
-                      <option key={tt} value={tt}>{tt}</option>
+                      <option key={tt} value={tt} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">Tool Specification / Name</label>
-                <input
-                  type="text"
-                  required
-                  value={toolFormData.name}
-                  onChange={(e) => setToolFormData({ ...toolFormData, name: e.target.value })}
-                  placeholder="e.g. 6mm 2-Flute Spiral Ballnose"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Cutting Tip Dia</label>
+                {/* 3. Tool Specification */}
+                <div className="sm:col-span-1">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Tool Specification
+                  </label>
                   <input
                     type="text"
-                    value={toolFormData.diameter_mm}
-                    onChange={(e) => setToolFormData({ ...toolFormData, diameter_mm: e.target.value })}
-                    placeholder="e.g. 6mm"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
+                    value={toolFormData.specification}
+                    onChange={(e) => setToolFormData({ ...toolFormData, specification: e.target.value })}
+                    placeholder="e.g. 6mm Solid Carbide / TiAlN Coated"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Shank Dia</label>
-                  <input
-                    type="text"
-                    value={toolFormData.shank_mm}
-                    onChange={(e) => setToolFormData({ ...toolFormData, shank_mm: e.target.value })}
-                    placeholder='e.g. 1/2" or 6mm'
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-              </div>
+                {/* 4. Stock Qty & 5. Min. Stock Level */}
+                <div className="sm:col-span-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Stock Qty
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={toolFormData.quantity_in_stock}
+                      onChange={(e) => setToolFormData({ ...toolFormData, quantity_in_stock: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-black text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Stock Qty</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={toolFormData.quantity_in_stock}
-                    onChange={(e) => setToolFormData({ ...toolFormData, quantity_in_stock: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Reorder Level</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={toolFormData.reorder_level}
-                    onChange={(e) => setToolFormData({ ...toolFormData, reorder_level: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                  />
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Min. Stock
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={toolFormData.min_stock_level}
+                      onChange={(e) => setToolFormData({ ...toolFormData, min_stock_level: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Condition</label>
+                {/* 6. Condition */}
+                <div className="sm:col-span-1">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Condition
+                  </label>
                   <select
                     value={toolFormData.condition}
                     onChange={(e) => setToolFormData({ ...toolFormData, condition: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
                   >
                     {DEFAULT_TOOL_CONDITIONS.map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Hours Logged</label>
+                {/* 7. Hours Logged & 8. Unit Cost (₹) */}
+                <div className="sm:col-span-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Hours Logged
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={toolFormData.total_run_hours}
+                        onChange={(e) => setToolFormData({ ...toolFormData, total_run_hours: Number(e.target.value) })}
+                        className="w-full pl-3.5 pr-10 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">
+                        hrs
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Unit Cost (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                        ₹
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={toolFormData.unit_cost}
+                        onChange={(e) => setToolFormData({ ...toolFormData, unit_cost: Number(e.target.value) })}
+                        className="w-full pl-7 pr-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-black text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 9. Last Replaced */}
+                <div className="sm:col-span-1">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Last Replaced
+                  </label>
                   <input
-                    type="number"
-                    min="0"
-                    value={toolFormData.total_run_hours}
-                    onChange={(e) => setToolFormData({ ...toolFormData, total_run_hours: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
+                    type="date"
+                    value={toolFormData.last_replaced_date}
+                    onChange={(e) => setToolFormData({ ...toolFormData, last_replaced_date: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">Unit Cost (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={toolFormData.unit_cost}
-                    onChange={(e) => setToolFormData({ ...toolFormData, unit_cost: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-900"
+                {/* 10. Status (ONLY In stock, Low stock, Out of stock) */}
+                <div className="sm:col-span-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      Status <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      Auto-adjusted if stock is zero
+                    </span>
+                  </div>
+                  <select
+                    value={toolFormData.status}
+                    onChange={(e) => setToolFormData({ ...toolFormData, status: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition"
+                  >
+                    <option value="In stock">In stock</option>
+                    <option value="Low stock">Low stock</option>
+                    <option value="Out of stock">Out of stock</option>
+                  </select>
+                </div>
+
+                {/* 11. Notes / Supplier (Full-width spanning both columns) */}
+                <div className="col-span-1 sm:col-span-2">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Notes / Supplier
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={toolFormData.notes}
+                    onChange={(e) => setToolFormData({ ...toolFormData, notes: e.target.value })}
+                    placeholder="e.g. Amana Tool solid carbide, supplier: Industrial Tooling Corp. Resharpened 12-Aug."
+                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59] transition resize-none leading-relaxed"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">Notes / Supplier</label>
-                <input
-                  type="text"
-                  value={toolFormData.notes}
-                  onChange={(e) => setToolFormData({ ...toolFormData, notes: e.target.value })}
-                  placeholder="e.g. Amana Tool carbide / Resharpened on 12-Aug"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+              {/* Modal Footer Actions */}
+              <div className="pt-4 border-t border-stone-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsToolModalOpen(false)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-stone-50 text-slate-700 font-bold border border-stone-200 rounded-xl text-xs transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs"
+                  className="px-5 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
-                  Save Tool
+                  <Check size={14} />
+                  <span>Save Tool</span>
                 </button>
               </div>
             </form>

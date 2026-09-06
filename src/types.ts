@@ -625,16 +625,19 @@ export interface CNCTool {
   id: string;
   tool_code: string; // e.g. BIT-V60-01, BIT-BN06-01
   name: string; // e.g. 60° V-Groove Bit 1/2" Shank
-  tool_type: CNCToolType;
-  diameter_mm: string; // e.g. 6mm, 12mm, 32mm
-  shank_mm: string; // e.g. 1/2" (12.7mm) or 6mm
+  tool_type: CNCToolType | string;
+  specification?: string; // e.g. 6mm Solid Carbide / TiAlN
+  diameter_mm?: string; // e.g. 6mm, 12mm, 32mm
+  shank_mm?: string; // e.g. 1/2" (12.7mm) or 6mm
   quantity_in_stock: number;
-  reorder_level: number;
+  reorder_level?: number;
+  min_stock_level?: number;
   condition: CNCToolCondition;
   total_run_hours: number;
   unit_cost?: number; // Cost in ₹
-  status: 'In Service' | 'In Use' | 'Spare' | 'Damaged' | 'Retired';
+  status: 'In Service' | 'In Use' | 'Spare' | 'Damaged' | 'Retired' | 'In stock' | 'Low stock' | 'Out of stock' | string;
   last_sharpened_date?: string;
+  last_replaced_date?: string;
   supplier?: string;
   notes?: string;
   updated_at?: string;
