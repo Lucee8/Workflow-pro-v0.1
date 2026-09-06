@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'carpenter' | 'polish_person' | 'qc_staff' | 'cnc_manager';
+export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'cnc_workshop' | 'carpenter' | 'polish_person' | 'qc_staff' | 'cnc_manager';
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOCKED';
 
@@ -575,6 +575,7 @@ export type CNCJobType =
   | 'Other';
 
 export type CNCJobStatus = 'Pending' | 'Queued' | 'In Progress' | 'Completed' | 'Rework';
+export type CNCDurationUnit = 'Minutes' | 'Hours' | 'Days';
 
 export interface CNCJob {
   id: string; // UUID
@@ -591,6 +592,12 @@ export interface CNCJob {
   tool_id?: string; // FK to CNCTool
   tool_name: string; // e.g. 60° V-Groove Bit, 6mm Ball Nose
   run_time_minutes: number;
+  design_time_minutes?: number; // Internal duration in minutes for calculations
+  design_time_value?: number; // Preserved numeric value entered by user (e.g. 1.5)
+  design_time_unit?: CNCDurationUnit; // Preserved unit ('Minutes' | 'Hours' | 'Days')
+  completion_time_minutes?: number; // Internal duration in minutes for calculations
+  completion_time_value?: number; // Preserved numeric value entered by user (e.g. 2.5)
+  completion_time_unit?: CNCDurationUnit; // Preserved unit ('Minutes' | 'Hours' | 'Days')
   operator_name: string;
   amount: number; // CNC revenue/rate in ₹
   status: CNCJobStatus;

@@ -87,7 +87,10 @@ export default function UsersTab({
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesRole = roleFilter === 'All Roles' || user.role === roleFilter;
+    const matchesRole =
+      roleFilter === 'All Roles' ||
+      user.role === roleFilter ||
+      (roleFilter === 'cnc_workshop' && user.role === 'cnc_manager');
 
     let matchesStatus = true;
     if (statusFilter !== 'All Statuses') {
@@ -348,6 +351,7 @@ export default function UsersTab({
                 <option value="admin">Administrator</option>
                 <option value="manager">Manager</option>
                 <option value="wood_tab_manager">Wood Tab Manager</option>
+                <option value="cnc_workshop">CNC Workshop</option>
                 <option value="carpenter">Carpenter</option>
                 <option value="polish_person">Polish Person</option>
                 <option value="qc_staff">QC Staff</option>
@@ -416,13 +420,16 @@ export default function UsersTab({
                                 ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                                 : user.role === 'wood_tab_manager'
                                 ? 'bg-orange-50 text-orange-800 border-orange-200'
+                                : user.role === 'cnc_workshop' || user.role === 'cnc_manager'
+                                ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
                                 : user.role === 'carpenter'
                                 ? 'bg-amber-50 text-amber-800 border-amber-250'
                                 : 'bg-teal-50 text-teal-800 border-teal-200'
                             }`}
                           >
-                            {user.role.replace(/_/g, ' ')}
-                          </span>
+                            {user.role === 'cnc_workshop' || user.role === 'cnc_manager'
+                              ? 'CNC WORKSHOP'
+                              : user.role.replace(/_/g, ' ')}                          </span>
                         </td>
                         <td className="py-3.5 px-4 font-mono font-bold text-stone-800 text-center">{user.initials}</td>
                         <td className="py-3.5 px-4">
@@ -630,13 +637,14 @@ export default function UsersTab({
                 <div>
                   <label className="block text-[10px] font-bold text-stone-600 tracking-wider uppercase mb-1 font-sans">Role *</label>
                   <select
-                    value={userRole}
+                    value={userRole === 'cnc_manager' ? 'cnc_workshop' : userRole}
                     onChange={(e) => setUserRole(e.target.value as any)}
                     className="w-full p-2 bg-stone-50 border border-stone-250 focus:outline-none rounded-xl font-bold text-stone-700"
                   >
                     <option value="admin">Administrator (Full Access)</option>
                     <option value="manager">Manager (CRM &amp; Orders)</option>
                     <option value="wood_tab_manager">Wood Tab Manager (Wood Only)</option>
+                    <option value="cnc_workshop">CNC Workshop</option>
                     <option value="carpenter">Carpenter</option>
                     <option value="polish_person">Polish Person</option>
                     <option value="qc_staff">QC Staff</option>

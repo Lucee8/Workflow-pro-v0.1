@@ -9,8 +9,31 @@ import {
   CNCJobType,
   CNCJobStatus,
   CNCToolType,
-  CNCToolCondition
+  CNCToolCondition,
+  CNCDurationUnit
 } from '../types';
+
+// Duration conversion and display helpers for CNC Jobs
+const convertDurationToMinutes = (val: number, unit: CNCDurationUnit = 'Minutes'): number => {
+  if (isNaN(val) || val <= 0) return 0;
+  if (unit === 'Hours') return Math.round(val * 60 * 100) / 100;
+  if (unit === 'Days') return Math.round(val * 24 * 60 * 100) / 100;
+  return Math.round(val * 100) / 100;
+};
+
+const formatJobDurationDisplay = (
+  val?: number,
+  unit?: CNCDurationUnit | string,
+  fallbackMinutes?: number
+): string => {
+  if (val !== undefined && val !== null && !isNaN(val) && val > 0 && unit) {
+    return `${val} ${unit}`;
+  }
+  if (fallbackMinutes !== undefined && fallbackMinutes !== null && !isNaN(fallbackMinutes) && fallbackMinutes > 0) {
+    return `${fallbackMinutes} mins`;
+  }
+  return '—';
+};
 import { 
   Cpu, 
   Layers, 
@@ -194,7 +217,11 @@ export default function CNCWorkshopTab({
     tool_name: '2mm Taper',
     run_time_minutes: 90,
     design_time_minutes: 45,
+    design_time_value: 45,
+    design_time_unit: 'Minutes',
     completion_time_minutes: 90,
+    completion_time_value: 90,
+    completion_time_unit: 'Minutes',
     amount: 1850,
     status: 'In Progress',
     operator_name: currentUser.name || 'Lucee Admin',
@@ -319,7 +346,11 @@ export default function CNCWorkshopTab({
       machine_name: string;
       tool_name: string;
       design_time: number;
+      design_time_value?: number;
+      design_time_unit?: CNCDurationUnit;
       completion_time: number;
+      completion_time_value?: number;
+      completion_time_unit?: CNCDurationUnit;
       amount: number;
       operator_name: string;
       status: CNCJobStatus;
@@ -334,7 +365,11 @@ export default function CNCWorkshopTab({
       machine_name: job.machine_name || 'Machine 1',
       tool_name: job.tool_name || '2mm Taper',
       design_time: job.design_time_minutes ?? 0,
+      design_time_value: job.design_time_value,
+      design_time_unit: job.design_time_unit,
       completion_time: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
+      completion_time_value: job.completion_time_value,
+      completion_time_unit: job.completion_time_unit,
       amount: job.amount || 0,
       operator_name: job.operator_name || 'Lucee Admin',
       status: job.status || 'Queued',
@@ -355,7 +390,11 @@ export default function CNCWorkshopTab({
           machine_name: 'Machine 1',
           tool_name: ord.cnc_tool_used || '2mm Taper',
           design_time: 0,
+          design_time_value: undefined,
+          design_time_unit: undefined,
           completion_time: ord.cnc_duration_minutes || 60,
+          completion_time_value: ord.cnc_duration_minutes || 60,
+          completion_time_unit: 'Minutes',
           amount: ord.cnc_amount || 0,
           operator_name: 'Unassigned',
           status: ord.cnc_status === 'in_progress' ? 'In Progress' : ord.cnc_status === 'completed' ? 'Completed' : 'Queued',
@@ -619,11 +658,11 @@ export default function CNCWorkshopTab({
 
   const projectedProfit = projectedMonthRevenue - monthlyCostTarget;
 
-  // Admin Cost Structure Handler
+  // Admin & CNC Workshop Cost Structure Handler
   const handleSaveCostConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser.role !== 'admin') {
-      alert('Security Policy: Only Workshop Admin can edit operational cost parameters.');
+    if (currentUser.role !== 'admin' && currentUser.role !== 'cnc_workshop' && currentUser.role !== 'cnc_manager') {
+      alert('Security Policy: Only Workshop Admin or CNC Workshop role can edit operational cost parameters.');
       return;
     }
     setCostConfig(tempCostConfig);
@@ -659,7 +698,11 @@ export default function CNCWorkshopTab({
         tool_name: '2mm Taper',
         run_time_minutes: order.cnc_duration_minutes || 90,
         design_time_minutes: 45,
+        design_time_value: 45,
+        design_time_unit: 'Minutes',
         completion_time_minutes: order.cnc_duration_minutes || 90,
+        completion_time_value: order.cnc_duration_minutes || 90,
+        completion_time_unit: 'Minutes',
         amount: order.cnc_amount || 1850,
         status: 'In Progress',
         operator_name: currentUser.name || 'Lucee Admin',
@@ -681,7 +724,11 @@ export default function CNCWorkshopTab({
         tool_name: '2mm Taper',
         run_time_minutes: 90,
         design_time_minutes: 45,
+        design_time_value: 45,
+        design_time_unit: 'Minutes',
         completion_time_minutes: 90,
+        completion_time_value: 90,
+        completion_time_unit: 'Minutes',
         amount: 1850,
         status: 'In Progress',
         operator_name: currentUser.name || 'Lucee Admin',
@@ -699,6 +746,32 @@ export default function CNCWorkshopTab({
     setEditingJob(job);
     const linkedOrder = orders.find(o => o.id === job.order_id);
     setSelectedOrderForJob(linkedOrder || null);
+
+    // Safely extract design time with backward compatibility
+    let desVal: number | undefined = undefined;
+    let desUnit: CNCDurationUnit = 'Minutes';
+    if (job.design_time_value !== undefined && job.design_time_value !== null) {
+      desVal = Number(job.design_time_value);
+      desUnit = job.design_time_unit || 'Minutes';
+    } else if (job.design_time_minutes !== undefined && job.design_time_minutes !== null) {
+      desVal = Number(job.design_time_minutes);
+      desUnit = 'Minutes';
+    }
+
+    // Safely extract completion time with backward compatibility
+    let compVal: number | undefined = undefined;
+    let compUnit: CNCDurationUnit = 'Minutes';
+    if (job.completion_time_value !== undefined && job.completion_time_value !== null) {
+      compVal = Number(job.completion_time_value);
+      compUnit = job.completion_time_unit || 'Minutes';
+    } else {
+      const compMin = job.completion_time_minutes ?? job.run_time_minutes;
+      if (compMin !== undefined && compMin !== null) {
+        compVal = Number(compMin);
+        compUnit = 'Minutes';
+      }
+    }
+
     setJobFormData({
       ...job,
       job_number: job.job_number || job.article_no || '',
@@ -706,8 +779,12 @@ export default function CNCWorkshopTab({
       job_type: (job.job_type as CNCJobType) || 'Carving',
       machine_name: job.machine_name || 'Machine 1',
       tool_name: job.tool_name || '2mm Taper',
-      design_time_minutes: job.design_time_minutes ?? 0,
-      completion_time_minutes: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
+      design_time_minutes: job.design_time_minutes ?? (desVal !== undefined ? convertDurationToMinutes(desVal, desUnit) : 0),
+      design_time_value: desVal,
+      design_time_unit: desUnit,
+      completion_time_minutes: job.completion_time_minutes ?? job.run_time_minutes ?? (compVal !== undefined ? convertDurationToMinutes(compVal, compUnit) : 0),
+      completion_time_value: compVal,
+      completion_time_unit: compUnit,
       material: job.material || 'Teak Wood',
       amount: job.amount || 0,
       operator_name: job.operator_name || currentUser.name || 'Lucee Admin',
@@ -737,8 +814,23 @@ export default function CNCWorkshopTab({
     e.preventDefault();
     const jobId = editingJob ? editingJob.id : `cnc_job_${generateUUID().split('-')[0]}`;
     const autoJobNo = jobFormData.article_no || jobFormData.job_number || `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
-    const compTime = Number(jobFormData.completion_time_minutes) || Number(jobFormData.run_time_minutes) || 0;
-    const desTime = Number(jobFormData.design_time_minutes) || 0;
+
+    // Safely calculate minutes and preserve values/units
+    const desVal = jobFormData.design_time_value !== undefined && jobFormData.design_time_value !== null && String(jobFormData.design_time_value) !== ''
+      ? Number(jobFormData.design_time_value)
+      : undefined;
+    const desUnit: CNCDurationUnit = (jobFormData.design_time_unit as CNCDurationUnit) || 'Minutes';
+    const desMinutes = desVal !== undefined && !isNaN(desVal)
+      ? convertDurationToMinutes(desVal, desUnit)
+      : (Number(jobFormData.design_time_minutes) || 0);
+
+    const compVal = jobFormData.completion_time_value !== undefined && jobFormData.completion_time_value !== null && String(jobFormData.completion_time_value) !== ''
+      ? Number(jobFormData.completion_time_value)
+      : undefined;
+    const compUnit: CNCDurationUnit = (jobFormData.completion_time_unit as CNCDurationUnit) || 'Minutes';
+    const compMinutes = compVal !== undefined && !isNaN(compVal)
+      ? convertDurationToMinutes(compVal, compUnit)
+      : (Number(jobFormData.completion_time_minutes) || Number(jobFormData.run_time_minutes) || 0);
 
     const jobToSave: CNCJob = {
       id: jobId,
@@ -751,9 +843,13 @@ export default function CNCWorkshopTab({
       machine_name: jobFormData.machine_name || 'Machine 1',
       tool_name: jobFormData.tool_name || '2mm Taper',
       tool_id: jobFormData.tool_id,
-      run_time_minutes: compTime,
-      design_time_minutes: desTime,
-      completion_time_minutes: compTime,
+      run_time_minutes: compMinutes,
+      design_time_minutes: desMinutes,
+      design_time_value: desVal,
+      design_time_unit: desUnit,
+      completion_time_minutes: compMinutes,
+      completion_time_value: compVal,
+      completion_time_unit: compUnit,
       amount: Number(jobFormData.amount) || 0,
       status: (editingJob?.status) || (jobFormData.status as CNCJobStatus) || 'In Progress',
       operator_name: jobFormData.operator_name || currentUser.name || 'Lucee Admin',
@@ -1549,7 +1645,7 @@ export default function CNCWorkshopTab({
                     </p>
                   </div>
 
-                  {currentUser?.role === 'admin' ? (
+                  {currentUser?.role === 'admin' || currentUser?.role === 'cnc_workshop' || currentUser?.role === 'cnc_manager' ? (
                     <button
                       onClick={() => {
                         setTempCostConfig(costConfig);
@@ -1573,7 +1669,7 @@ export default function CNCWorkshopTab({
                   <p className="text-xs text-slate-500 font-medium leading-tight">
                     Fixed administrative operational parameters
                   </p>
-                  {currentUser?.role === 'admin' ? (
+                  {currentUser?.role === 'admin' || currentUser?.role === 'cnc_workshop' || currentUser?.role === 'cnc_manager' ? (
                     <button
                       onClick={() => {
                         setTempCostConfig(costConfig);
@@ -2203,10 +2299,10 @@ export default function CNCWorkshopTab({
                         {item.tool_name}
                       </td>
                       <td className="py-3 px-3 text-stone-600">
-                        {item.design_time ? `${item.design_time} mins` : '-'}
+                        {formatJobDurationDisplay(item.design_time_value ?? item.rawJob?.design_time_value, item.design_time_unit ?? item.rawJob?.design_time_unit, item.design_time)}
                       </td>
                       <td className="py-3 px-3 text-stone-600">
-                        {item.completion_time ? `${item.completion_time} mins` : '-'}
+                        {formatJobDurationDisplay(item.completion_time_value ?? item.rawJob?.completion_time_value, item.completion_time_unit ?? item.rawJob?.completion_time_unit, item.completion_time)}
                       </td>
                       <td className="py-3 px-3 text-right font-bold text-stone-900">
                         ₹{Number(item.amount || 0).toLocaleString('en-IN')}
@@ -2468,14 +2564,14 @@ export default function CNCWorkshopTab({
                           <div>
                             <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Time For Designing</span>
                             <span className="font-medium text-stone-800 block">
-                              {designTime ? `${designTime} mins` : '—'}
+                              {formatJobDurationDisplay(job?.design_time_value, job?.design_time_unit, designTime)}
                             </span>
                           </div>
 
                           <div>
                             <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Job Completion Time</span>
                             <span className="font-medium text-stone-800 block">
-                              {completionTime ? `${completionTime} mins` : '—'}
+                              {formatJobDurationDisplay(job?.completion_time_value, job?.completion_time_unit, completionTime)}
                             </span>
                           </div>
 
@@ -3495,18 +3591,42 @@ export default function CNCWorkshopTab({
                   <label className="text-xs font-semibold text-stone-700 block mb-1">
                     Time For Designing
                   </label>
-                  <div className="relative">
+                  <div className="flex items-center gap-2">
                     <input
                       type="number"
+                      step="any"
                       min="0"
-                      value={jobFormData.design_time_minutes ?? ''}
-                      onChange={(e) => setJobFormData({ ...jobFormData, design_time_minutes: Number(e.target.value) })}
-                      placeholder="45"
-                      className="w-full pl-3.5 pr-14 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      value={jobFormData.design_time_value ?? ''}
+                      onChange={(e) => {
+                        const valStr = e.target.value;
+                        const numVal = valStr === '' ? undefined : Number(valStr);
+                        const unit = (jobFormData.design_time_unit as CNCDurationUnit) || 'Minutes';
+                        setJobFormData({
+                          ...jobFormData,
+                          design_time_value: numVal,
+                          design_time_minutes: numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, unit) : 0,
+                        });
+                      }}
+                      placeholder="e.g. 1.5"
+                      className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-stone-100 text-stone-500 rounded text-[10px] font-semibold border border-stone-200">
-                      mins
-                    </span>
+                    <select
+                      value={jobFormData.design_time_unit || 'Minutes'}
+                      onChange={(e) => {
+                        const newUnit = e.target.value as CNCDurationUnit;
+                        const numVal = jobFormData.design_time_value !== undefined ? Number(jobFormData.design_time_value) : undefined;
+                        setJobFormData({
+                          ...jobFormData,
+                          design_time_unit: newUnit,
+                          design_time_minutes: numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, newUnit) : 0,
+                        });
+                      }}
+                      className="w-28 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <option value="Minutes">Minutes</option>
+                      <option value="Hours">Hours</option>
+                      <option value="Days">Days</option>
+                    </select>
                   </div>
                 </div>
 
@@ -3515,21 +3635,46 @@ export default function CNCWorkshopTab({
                   <label className="text-xs font-semibold text-stone-700 block mb-1">
                     Job Completion Time
                   </label>
-                  <div className="relative">
+                  <div className="flex items-center gap-2">
                     <input
                       type="number"
+                      step="any"
                       min="0"
-                      value={jobFormData.completion_time_minutes ?? jobFormData.run_time_minutes ?? ''}
+                      value={jobFormData.completion_time_value ?? ''}
                       onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setJobFormData({ ...jobFormData, completion_time_minutes: val, run_time_minutes: val });
+                        const valStr = e.target.value;
+                        const numVal = valStr === '' ? undefined : Number(valStr);
+                        const unit = (jobFormData.completion_time_unit as CNCDurationUnit) || 'Minutes';
+                        const minutes = numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, unit) : 0;
+                        setJobFormData({
+                          ...jobFormData,
+                          completion_time_value: numVal,
+                          completion_time_minutes: minutes,
+                          run_time_minutes: minutes,
+                        });
                       }}
-                      placeholder="90"
-                      className="w-full pl-3.5 pr-14 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      placeholder="e.g. 1.5"
+                      className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-stone-100 text-stone-500 rounded text-[10px] font-semibold border border-stone-200">
-                      mins
-                    </span>
+                    <select
+                      value={jobFormData.completion_time_unit || 'Minutes'}
+                      onChange={(e) => {
+                        const newUnit = e.target.value as CNCDurationUnit;
+                        const numVal = jobFormData.completion_time_value !== undefined ? Number(jobFormData.completion_time_value) : undefined;
+                        const minutes = numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, newUnit) : 0;
+                        setJobFormData({
+                          ...jobFormData,
+                          completion_time_unit: newUnit,
+                          completion_time_minutes: minutes,
+                          run_time_minutes: minutes,
+                        });
+                      }}
+                      className="w-28 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <option value="Minutes">Minutes</option>
+                      <option value="Hours">Hours</option>
+                      <option value="Days">Days</option>
+                    </select>
                   </div>
                 </div>
 

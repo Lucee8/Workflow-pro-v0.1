@@ -201,7 +201,7 @@ export const SEED_USERS: User[] = [
     id: 'user_cnc_mgr',
     name: 'CNC Workshop Manager',
     email: 'cnc@bhisesworkshop.com',
-    role: 'cnc_manager',
+    role: 'cnc_workshop',
     initials: 'CN',
     status: 'ACTIVE',
     is_active: true,
@@ -461,12 +461,13 @@ export function loadState(): AppState {
             }
           }
 
-          // Ensure required manager and wood_tab_manager users exist
+          // Ensure required manager, wood_tab_manager, and cnc_workshop users exist
           const existingUsers: User[] = Array.isArray(parsed.users) ? parsed.users : [];
           const requiredUsers: User[] = [
             SEED_USERS.find(u => u.email === 'yogesh@gmail.com')!,
             SEED_USERS.find(u => u.email === 'suresh@gmail.com')!,
             SEED_USERS.find(u => u.email === 'woodtab@gmail.com')!,
+            SEED_USERS.find(u => u.email === 'cnc@bhisesworkshop.com')!,
           ].filter(Boolean);
 
           requiredUsers.forEach(reqUser => {

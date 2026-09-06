@@ -40,6 +40,11 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'orders',
     'order_details',
   ],
+    CNC_WORKSHOP: [
+    'cnc_workshop',
+    'orders',
+    'order_details',
+  ],
 };
 
 /**
@@ -91,7 +96,7 @@ export function getDefaultTabForRole(role: UserRole | string | undefined | null)
   if (normalized === 'admin') return 'dashboard';
   if (normalized === 'manager') return 'orders';
   if (normalized === 'wood_tab_manager') return 'wood_management';
-  if (normalized === 'cnc_manager') return 'cnc_workshop';
+  if (normalized === 'cnc_manager' || normalized === 'cnc_workshop') return 'cnc_workshop';
   if (normalized === 'carpenter' || normalized === 'polish_person' || normalized === 'qc_staff') return 'my_orders';
   return 'dashboard';
 }
@@ -109,9 +114,11 @@ export function getRoleDisplayName(role: UserRole | string | undefined | null): 
       return 'Manager';
     case 'wood_tab_manager':
       return 'Wood Tab Manager';
+    case 'cnc_workshop':
+      return 'CNC Workshop';
     case 'cnc_manager':
-      return 'CNC Workshop Manager';
-    case 'carpenter':
+      return 'CNC Workshop';
+      case 'carpenter':
       return 'Carpenter';
     case 'polish_person':
       return 'Polish Person';
