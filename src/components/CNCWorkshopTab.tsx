@@ -47,7 +47,8 @@ import {
   LayoutDashboard,
   TrendingDown,
   Gauge,
-  Pencil
+  Pencil,
+  Menu
 } from 'lucide-react';
 import { generateUUID } from '../db/store';
 import { formatToDDMMYYYY } from '../utils';
@@ -158,6 +159,14 @@ export default function CNCWorkshopTab({
 }: CNCWorkshopTabProps) {
   // Navigation Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'queue' | 'inventory' | 'reports'>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const subTabLabels: Record<'dashboard' | 'queue' | 'inventory' | 'reports', string> = {
+    dashboard: 'Dashboard',
+    queue: 'Job Queue',
+    inventory: 'Tool Inventory',
+    reports: 'Monthly Report',
+  };
 
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -205,6 +214,26 @@ export default function CNCWorkshopTab({
       else next.add(jobId);
       return next;
     });
+  };
+
+  // Mobile accordion states for the 4 large Dashboard sections
+  const [expandedDashboardSections, setExpandedDashboardSections] = useState<{
+    performance: boolean;
+    costStructure: boolean;
+    financialProgress: boolean;
+    productionOverview: boolean;
+  }>({
+    performance: false,
+    costStructure: false,
+    financialProgress: false,
+    productionOverview: false,
+  });
+
+  const toggleDashboardSection = (section: 'performance' | 'costStructure' | 'financialProgress' | 'productionOverview') => {
+    setExpandedDashboardSections(prev => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   };
 
   // Tool Inventory Filters & Expansion State
@@ -976,9 +1005,9 @@ export default function CNCWorkshopTab({
   };
 
   return (
-    <div className="space-y-6 font-sans">
-      {/* Module Header & Sub-Navigation (Stitch Visual Design) */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div className="space-y-3 sm:space-y-6 font-sans">
+      {/* DESKTOP & TABLET Module Header & Sub-Navigation (Unchanged) */}
+      <div className="hidden md:flex bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-xs flex-col lg:flex-row lg:items-center justify-between gap-4">
         {/* Left branding */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-[#115e59] text-white flex items-center justify-center shadow-xs shrink-0">
@@ -1052,16 +1081,167 @@ export default function CNCWorkshopTab({
           </button>
         </div>
 
-        {/* Right Ad-hoc Job Action */}
+        {/* Right Primary Action */}
         <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-stone-100">
           <button
             onClick={() => handleOpenNewJobModal()}
             className="px-3.5 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap"
           >
             <Plus size={14} />
-            <span>+ Record Ad-hoc Job</span>
+            <span>Record New CNC Job</span>
           </button>
         </div>
+      </div>
+
+      {/* MOBILE Compact Header & Navigation Menu */}
+      <div className="md:hidden bg-white rounded-xl border border-stone-200/90 shadow-2xs overflow-hidden">
+        <div className="p-2.5 flex items-center justify-between gap-2">
+          {/* Left: Compact brand & active view label */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#115e59] text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Cpu size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-black text-slate-900 tracking-tight leading-tight truncate">
+                CNC Workshop
+              </div>
+              <div className="text-[10px] text-teal-800 font-bold flex items-center gap-1 truncate">
+                <span>{subTabLabels[activeSubTab]}</span>
+                {activeSubTab === 'queue' && pendingQueueOrders.length > 0 && (
+                  <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[9px] font-extrabold rounded-full">
+                    {pendingQueueOrders.length}
+                  </span>
+                )}
+                {activeSubTab === 'inventory' && metrics.toolsNeedingAttentionCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[9px] font-extrabold rounded-full">
+                    {metrics.toolsNeedingAttentionCount}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Primary "Record New CNC Job" Action + Menu Toggle */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleOpenNewJobModal()}
+              className="px-2.5 py-1.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+              title="Record New CNC Job"
+            >
+              <Plus size={13} />
+              <span className="whitespace-nowrap">Record Job</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(prev => !prev)}
+              className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-center ${
+                isMobileMenuOpen
+                  ? 'bg-stone-200 text-stone-900 border-stone-300'
+                  : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+              }`}
+              aria-label="Toggle CNC navigation menu"
+            >
+              {isMobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Dropdown Menu: Dashboard, Job Queue, Tool Inventory, Monthly Report */}
+        {isMobileMenuOpen && (
+          <div className="border-t border-stone-100 bg-stone-50/70 p-2 space-y-1">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSubTab('dashboard');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                activeSubTab === 'dashboard'
+                  ? 'bg-[#115e59] text-white shadow-2xs'
+                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <LayoutDashboard size={14} />
+                <span>Dashboard</span>
+              </div>
+              {activeSubTab === 'dashboard' && <Check size={14} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSubTab('queue');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                activeSubTab === 'queue'
+                  ? 'bg-[#115e59] text-white shadow-2xs'
+                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Layers size={14} />
+                <span>Job Queue</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {pendingQueueOrders.length > 0 && (
+                  <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] font-extrabold rounded-full">
+                    {pendingQueueOrders.length}
+                  </span>
+                )}
+                {activeSubTab === 'queue' && <Check size={14} />}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSubTab('inventory');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                activeSubTab === 'inventory'
+                  ? 'bg-[#115e59] text-white shadow-2xs'
+                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Wrench size={14} />
+                <span>Tool Inventory</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {metrics.toolsNeedingAttentionCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full">
+                    {metrics.toolsNeedingAttentionCount}
+                  </span>
+                )}
+                {activeSubTab === 'inventory' && <Check size={14} />}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSubTab('reports');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                activeSubTab === 'reports'
+                  ? 'bg-[#115e59] text-white shadow-2xs'
+                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <TrendingUp size={14} />
+                <span>Monthly Report</span>
+              </div>
+              {activeSubTab === 'reports' && <Check size={14} />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* SUB-VIEW 1: REDESIGNED CNC DASHBOARD (GOOGLE STITCH DESKTOP + MOBILE) */}
@@ -1195,377 +1375,512 @@ export default function CNCWorkshopTab({
             </div>
           </div>
 
-          {/* Performance & Structure Grid (Desktop 2-col, Mobile ordered stack) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
-            {/* Card A: Today's Performance Summary (Mobile: order-1, Desktop: order-1) */}
-            <div className="order-1 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Today's Performance Summary
-                  </h2>
-                  <p className="text-xs text-slate-500 font-medium">
+          {/* Performance & Structure Grid (Desktop 2-col, Mobile expandable accordions) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
+            {/* 1. Today's Performance Summary */}
+            <div className="order-1 bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+              {/* Mobile Accordion Header Button (< md) */}
+              <button
+                type="button"
+                onClick={() => toggleDashboardSection('performance')}
+                className="w-full p-4 md:hidden flex items-center justify-between text-left cursor-pointer transition select-none hover:bg-stone-50/70"
+                aria-expanded={expandedDashboardSections.performance}
+              >
+                <span className="text-sm font-bold text-slate-900 tracking-tight">
+                  Today's Performance Summary
+                </span>
+                <span className="text-slate-400 shrink-0 ml-2">
+                  {expandedDashboardSections.performance ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+
+              {/* Full Section Content: Always visible on desktop/tablet (md:block), expandable on mobile */}
+              <div className={`${expandedDashboardSections.performance ? 'block' : 'hidden'} md:block p-4 md:p-5 pt-0 md:pt-5 space-y-4 border-t md:border-t-0 border-stone-100 transition-all duration-200`}>
+                {/* Desktop Header */}
+                <div className="hidden md:flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                      Today's Performance Summary
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Real-time daily milling billing against fixed overhead targets
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-teal-50 text-[#115e59] border border-teal-200 shrink-0 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#115e59]" />
+                    Today • {formattedToday}
+                  </span>
+                </div>
+
+                {/* Mobile Sub-header (when expanded) */}
+                <div className="flex md:hidden items-center justify-between gap-2 pt-3">
+                  <p className="text-xs text-slate-500 font-medium leading-tight">
                     Real-time daily milling billing against fixed overhead targets
                   </p>
-                </div>
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-teal-50 text-[#115e59] border border-teal-200 shrink-0 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#115e59]" />
-                  Today • {formattedToday}
-                </span>
-              </div>
-
-              {/* 6 Sub-metric Cards (3x2 Grid) */}
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Jobs Completed</div>
-                  <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
-                    {todayCompletedJobs.length}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">({todayInProgressJobs.length} active)</div>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-[#115e59] border border-teal-200 shrink-0 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#115e59]" />
+                    {formattedToday}
+                  </span>
                 </div>
 
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Revenue Earned</div>
-                  <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
-                    ₹{todayRevenue.toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">Billed today</div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Target (Break-even)</div>
-                  <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
-                    ₹{Math.round(dailyBreakEven).toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Daily base</div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rec. Target (+20%)</div>
-                  <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
-                    ₹{Math.round(recommendedDailyTarget).toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[10px] text-teal-800 font-semibold mt-0.5">Profit margin</div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Net Day Surplus</div>
-                  <div className={`text-lg sm:text-xl font-black mt-1 font-display ${
-                    isTodaySurplus ? 'text-emerald-700' : 'text-rose-700'
-                  }`}>
-                    {isTodaySurplus ? '+' : '-'}₹{Math.abs(Math.round(todayNetSurplus)).toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">{isTodaySurplus ? 'Profit margin' : 'Shortfall'}</div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">% Target Achieved</div>
-                  <div className={`text-lg sm:text-xl font-black mt-1 font-display ${
-                    todayTargetAchievementPct >= 100 ? 'text-emerald-700' : 'text-slate-900'
-                  }`}>
-                    {todayTargetAchievementPct.toFixed(1)}%
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">{todayTargetAchievementPct >= 100 ? 'Goal passed' : 'In progress'}</div>
-                </div>
-              </div>
-
-              {/* Daily Target Milestones Progress */}
-              <div className="space-y-2 pt-1 border-t border-stone-100">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">Daily Target Milestones Progress</span>
-                  <span className="font-bold text-emerald-700">{todayTargetAchievementPct.toFixed(1)}% of Base Target</span>
-                </div>
-                <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-[#115e59] rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.max(0, todayTargetAchievementPct))}%` }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border ${
-                    todayRevenue >= dailyBreakEven
-                      ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-500'
-                  }`}>
-                    <CheckCircle2 size={14} className={todayRevenue >= dailyBreakEven ? 'text-emerald-600' : 'text-slate-400'} />
-                    <span>Break-even target (₹{Math.round(dailyBreakEven).toLocaleString('en-IN')}) {todayRevenue >= dailyBreakEven ? 'passed' : 'pending'}</span>
+                {/* 6 Sub-metric Cards (2 cols on small mobile, 3 cols on sm+) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Jobs Completed</div>
+                    <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
+                      {todayCompletedJobs.length}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">({todayInProgressJobs.length} active)</div>
                   </div>
 
-                  <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border ${
-                    todayRevenue >= recommendedDailyTarget
-                      ? 'bg-teal-50/80 border-teal-200 text-teal-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-500'
-                  }`}>
-                    <CheckCircle2 size={14} className={todayRevenue >= recommendedDailyTarget ? 'text-[#115e59]' : 'text-slate-400'} />
-                    <span>Recommended target (₹{Math.round(recommendedDailyTarget).toLocaleString('en-IN')}) {todayRevenue >= recommendedDailyTarget ? 'passed!' : 'pending'}</span>
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Revenue Earned</div>
+                    <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
+                      ₹{todayRevenue.toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">Billed today</div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Target (Break-even)</div>
+                    <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
+                      ₹{Math.round(dailyBreakEven).toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Daily base</div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rec. Target (+20%)</div>
+                    <div className="text-lg sm:text-xl font-black text-slate-900 mt-1 font-display">
+                      ₹{Math.round(recommendedDailyTarget).toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] text-teal-800 font-semibold mt-0.5">Profit margin</div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Net Day Surplus</div>
+                    <div className={`text-lg sm:text-xl font-black mt-1 font-display ${
+                      isTodaySurplus ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>
+                      {isTodaySurplus ? '+' : '-'}₹{Math.abs(Math.round(todayNetSurplus)).toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{isTodaySurplus ? 'Profit margin' : 'Shortfall'}</div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">% Target Achieved</div>
+                    <div className={`text-lg sm:text-xl font-black mt-1 font-display ${
+                      todayTargetAchievementPct >= 100 ? 'text-emerald-700' : 'text-slate-900'
+                    }`}>
+                      {todayTargetAchievementPct.toFixed(1)}%
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{todayTargetAchievementPct >= 100 ? 'Goal passed' : 'In progress'}</div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                <span>Formula: Daily Target = Total Monthly Overhead (₹{monthlyCostTarget.toLocaleString('en-IN')}) ÷ {costConfig.workingDays} Days</span>
-                <span className="font-medium text-slate-400">Auto-updated</span>
+                {/* Daily Target Milestones Progress */}
+                <div className="space-y-2 pt-1 border-t border-stone-100">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Daily Target Milestones Progress</span>
+                    <span className="font-bold text-emerald-700">{todayTargetAchievementPct.toFixed(1)}% of Base Target</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#115e59] rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.max(0, todayTargetAchievementPct))}%` }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border ${
+                      todayRevenue >= dailyBreakEven
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-500'
+                    }`}>
+                      <CheckCircle2 size={14} className={todayRevenue >= dailyBreakEven ? 'text-emerald-600' : 'text-slate-400'} />
+                      <span>Break-even target (₹{Math.round(dailyBreakEven).toLocaleString('en-IN')}) {todayRevenue >= dailyBreakEven ? 'passed' : 'pending'}</span>
+                    </div>
+
+                    <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border ${
+                      todayRevenue >= recommendedDailyTarget
+                        ? 'bg-teal-50/80 border-teal-200 text-teal-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-500'
+                    }`}>
+                      <CheckCircle2 size={14} className={todayRevenue >= recommendedDailyTarget ? 'text-[#115e59]' : 'text-slate-400'} />
+                      <span>Recommended target (₹{Math.round(recommendedDailyTarget).toLocaleString('en-IN')}) {todayRevenue >= recommendedDailyTarget ? 'passed!' : 'pending'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-500 pt-1">
+                  <span>Formula: Daily Target = Total Monthly Overhead (₹{monthlyCostTarget.toLocaleString('en-IN')}) ÷ {costConfig.workingDays} Days</span>
+                  <span className="font-medium text-slate-400">Auto-updated</span>
+                </div>
               </div>
             </div>
 
-            {/* Card B: Workshop Cost Structure (Mobile: order-3, Desktop: lg:order-2) */}
-            <div className="order-3 lg:order-2 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Workshop Cost Structure
-                  </h2>
-                  <p className="text-xs text-slate-500 font-medium">
+            {/* 2. Workshop Cost Structure */}
+            <div className="order-2 lg:order-2 bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+              {/* Mobile Accordion Header Button (< md) */}
+              <button
+                type="button"
+                onClick={() => toggleDashboardSection('costStructure')}
+                className="w-full p-4 md:hidden flex items-center justify-between text-left cursor-pointer transition select-none hover:bg-stone-50/70"
+                aria-expanded={expandedDashboardSections.costStructure}
+              >
+                <span className="text-sm font-bold text-slate-900 tracking-tight">
+                  Workshop Cost Structure
+                </span>
+                <span className="text-slate-400 shrink-0 ml-2">
+                  {expandedDashboardSections.costStructure ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+
+              {/* Full Section Content: Always visible on desktop/tablet (md:block), expandable on mobile */}
+              <div className={`${expandedDashboardSections.costStructure ? 'block' : 'hidden'} md:block p-4 md:p-5 pt-0 md:pt-5 space-y-4 border-t md:border-t-0 border-stone-100 transition-all duration-200`}>
+                {/* Desktop Header */}
+                <div className="hidden md:flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                      Workshop Cost Structure
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Fixed administrative operational parameters
+                    </p>
+                  </div>
+
+                  {currentUser?.role === 'admin' ? (
+                    <button
+                      onClick={() => {
+                        setTempCostConfig(costConfig);
+                        setIsCostModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-lg border border-stone-200 flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Sliders size={12} />
+                      <span>Edit Parameters</span>
+                    </button>
+                  ) : (
+                    <span className="px-2.5 py-1 bg-stone-100 text-stone-600 text-xs font-semibold rounded-lg border border-stone-200 flex items-center gap-1">
+                      <Lock size={12} />
+                      <span>Admin Fixed</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Mobile Sub-header (when expanded) */}
+                <div className="flex md:hidden items-center justify-between gap-2 pt-3">
+                  <p className="text-xs text-slate-500 font-medium leading-tight">
                     Fixed administrative operational parameters
                   </p>
+                  {currentUser?.role === 'admin' ? (
+                    <button
+                      onClick={() => {
+                        setTempCostConfig(costConfig);
+                        setIsCostModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-lg border border-stone-200 flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                    >
+                      <Sliders size={12} />
+                      <span>Edit</span>
+                    </button>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-stone-100 text-stone-600 text-[11px] font-semibold rounded-lg border border-stone-200 flex items-center gap-1 shrink-0">
+                      <Lock size={11} />
+                      <span>Fixed</span>
+                    </span>
+                  )}
                 </div>
 
-                {currentUser?.role === 'admin' ? (
-                  <button
-                    onClick={() => {
-                      setTempCostConfig(costConfig);
-                      setIsCostModalOpen(true);
-                    }}
-                    className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-lg border border-stone-200 flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Sliders size={12} />
-                    <span>Edit Parameters</span>
-                  </button>
-                ) : (
-                  <span className="px-2.5 py-1 bg-stone-100 text-stone-600 text-xs font-semibold rounded-lg border border-stone-200 flex items-center gap-1">
-                    <Lock size={12} />
-                    <span>Admin Fixed</span>
-                  </span>
-                )}
-              </div>
+                {/* List of cost parameters */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between py-1 border-b border-stone-100">
+                    <span className="text-slate-600 font-medium">Loan EMI:</span>
+                    <span className="font-bold text-slate-900">₹{costConfig.loanEmi.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1 border-b border-stone-100">
+                    <span className="text-slate-600 font-medium">Worker 1 Salary:</span>
+                    <span className="font-bold text-slate-900">₹{costConfig.worker1Salary.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1 border-b border-stone-100">
+                    <span className="text-slate-600 font-medium">Worker 2 Salary:</span>
+                    <span className="font-bold text-slate-900">₹{costConfig.worker2Salary.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1 border-b border-stone-100">
+                    <span className="text-slate-600 font-medium">Tools & Consumables:</span>
+                    <span className="font-bold text-slate-900">₹{costConfig.toolsConsumables.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1 border-b border-stone-100">
+                    <span className="text-slate-600 font-medium">Electricity & Misc:</span>
+                    <span className="font-bold text-slate-900">₹{costConfig.electricityMisc.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1 border-b border-stone-100">
+                    <span className="text-slate-600 font-medium">Working Days / Month:</span>
+                    <span className="font-bold text-slate-900">{costConfig.workingDays} Days</span>
+                  </div>
+                </div>
 
-              {/* List of cost parameters */}
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between py-1 border-b border-stone-100">
-                  <span className="text-slate-600 font-medium">Loan EMI:</span>
-                  <span className="font-bold text-slate-900">₹{costConfig.loanEmi.toLocaleString('en-IN')}</span>
+                {/* Calculated Summary Box */}
+                <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">Monthly Cost Target:</span>
+                    <span className="text-base font-black text-slate-900 font-display">
+                      ₹{monthlyCostTarget.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-600">Daily Break-even:</span>
+                    <span className="font-bold text-slate-800">
+                      ₹{Math.round(dailyBreakEven).toLocaleString('en-IN')} / day
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-600">Recommended Target (+20%):</span>
+                    <span className="font-black text-emerald-700">
+                      ₹{Math.round(recommendedDailyTarget).toLocaleString('en-IN')} / day
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between py-1 border-b border-stone-100">
-                  <span className="text-slate-600 font-medium">Worker 1 Salary:</span>
-                  <span className="font-bold text-slate-900">₹{costConfig.worker1Salary.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex items-center justify-between py-1 border-b border-stone-100">
-                  <span className="text-slate-600 font-medium">Worker 2 Salary:</span>
-                  <span className="font-bold text-slate-900">₹{costConfig.worker2Salary.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex items-center justify-between py-1 border-b border-stone-100">
-                  <span className="text-slate-600 font-medium">Tools & Consumables:</span>
-                  <span className="font-bold text-slate-900">₹{costConfig.toolsConsumables.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex items-center justify-between py-1 border-b border-stone-100">
-                  <span className="text-slate-600 font-medium">Electricity & Misc:</span>
-                  <span className="font-bold text-slate-900">₹{costConfig.electricityMisc.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex items-center justify-between py-1 border-b border-stone-100">
-                  <span className="text-slate-600 font-medium">Working Days / Month:</span>
-                  <span className="font-bold text-slate-900">{costConfig.workingDays} Days</span>
-                </div>
-              </div>
 
-              {/* Calculated Summary Box */}
-              <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">Monthly Cost Target:</span>
-                  <span className="text-base font-black text-slate-900 font-display">
-                    ₹{monthlyCostTarget.toLocaleString('en-IN')}
-                  </span>
+                <div className="text-[11px] italic text-slate-400">
+                  *Locked by Admin. Automatically syncs to daily logs & monthly projections.*
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-600">Daily Break-even:</span>
-                  <span className="font-bold text-slate-800">
-                    ₹{Math.round(dailyBreakEven).toLocaleString('en-IN')} / day
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-600">Recommended Target (+20%):</span>
-                  <span className="font-black text-emerald-700">
-                    ₹{Math.round(recommendedDailyTarget).toLocaleString('en-IN')} / day
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-[11px] italic text-slate-400">
-                *Locked by Admin. Automatically syncs to daily logs & monthly projections.*
               </div>
             </div>
 
-            {/* Card C: Current Month Financial Progress (Mobile: order-2, Desktop: lg:order-3) */}
-            <div className="order-2 lg:order-3 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Current Month Financial Progress
-                  </h2>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {currentMonthName} Billing vs ₹{monthlyCostTarget.toLocaleString('en-IN')} Monthly Fixed Target
+            {/* 3. Current Month Financial Progress */}
+            <div className="order-3 lg:order-3 bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+              {/* Mobile Accordion Header Button (< md) */}
+              <button
+                type="button"
+                onClick={() => toggleDashboardSection('financialProgress')}
+                className="w-full p-4 md:hidden flex items-center justify-between text-left cursor-pointer transition select-none hover:bg-stone-50/70"
+                aria-expanded={expandedDashboardSections.financialProgress}
+              >
+                <span className="text-sm font-bold text-slate-900 tracking-tight">
+                  Current Month Financial Progress
+                </span>
+                <span className="text-slate-400 shrink-0 ml-2">
+                  {expandedDashboardSections.financialProgress ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+
+              {/* Full Section Content: Always visible on desktop/tablet (md:block), expandable on mobile */}
+              <div className={`${expandedDashboardSections.financialProgress ? 'block' : 'hidden'} md:block p-4 md:p-5 pt-0 md:pt-5 space-y-4 border-t md:border-t-0 border-stone-100 transition-all duration-200`}>
+                {/* Desktop Header */}
+                <div className="hidden md:flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                      Current Month Financial Progress
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      {currentMonthName} Billing vs ₹{monthlyCostTarget.toLocaleString('en-IN')} Monthly Fixed Target
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-stone-100 text-stone-700 border border-stone-200 shrink-0">
+                    Day {daysWorkedCount} of {costConfig.workingDays}
+                  </span>
+                </div>
+
+                {/* Mobile Sub-header (when expanded) */}
+                <div className="flex md:hidden items-center justify-between gap-2 pt-3">
+                  <p className="text-xs text-slate-500 font-medium leading-tight">
+                    {currentMonthName} Billing vs ₹{monthlyCostTarget.toLocaleString('en-IN')}
                   </p>
-                </div>
-                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-stone-100 text-stone-700 border border-stone-200 shrink-0">
-                  Day {daysWorkedCount} of {costConfig.workingDays}
-                </span>
-              </div>
-
-              {/* 4 Stat Boxes */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Revenue</div>
-                  <div className="text-base font-black text-slate-900 mt-1 font-display">
-                    ₹{metrics.monthRevenue.toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fixed Target</div>
-                  <div className="text-base font-black text-slate-900 mt-1 font-display">
-                    ₹{monthlyCostTarget.toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">To Break-even</div>
-                  <div className={`text-base font-black mt-1 font-display ${
-                    monthProfitLoss >= 0 ? 'text-emerald-700' : 'text-slate-800'
-                  }`}>
-                    {monthProfitLoss >= 0 ? '+' : '-'}₹{Math.abs(Math.round(monthProfitLoss)).toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Jobs Billed</div>
-                  <div className="text-base font-black text-slate-900 mt-1 font-display">
-                    {metrics.currentMonthJobsCount} jobs
-                  </div>
-                </div>
-              </div>
-
-              {/* Monthly Target Coverage Progress Bar */}
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">
-                    Overall Monthly Target Coverage ({monthTargetCoveragePct.toFixed(1)}%)
-                  </span>
-                  <span className="font-semibold text-slate-500">
-                    ₹{metrics.monthRevenue.toLocaleString('en-IN')} / ₹{monthlyCostTarget.toLocaleString('en-IN')}
+                  <span className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-stone-100 text-stone-700 border border-stone-200 shrink-0">
+                    Day {daysWorkedCount} of {costConfig.workingDays}
                   </span>
                 </div>
-                <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-[#115e59] rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.max(0, monthTargetCoveragePct))}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
-                  <span>₹0 (Day 1)</span>
-                  <span>Break-even: ₹{monthlyCostTarget.toLocaleString('en-IN')}</span>
-                  <span>
-                    Proj: ₹{projectedMonthRevenue.toLocaleString('en-IN')} ({projectedProfit >= 0 ? `+₹${(projectedProfit/1000).toFixed(1)}k profit` : `-₹${(Math.abs(projectedProfit)/1000).toFixed(1)}k`})
-                  </span>
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-stone-100 text-xs">
-                <span className="text-[11px] text-slate-600 max-w-sm truncate">
-                  <span className="font-bold text-slate-800">Run-rate: </span>
-                  {metrics.monthRevenue >= monthlyCostTarget 
-                    ? 'Monthly break-even target achieved!' 
-                    : projectedMonthRevenue >= monthlyCostTarget 
-                    ? 'On schedule to surpass recommended monthly safe profit target.' 
-                    : 'Pacing behind monthly overhead break-even; queue acceleration advised.'}
-                </span>
-                <button
-                  onClick={() => setActiveSubTab('reports')}
-                  className="text-xs font-bold text-[#115e59] hover:text-[#0f4c4a] flex items-center gap-1 cursor-pointer shrink-0"
-                >
-                  <span>View Month Breakdown</span>
-                  <ArrowRight size={13} />
-                </button>
+                {/* 4 Stat Boxes */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Revenue</div>
+                    <div className="text-base font-black text-slate-900 mt-1 font-display">
+                      ₹{metrics.monthRevenue.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fixed Target</div>
+                    <div className="text-base font-black text-slate-900 mt-1 font-display">
+                      ₹{monthlyCostTarget.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">To Break-even</div>
+                    <div className={`text-base font-black mt-1 font-display ${
+                      monthProfitLoss >= 0 ? 'text-emerald-700' : 'text-slate-800'
+                    }`}>
+                      {monthProfitLoss >= 0 ? '+' : '-'}₹{Math.abs(Math.round(monthProfitLoss)).toLocaleString('en-IN')}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Jobs Billed</div>
+                    <div className="text-base font-black text-slate-900 mt-1 font-display">
+                      {metrics.currentMonthJobsCount} jobs
+                    </div>
+                  </div>
+                </div>
+
+                {/* Monthly Target Coverage Progress Bar */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">
+                      Overall Monthly Target Coverage ({monthTargetCoveragePct.toFixed(1)}%)
+                    </span>
+                    <span className="font-semibold text-slate-500">
+                      ₹{metrics.monthRevenue.toLocaleString('en-IN')} / ₹{monthlyCostTarget.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#115e59] rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.max(0, monthTargetCoveragePct))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                    <span>₹0 (Day 1)</span>
+                    <span>Break-even: ₹{monthlyCostTarget.toLocaleString('en-IN')}</span>
+                    <span>
+                      Proj: ₹{projectedMonthRevenue.toLocaleString('en-IN')} ({projectedProfit >= 0 ? `+₹${(projectedProfit/1000).toFixed(1)}k profit` : `-₹${(Math.abs(projectedProfit)/1000).toFixed(1)}k`})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-stone-100 text-xs">
+                  <span className="text-[11px] text-slate-600 max-w-sm truncate">
+                    <span className="font-bold text-slate-800">Run-rate: </span>
+                    {metrics.monthRevenue >= monthlyCostTarget 
+                      ? 'Monthly break-even target achieved!' 
+                      : projectedMonthRevenue >= monthlyCostTarget 
+                      ? 'On schedule to surpass recommended monthly safe profit target.' 
+                      : 'Pacing behind monthly overhead break-even; queue acceleration advised.'}
+                  </span>
+                  <button
+                    onClick={() => setActiveSubTab('reports')}
+                    className="text-xs font-bold text-[#115e59] hover:text-[#0f4c4a] flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <span>View Month Breakdown</span>
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Card D: CNC Production Overview (Mobile: order-4, Desktop: order-4) */}
-            <div className="order-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    CNC Production Overview
-                  </h2>
-                  <p className="text-xs text-slate-500 font-medium">
+            {/* 4. CNC Production Overview */}
+            <div className="order-4 lg:order-4 bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+              {/* Mobile Accordion Header Button (< md) */}
+              <button
+                type="button"
+                onClick={() => toggleDashboardSection('productionOverview')}
+                className="w-full p-4 md:hidden flex items-center justify-between text-left cursor-pointer transition select-none hover:bg-stone-50/70"
+                aria-expanded={expandedDashboardSections.productionOverview}
+              >
+                <span className="text-sm font-bold text-slate-900 tracking-tight">
+                  CNC Production Overview
+                </span>
+                <span className="text-slate-400 shrink-0 ml-2">
+                  {expandedDashboardSections.productionOverview ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+
+              {/* Full Section Content: Always visible on desktop/tablet (md:block), expandable on mobile */}
+              <div className={`${expandedDashboardSections.productionOverview ? 'block' : 'hidden'} md:block p-4 md:p-5 pt-0 md:pt-5 space-y-4 border-t md:border-t-0 border-stone-100 transition-all duration-200`}>
+                {/* Desktop Header */}
+                <div className="hidden md:flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                      CNC Production Overview
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Spindle telemetry & cutting operational load
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveSubTab('queue')}
+                    className="text-xs font-bold text-[#115e59] hover:text-[#0f4c4a] flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <span>Queue Details</span>
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
+
+                {/* Mobile Sub-header (when expanded) */}
+                <div className="flex md:hidden items-center justify-between gap-2 pt-3">
+                  <p className="text-xs text-slate-500 font-medium leading-tight">
                     Spindle telemetry & cutting operational load
                   </p>
-                </div>
-                <button
-                  onClick={() => setActiveSubTab('queue')}
-                  className="text-xs font-bold text-[#115e59] hover:text-[#0f4c4a] flex items-center gap-1 cursor-pointer shrink-0"
-                >
-                  <span>Queue Details</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-
-              {/* 4 Cards (2x2 Grid) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span>Active Queue</span>
-                  </div>
-                  <div className="text-2xl font-black text-slate-900 mt-1 font-display">
-                    {metrics.activeQueueCount} <span className="text-xs text-slate-500 font-normal">jobs</span>
-                  </div>
-                  <div className="text-[11px] text-amber-800 font-medium mt-0.5">
-                    {metrics.inProgressJobs} currently carving
-                  </div>
+                  <button
+                    onClick={() => setActiveSubTab('queue')}
+                    className="text-xs font-bold text-[#115e59] hover:text-[#0f4c4a] flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <span>Queue Details</span>
+                    <ArrowRight size={13} />
+                  </button>
                 </div>
 
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>Completed ({currentMonthAbbr})</span>
+                {/* 4 Cards (2x2 Grid) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span>Active Queue</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-1 font-display">
+                      {metrics.activeQueueCount} <span className="text-xs text-slate-500 font-normal">jobs</span>
+                    </div>
+                    <div className="text-[11px] text-amber-800 font-medium mt-0.5">
+                      {metrics.inProgressJobs} currently carving
+                    </div>
                   </div>
-                  <div className="text-2xl font-black text-slate-900 mt-1 font-display">
-                    {metrics.completedJobs}
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span>Completed ({currentMonthAbbr})</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-1 font-display">
+                      {metrics.completedJobs}
+                    </div>
+                    <div className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                      100% QA pass rate
+                    </div>
                   </div>
-                  <div className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                    100% QA pass rate
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <Clock size={13} className="text-teal-600" />
+                      <span>Machining Hours</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-1 font-display">
+                      {metrics.monthMachiningHours} <span className="text-xs text-slate-500 font-normal">hrs</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Logged this month
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <AlertTriangle size={13} className={metrics.toolsNeedingAttentionCount > 0 ? 'text-rose-500' : 'text-emerald-600'} />
+                      <span>Tool Health</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-1 font-display">
+                      {metrics.toolsNeedingAttentionCount} <span className="text-xs text-slate-500 font-normal">Alert{metrics.toolsNeedingAttentionCount !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="text-[11px] font-medium mt-0.5 truncate text-slate-500">
+                      {metrics.toolsNeedingAttentionCount > 0 ? 'Bit wear threshold reached' : 'All tools within safe tolerances'}
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                    <Clock size={13} className="text-teal-600" />
-                    <span>Machining Hours</span>
-                  </div>
-                  <div className="text-2xl font-black text-slate-900 mt-1 font-display">
-                    {metrics.monthMachiningHours} <span className="text-xs text-slate-500 font-normal">hrs</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    Logged this month
-                  </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-500 pt-1 border-t border-stone-100">
+                  <span>Fleet Efficiency: {((Math.max(1, metrics.inProgressJobs) / DEFAULT_MACHINES.length) * 100).toFixed(1)}% operational</span>
+                  <span className="font-semibold text-emerald-700">All dust collectors active</span>
                 </div>
-
-                <div className="bg-slate-50/80 border border-slate-200/70 p-3.5 rounded-xl">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                    <AlertTriangle size={13} className={metrics.toolsNeedingAttentionCount > 0 ? 'text-rose-500' : 'text-emerald-600'} />
-                    <span>Tool Health</span>
-                  </div>
-                  <div className="text-2xl font-black text-slate-900 mt-1 font-display">
-                    {metrics.toolsNeedingAttentionCount} <span className="text-xs text-slate-500 font-normal">Alert{metrics.toolsNeedingAttentionCount !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="text-[11px] font-medium mt-0.5 truncate text-slate-500">
-                    {metrics.toolsNeedingAttentionCount > 0 ? 'Bit wear threshold reached' : 'All tools within safe tolerances'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-stone-100">
-                <span>Fleet Efficiency: {((Math.max(1, metrics.inProgressJobs) / DEFAULT_MACHINES.length) * 100).toFixed(1)}% operational</span>
-                <span className="font-semibold text-emerald-700">All dust collectors active</span>
               </div>
             </div>
           </div>
@@ -1750,9 +2065,9 @@ export default function CNCWorkshopTab({
 
       {/* SUB-VIEW 2: JOB QUEUE */}
       {activeSubTab === 'queue' && (
-        <div className="space-y-4">
-          {/* Top Filter & Action Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-3 sm:space-y-4">
+          {/* Desktop Filter & Action Bar (Unchanged) */}
+          <div className="hidden md:flex bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
@@ -1788,6 +2103,64 @@ export default function CNCWorkshopTab({
               <Plus size={14} />
               <span>Record New CNC Job</span>
             </button>
+          </div>
+
+          {/* Mobile Compact Search & Filter Strip */}
+          <div className="md:hidden bg-white p-2.5 rounded-xl border border-stone-200/90 shadow-2xs space-y-2">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" size={14} />
+              <input
+                type="text"
+                placeholder="Search jobs, machines, operators..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-7 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs placeholder:text-stone-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5"
+                  aria-label="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Filter & Count Row */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="flex-1 py-1 px-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-700 focus:bg-white focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="Queued">Queued</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                </select>
+
+                {(searchTerm || statusFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('all');
+                    }}
+                    className="px-2 py-1 text-[11px] font-bold text-stone-500 hover:text-stone-800 bg-stone-100 rounded-lg shrink-0"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              <span className="text-[11px] font-medium text-stone-500 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200/70 shrink-0">
+                Queue: <strong className="text-teal-800 font-bold">{filteredQueueItems.length}</strong>
+              </span>
+            </div>
           </div>
 
           {/* Desktop Table View */}
@@ -1892,12 +2265,27 @@ export default function CNCWorkshopTab({
                           </button>
                         )}
                         {item.rawJob ? (
-                          <button
-                            onClick={() => handleOpenEditJobModal(item.rawJob!)}
-                            className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          >
-                            Edit
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleOpenEditJobModal(item.rawJob!)}
+                              className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const jobTitle = item.article_no || item.rawJob?.job_number || 'this CNC job';
+                                if (window.confirm(`Are you sure you want to delete CNC job "${jobTitle}"?`)) {
+                                  await onDeleteJob(item.rawJob!.id);
+                                }
+                              }}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                              title="Delete CNC Job"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </>
                         ) : item.rawOrder ? (
                           <button
                             onClick={() => handleOpenNewJobModal(item.rawOrder)}
@@ -1922,100 +2310,290 @@ export default function CNCWorkshopTab({
             </div>
           </div>
 
-          {/* Mobile Expandable Job Cards */}
-          <div className="block md:hidden space-y-3">
+          {/* Mobile Compact Expandable Job Cards */}
+          <div className="block md:hidden space-y-2">
             {filteredQueueItems.map(item => {
               const isExpanded = expandedJobIds.has(item.id);
+              const job = item.rawJob;
+              const order = item.rawOrder;
+
+              const articleNo = job?.article_no || job?.job_number || item.article_no;
+              const jobDate = job?.job_date || item.job_date;
+              const jobType = job?.job_type || item.job_type;
+              const machineName = job?.machine_name || item.machine_name;
+              const toolName = job?.tool_name || item.tool_name;
+              const material = job?.material || order?.material || order?.wood_type || '';
+              const amount = job?.amount ?? item.amount ?? 0;
+              const operatorName = job?.operator_name || item.operator_name;
+              const designTime = job?.design_time_minutes ?? item.design_time ?? 0;
+              const completionTime = job?.completion_time_minutes ?? job?.run_time_minutes ?? item.completion_time ?? 0;
+              const programFile = job?.design_file || order?.cnc_file_url || order?.cad_file_url || '';
+              const description = job?.notes || order?.cnc_notes || order?.remarks || '';
+              const status = job?.status || item.status;
+
+              // Additional Firestore job-specific fields
+              const customerName = job?.customer_name || (order?.customer_id ? customerMap.get(order.customer_id)?.name : '') || '';
+              const productName = job?.product_name || order?.sub_category || order?.category || '';
+              const dimensions = job?.dimensions || order?.size_of_product || '';
+              const createdAt = job?.created_at || order?.created_at || '';
+              const completedAt = job?.completed_at || '';
+              const createdBy = job?.created_by || '';
+              const orderId = job?.order_id || order?.id || '';
+
               return (
                 <div
                   key={item.id}
-                  className="bg-white rounded-2xl border border-stone-200 p-4 shadow-2xs space-y-3"
+                  className="bg-white rounded-xl border border-stone-200/90 shadow-2xs overflow-hidden transition-all"
                 >
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-bold text-sm text-stone-900 font-mono">
-                        {item.article_no}
+                  {/* Collapsed Card Header: Job No., date/type, machine, status, amount, and clear expand/collapse control */}
+                  <div
+                    onClick={() => toggleExpandJob(item.id)}
+                    className="p-2.5 flex flex-col gap-1.5 cursor-pointer hover:bg-stone-50/60 transition select-none"
+                  >
+                    {/* Top line: Job No., Status, Amount, Expand/Collapse Control */}
+                    <div className="flex items-center justify-between gap-1.5">
+                      <div className="font-bold text-xs text-stone-900 font-mono truncate min-w-0">
+                        {articleNo}
                       </div>
-                      <div className="text-[11px] text-stone-500 font-medium">
-                        {formatToDDMMYYYY(item.job_date)} • {item.job_type} • {item.machine_name}
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-extrabold inline-flex items-center gap-1 ${
+                          status === 'In Progress'
+                            ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                            : status === 'Completed'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}>
+                          {status === 'In Progress' && (
+                            <span className="w-1 h-1 rounded-full bg-teal-600 animate-pulse" />
+                          )}
+                          {status}
+                        </span>
+
+                        <span className="font-black text-xs text-stone-900 font-display">
+                          ₹{Number(amount || 0).toLocaleString('en-IN')}
+                        </span>
+
+                        {/* Clear Expand / Collapse Control Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpandJob(item.id);
+                          }}
+                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border flex items-center gap-0.5 transition ${
+                            isExpanded
+                              ? 'bg-teal-50 text-teal-800 border-teal-200'
+                              : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'
+                          }`}
+                          aria-label={isExpanded ? "Collapse job details" : "Expand job details"}
+                        >
+                          <span>{isExpanded ? "Hide" : "Details"}</span>
+                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
-                        item.status === 'In Progress'
-                          ? 'bg-teal-50 text-teal-800 border border-teal-200'
-                          : item.status === 'Completed'
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          : 'bg-amber-50 text-amber-800 border border-amber-200'
-                      }`}>
-                        {item.status === 'In Progress' && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-600 animate-pulse" />
-                        )}
-                        {item.status}
+                    {/* Second line: Date/Type & Machine */}
+                    <div className="flex items-center justify-between text-[11px] text-stone-500 gap-2">
+                      <span className="truncate min-w-0">
+                        {formatToDDMMYYYY(jobDate)} • <span className="font-semibold text-stone-700">{jobType}</span>
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpandJob(item.id)}
-                        className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition cursor-pointer"
-                        aria-label="Toggle details"
-                      >
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </button>
+                      <span className="font-medium text-stone-600 truncate text-right shrink-0">
+                        {machineName}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Summary row */}
-                  <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-100">
-                    <span className="text-stone-500 font-medium">Billing Amount:</span>
-                    <span className="font-bold text-stone-900">
-                      ₹{Number(item.amount || 0).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-
-                  {/* Expanded Telemetry & Specs */}
+                  {/* Expanded Card: ALL job details organized into clean labeled rows/sections + Actions */}
                   {isExpanded && (
-                    <div className="pt-2 border-t border-stone-100 space-y-2.5 text-xs animate-in fade-in duration-100">
-                      <div className="grid grid-cols-2 gap-2 bg-stone-50 p-3 rounded-xl border border-stone-150">
-                        <div>
-                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Tool Used</span>
-                          <span className="font-mono text-stone-800 font-semibold">{item.tool_name}</span>
+                    <div className="px-2.5 pb-2.5 pt-2 border-t border-stone-100 bg-stone-50/40 space-y-2.5 text-xs animate-in fade-in duration-100">
+                      {/* Section 1: Specifications Grid (Date, Article No, Type, Machine, Tool, Material, Operator, Status) */}
+                      <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-2">
+                        <div className="text-[10px] font-extrabold text-teal-800 uppercase tracking-wider flex items-center justify-between border-b border-stone-100 pb-1">
+                          <span>Job Specifications</span>
+                          <span className="font-mono text-stone-400 font-normal">{articleNo}</span>
                         </div>
-                        <div>
-                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Operator</span>
-                          <span className="text-stone-800 font-medium">{item.operator_name}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Design Time</span>
-                          <span className="text-stone-800 font-medium">{item.design_time ? `${item.design_time} mins` : '-'}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-stone-400 uppercase font-bold block">Completion Time</span>
-                          <span className="text-stone-800 font-medium">{item.completion_time ? `${item.completion_time} mins` : '-'}</span>
+
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Date</span>
+                            <span className="font-medium text-stone-800 truncate block">{formatToDDMMYYYY(jobDate) || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Article / Job No.</span>
+                            <span className="font-mono font-bold text-stone-900 truncate block">{articleNo || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Job Type</span>
+                            <span className="font-semibold text-stone-800 truncate block">{jobType || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Machine Assigned</span>
+                            <span className="font-medium text-stone-800 truncate block">{machineName || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Tool Used</span>
+                            <span className="font-mono font-semibold text-stone-800 truncate block">{toolName || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Wood / Material</span>
+                            <span className="font-medium text-stone-800 truncate block">{material || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Operator / CNC Manager</span>
+                            <span className="font-medium text-stone-800 truncate block">{operatorName || '—'}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Status</span>
+                            <span className="font-semibold text-stone-800 truncate block">{status || '—'}</span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Mobile Actions */}
-                      <div className="flex items-center gap-2 pt-1">
-                        {item.status !== 'In Progress' && item.status !== 'Completed' && (
+                      {/* Section 2: Time & Billing */}
+                      <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-2">
+                        <div className="text-[10px] font-extrabold text-teal-800 uppercase tracking-wider border-b border-stone-100 pb-1">
+                          Time & Billing
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Time For Designing</span>
+                            <span className="font-medium text-stone-800 block">
+                              {designTime ? `${designTime} mins` : '—'}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Job Completion Time</span>
+                            <span className="font-medium text-stone-800 block">
+                              {completionTime ? `${completionTime} mins` : '—'}
+                            </span>
+                          </div>
+
+                          <div className="col-span-2 pt-1 border-t border-stone-100 flex items-center justify-between">
+                            <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Amount / Billing</span>
+                            <span className="font-black text-xs text-teal-900 font-display">
+                              ₹{Number(amount || 0).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Program File Ref (.dxf / .nc) */}
+                      <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-1">
+                        <div className="flex items-center gap-1 text-[10px] font-extrabold text-teal-800 uppercase tracking-wider">
+                          <FileCode size={12} className="text-teal-700" />
+                          <span>Program File Ref (.dxf / .nc)</span>
+                        </div>
+                        <div className="p-1.5 bg-stone-50 rounded border border-stone-200/60 font-mono text-[11px] text-stone-800 break-all">
+                          {programFile || <span className="text-stone-400 italic">None recorded</span>}
+                        </div>
+                      </div>
+
+                      {/* Section 4: Job Description */}
+                      <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-1">
+                        <div className="text-[10px] font-extrabold text-teal-800 uppercase tracking-wider">
+                          Job Description
+                        </div>
+                        <div className="p-2 bg-stone-50 rounded border border-stone-200/60 text-[11px] text-stone-700 whitespace-pre-wrap break-words leading-relaxed">
+                          {description || <span className="text-stone-400 italic">No description provided.</span>}
+                        </div>
+                      </div>
+
+                      {/* Section 5: Additional Stored Fields (if available in Firestore) */}
+                      {(customerName || productName || dimensions || createdAt || completedAt || orderId || createdBy) && (
+                        <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-1.5">
+                          <div className="text-[10px] font-extrabold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1">
+                            Additional Job Details
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+                            {customerName && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Customer / Client</span>
+                                <span className="font-medium text-stone-800 truncate block">{customerName}</span>
+                              </div>
+                            )}
+
+                            {productName && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Product / Component</span>
+                                <span className="font-medium text-stone-800 truncate block">{productName}</span>
+                              </div>
+                            )}
+
+                            {dimensions && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Dimensions</span>
+                                <span className="font-medium text-stone-800 truncate block">{dimensions}</span>
+                              </div>
+                            )}
+
+                            {orderId && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Linked Order ID</span>
+                                <span className="font-mono font-medium text-stone-800 truncate block">#{orderId.slice(-6)}</span>
+                              </div>
+                            )}
+
+                            {createdAt && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Created Date</span>
+                                <span className="font-medium text-stone-800 truncate block">{formatToDDMMYYYY(createdAt.split('T')[0])}</span>
+                              </div>
+                            )}
+
+                            {completedAt && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Completed At</span>
+                                <span className="font-medium text-emerald-800 truncate block">{formatToDDMMYYYY(completedAt.split('T')[0])}</span>
+                              </div>
+                            )}
+
+                            {createdBy && (
+                              <div>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Created By</span>
+                                <span className="font-medium text-stone-800 truncate block">{createdBy}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions: Edit, Complete, Delete (and Start if Queued) */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {status !== 'In Progress' && status !== 'Completed' && (
                           <button
-                            onClick={async () => {
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
                               if (item.rawJob) {
                                 await handleStartJob(item.rawJob);
                               } else if (item.rawOrder) {
                                 await handleStartCNCWorking(item.rawOrder);
                               }
                             }}
-                            className="flex-1 py-1.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
+                            className="flex-1 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs min-w-[70px]"
                           >
                             <Play size={12} />
                             <span>Start</span>
                           </button>
                         )}
-                        {item.status === 'In Progress' && (
+
+                        {status === 'In Progress' ? (
                           <button
-                            onClick={async () => {
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
                               if (item.rawOrder) {
                                 await handleCompleteOrderAndMoveToQC1(item.rawOrder);
                               }
@@ -2027,23 +2605,76 @@ export default function CNCWorkshopTab({
                                 });
                               }
                             }}
-                            className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
+                            className="flex-1 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs min-w-[85px]"
                           >
-                            <CheckCircle2 size={12} />
+                            <CheckCircle2 size={13} />
                             <span>Complete</span>
                           </button>
-                        )}
-                        {item.rawJob ? (
+                        ) : status !== 'Completed' ? (
                           <button
-                            onClick={() => handleOpenEditJobModal(item.rawJob!)}
-                            className="flex-1 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold text-center transition cursor-pointer"
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (item.rawJob) {
+                                await onSaveJob({
+                                  ...item.rawJob,
+                                  status: 'Completed',
+                                  completed_at: new Date().toISOString(),
+                                });
+                              }
+                              if (item.rawOrder) {
+                                await handleCompleteOrderAndMoveToQC1(item.rawOrder);
+                              }
+                            }}
+                            className="flex-1 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300/80 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer min-w-[85px]"
                           >
-                            Edit Log
+                            <CheckCircle2 size={13} />
+                            <span>Complete</span>
                           </button>
+                        ) : (
+                          <div className="flex-1 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 select-none min-w-[85px]">
+                            <CheckCircle2 size={13} className="text-emerald-600" />
+                            <span>Completed</span>
+                          </div>
+                        )}
+
+                        {item.rawJob ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditJobModal(item.rawJob!);
+                              }}
+                              className="flex-1 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer min-w-[65px]"
+                            >
+                              <Pencil size={12} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const jobTitle = item.article_no || item.rawJob?.job_number || 'this CNC job';
+                                if (window.confirm(`Are you sure you want to delete CNC job "${jobTitle}"?`)) {
+                                  await onDeleteJob(item.rawJob!.id);
+                                }
+                              }}
+                              className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer min-w-[70px]"
+                              title="Delete CNC Job"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </>
                         ) : item.rawOrder ? (
                           <button
-                            onClick={() => handleOpenNewJobModal(item.rawOrder)}
-                            className="flex-1 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold text-center transition cursor-pointer"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenNewJobModal(item.rawOrder);
+                            }}
+                            className="flex-1 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 rounded-lg text-xs font-bold text-center transition cursor-pointer min-w-[80px]"
                           >
                             Log Specs
                           </button>
@@ -2056,7 +2687,7 @@ export default function CNCWorkshopTab({
             })}
 
             {filteredQueueItems.length === 0 && (
-              <div className="p-8 text-center bg-white rounded-2xl border border-stone-200 text-stone-400 text-xs">
+              <div className="p-6 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
                 No CNC jobs match the filter criteria.
               </div>
             )}
