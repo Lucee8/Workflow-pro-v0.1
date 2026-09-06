@@ -4,7 +4,7 @@
 
 export const UPI_CONFIG = {
   // UPI ID (VPA) for receiving invoice balance payments
-  upiId: 'aradhyabhise-1@okhdfcbank',
+  upiId: '50100705616156',
   payeeName: 'Bhisez Furniture',
   currency: 'INR',
 };

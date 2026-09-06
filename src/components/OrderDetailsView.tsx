@@ -28,7 +28,8 @@ import {
   Camera,
   UploadCloud,
   Video,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Cpu
 } from 'lucide-react';
 
 interface OrderDetailsViewProps {
@@ -291,18 +292,32 @@ export default function OrderDetailsView({
 
   const isAdmin = currentUser.role === 'admin';
 
-  const stages: OrderStage[] = [
-    'Pending',
-    'Designing',
-    'Wood Procurement',
-    'Making Started',
-    'QC 1',
-    'Making Completed',
-    'Polish',
-    'QC 2',
-    'Ready to Dispatch',
-    'Dispatched',
-  ];
+  const stages: OrderStage[] = order.requires_cnc
+    ? [
+        'Pending',
+        'Designing',
+        'Wood Procurement',
+        'Making Started',
+        'CNC Wood Carving',
+        'QC 1',
+        'Making Completed',
+        'Polish',
+        'QC 2',
+        'Ready to Dispatch',
+        'Dispatched',
+      ]
+    : [
+        'Pending',
+        'Designing',
+        'Wood Procurement',
+        'Making Started',
+        'QC 1',
+        'Making Completed',
+        'Polish',
+        'QC 2',
+        'Ready to Dispatch',
+        'Dispatched',
+      ];
 
   const getStageIndex = (status: string) => {
     const norm = normalizeStage(status);
@@ -509,7 +524,11 @@ export default function OrderDetailsView({
   };
 
   const handleCompleteCarpentry = () => {
-    triggerTransition('QC 1', 'Carpentry completed. Order moved to QC 1.');
+    if (order.requires_cnc) {
+      triggerTransition('CNC Wood Carving', 'Carpentry completed. Order moved to CNC Wood Carving.');
+    } else {
+      triggerTransition('QC 1', 'Carpentry completed. Order moved to QC 1.');
+    }
   };
 
   const handlePassQC1 = () => {
@@ -1019,14 +1038,46 @@ export default function OrderDetailsView({
                   {/* STAGE 4: MAKING STARTED */}
                   {order.current_status === 'Making Started' && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
-                      <span className="text-stone-700 font-semibold text-xs font-sans">Carpentry framework assembly underway</span>
+                      <div>
+                        <span className="text-stone-800 font-bold text-xs block">Carpentry framework assembly underway</span>
+                        <span className="text-[11px] text-stone-500">
+                          {order.requires_cnc ? 'Next stage: CNC Wood Carving' : 'Next stage: QC 1'}
+                        </span>
+                      </div>
                       <button
                         disabled={isAdvancing}
                         onClick={handleCompleteCarpentry}
                         className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        <CheckCircle2 size={13} /> Complete Carpentry
+                        <CheckCircle2 size={13} /> {order.requires_cnc ? 'Complete Carpentry → CNC' : 'Complete Carpentry → QC 1'}
                       </button>
+                    </div>
+                  )}
+
+                  {/* STAGE: CNC WOOD CARVING (CONDITIONAL) */}
+                  {order.current_status === 'CNC Wood Carving' && (
+                    <div className="bg-cyan-50/80 p-3.5 rounded-xl border border-cyan-300 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-cyan-950 uppercase tracking-wide flex items-center gap-1.5">
+                          <Cpu size={14} className="text-cyan-800" />
+                          CNC Wood Carving in Progress
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-200 text-cyan-900">
+                          {order.cnc_status === 'in_progress' ? 'CNC working ⚙' : 'Queued for Carving'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-600">
+                        Order is active in the CNC Workshop. CNC Manager or Admin can record machine details and advance order to QC 1.
+                      </p>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          disabled={isAdvancing}
+                          onClick={() => triggerTransition('QC 1', 'CNC Wood Carving completed. Order moved to QC 1.')}
+                          className="bg-cyan-800 hover:bg-cyan-900 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <CheckCircle2 size={13} /> Complete CNC Carving → QC 1
+                        </button>
+                      </div>
                     </div>
                   )}
 

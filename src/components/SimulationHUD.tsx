@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { User } from '../types';
-import { Shield, Hammer, Sparkles, RefreshCw, CheckSquare, Briefcase, Trees } from 'lucide-react';
+import { Shield, Hammer, Sparkles, RefreshCw, CheckSquare, Briefcase, Trees, Cpu } from 'lucide-react';
 
 interface SimulationHUDProps {
   users: User[];
@@ -40,6 +40,7 @@ export default function SimulationHUD({
               {currentUser.role === 'admin' && <Shield size={12} className="text-rose-400 shrink-0" />}
               {currentUser.role === 'manager' && <Briefcase size={12} className="text-indigo-400 shrink-0" />}
               {currentUser.role === 'wood_tab_manager' && <Trees size={12} className="text-amber-400 shrink-0" />}
+              {currentUser.role === 'cnc_manager' && <Cpu size={12} className="text-cyan-400 shrink-0" />}
               {currentUser.role === 'carpenter' && <Hammer size={12} className="text-amber-400 shrink-0" />}
               {currentUser.role === 'polish_person' && <Sparkles size={12} className="text-teal-400 shrink-0" />}
               {currentUser.role === 'qc_staff' && <CheckSquare size={12} className="text-purple-400 shrink-0" />}
@@ -66,6 +67,7 @@ export default function SimulationHUD({
                   if (u.role === 'admin') colorClass = 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold';
                   else if (u.role === 'manager') colorClass = 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold';
                   else if (u.role === 'wood_tab_manager') colorClass = 'bg-orange-500/20 text-orange-300 border border-orange-500/30 font-bold';
+                  else if (u.role === 'cnc_manager') colorClass = 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold';
                   else if (u.role === 'carpenter') colorClass = 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold';
                   else if (u.role === 'qc_staff') colorClass = 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold';
                   else colorClass = 'bg-teal-500/20 text-teal-300 border border-teal-500/30 font-bold';

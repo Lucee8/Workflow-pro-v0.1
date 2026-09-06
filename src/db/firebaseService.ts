@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool } from '../types';
 
 // Connect with proper authentication securely or proceed with existing auth session
 export async function authenticateFirebase(): Promise<boolean> {
@@ -122,6 +122,8 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
     await syncCollectionToFirestore('crmNotes', seedData.crmNotes || []);
     await syncCollectionToFirestore('crmAttachments', seedData.crmAttachments || []);
     await syncCollectionToFirestore('crmTimelineEvents', seedData.crmTimelineEvents || []);
+    await syncCollectionToFirestore('cncJobs', seedData.cncJobs || []);
+    await syncCollectionToFirestore('cncTools', seedData.cncTools || []);
 
     console.log("Database initialization and synchronization sync phase complete.");
   } catch (error) {
@@ -151,6 +153,8 @@ export async function pushAllLocalDataToFirestore(state: AppState): Promise<{ su
       { name: 'crmAttachments', items: state.crmAttachments || [] },
       { name: 'crmTimelineEvents', items: state.crmTimelineEvents || [] },
       { name: 'auditLogs', items: state.auditLogs || [] },
+      { name: 'cncJobs', items: state.cncJobs || [] },
+      { name: 'cncTools', items: state.cncTools || [] },
     ];
 
     for (const col of collectionsToSync) {
@@ -231,6 +235,8 @@ export async function fetchFullFirestoreState(): Promise<Partial<AppState>> {
     crmAttachments,
     crmTimelineEvents,
     auditLogs,
+    cncJobs,
+    cncTools,
   ] = await Promise.all([
     fetchCollection('users'),
     fetchCollection('customers'),
@@ -246,6 +252,8 @@ export async function fetchFullFirestoreState(): Promise<Partial<AppState>> {
     fetchCollection('crmAttachments'),
     fetchCollection('crmTimelineEvents'),
     fetchCollection('auditLogs'),
+    fetchCollection('cncJobs'),
+    fetchCollection('cncTools'),
   ]);
 
   if (users.length > 0) result.users = users as User[];
@@ -262,6 +270,8 @@ export async function fetchFullFirestoreState(): Promise<Partial<AppState>> {
   if (crmAttachments.length > 0) result.crmAttachments = crmAttachments as CRMAttachment[];
   if (crmTimelineEvents.length > 0) result.crmTimelineEvents = crmTimelineEvents as CRMTimelineEvent[];
   if (auditLogs.length > 0) result.auditLogs = auditLogs as AuditLog[];
+  if (cncJobs.length > 0) result.cncJobs = cncJobs as CNCJob[];
+  if (cncTools.length > 0) result.cncTools = cncTools as CNCTool[];
 
   return result;
 }
@@ -323,6 +333,8 @@ export function syncFirestore(
   listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
   listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
   listenCollection('auditLogs', (docs) => onUpdate({ auditLogs: docs as AuditLog[] }));
+  listenCollection('cncJobs', (docs) => onUpdate({ cncJobs: docs as CNCJob[] }));
+  listenCollection('cncTools', (docs) => onUpdate({ cncTools: docs as CNCTool[] }));
 
   return () => {
     unsubscribers.forEach(unsub => unsub());
@@ -650,12 +662,12 @@ export async function saveCRMQuotationToFirebase(quote: CRMQuotation): Promise<v
               if (typeof img === 'string') return { url: img, description: '' };
               if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
               return null;
-            }).filter((img): img is { url: any; description: any } => img !== null)
+            }).filter(Boolean)
           : []
       })) : []
     };
     await setDoc(doc(db, 'crmQuotations', quote.id), cleanUndefined(sanitizedQuote));
-    } catch (error) {
+  } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
   }
@@ -863,5 +875,42 @@ export async function syncResequencedCRMCustomersToFirestore(
     console.error('Failed to sync resequenced CRM customer IDs to Firestore:', err);
   }
 }
+
+export async function saveCNCJobToFirebase(job: CNCJob): Promise<void> {
+  const path = `cncJobs/${job.id}`;
+  try {
+    await setDoc(doc(db, 'cncJobs', job.id), cleanUndefined(job));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCNCJobFromFirebase(jobId: string): Promise<void> {
+  const path = `cncJobs/${jobId}`;
+  try {
+    await deleteDoc(doc(db, 'cncJobs', jobId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function saveCNCToolToFirebase(tool: CNCTool): Promise<void> {
+  const path = `cncTools/${tool.id}`;
+  try {
+    await setDoc(doc(db, 'cncTools', tool.id), cleanUndefined(tool));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCNCToolFromFirebase(toolId: string): Promise<void> {
+  const path = `cncTools/${toolId}`;
+  try {
+    await deleteDoc(doc(db, 'cncTools', toolId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 
 

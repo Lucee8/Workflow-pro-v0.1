@@ -23,7 +23,8 @@ import {
   Minus,
   Camera,
   UploadCloud,
-  Video
+  Video,
+  Cpu
 } from 'lucide-react';
 
 // Preset photos for workshop previews
@@ -115,7 +116,7 @@ export default function OrderForm({
 
   // Helper workload count
   const getWorkload = (userId: string) => {
-    return orders.filter((o) => (o.carpenter_id === userId || o.polish_person_id === userId) && !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))).length;
+    return orders.filter((o) => (o.carpenter_id === userId || o.polish_person_id === userId) && !['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))).length;
   };
 
   // --- STEP 1: PRODUCT STATE ---
@@ -129,6 +130,7 @@ export default function OrderForm({
   const [colorShade, setColorShade] = React.useState('Walnut');
   const [noOfUnits, setNoOfUnits] = React.useState(1);
   const [specialNotes, setSpecialNotes] = React.useState('');
+  const [requiresCnc, setRequiresCnc] = React.useState<boolean>(Boolean(initialDraft?.requiresCnc ?? initialDraft?.requires_cnc ?? false));
 
   // --- STEP 2: CUSTOMER STATE ---
   const [searchCustQuery, setSearchCustQuery] = React.useState('');
@@ -295,6 +297,7 @@ export default function OrderForm({
     polishPersonId: string;
     polishLabourRate: number | '';
     polishDeliveryDate: string;
+    requiresCnc?: boolean;
   }>>([]);
   const [activeProductIndex, setActiveProductIndex] = React.useState<number>(0);
 
@@ -328,6 +331,7 @@ export default function OrderForm({
           polishPersonId: polishPersonId || defaultPolish,
           polishLabourRate: polishLabourRate !== '' ? polishLabourRate : '',
           polishDeliveryDate: defaultPolDate,
+          requiresCnc,
         },
       ]);
       setActiveProductIndex(0);
@@ -477,6 +481,9 @@ export default function OrderForm({
       if (initialDraft.qty) setNoOfUnits(initialDraft.qty);
       if (initialDraft.specialNotes) setSpecialNotes(initialDraft.specialNotes);
       if (initialDraft.refImages) setRefImages(initialDraft.refImages);
+      if (initialDraft.requiresCnc !== undefined || initialDraft.requires_cnc !== undefined) {
+        setRequiresCnc(Boolean(initialDraft.requiresCnc ?? initialDraft.requires_cnc));
+      }
 
       // Customer
       const draftPhone = initialDraft.whatsappNo?.trim();
@@ -548,6 +555,7 @@ export default function OrderForm({
         polishPersonId: string;
         polishLabourRate: number | '';
         polishDeliveryDate: string;
+        requiresCnc?: boolean;
       }> = [];
 
       if (Array.isArray(initialDraft.items) && initialDraft.items.length > 0) {
@@ -579,6 +587,7 @@ export default function OrderForm({
             polishPersonId: it.polishPersonId || defaultPolish,
             polishLabourRate: it.polishLabourRate !== undefined ? it.polishLabourRate : '',
             polishDeliveryDate: it.polishDeliveryDate || defaultPolDate,
+            requiresCnc: Boolean(it.requiresCnc ?? it.requires_cnc ?? initialDraft.requiresCnc ?? initialDraft.requires_cnc ?? false),
           };
         });
       } else {
@@ -604,6 +613,7 @@ export default function OrderForm({
             polishPersonId: defaultPolish,
             polishLabourRate: '',
             polishDeliveryDate: defaultPolDate,
+            requiresCnc: Boolean(initialDraft.requiresCnc ?? initialDraft.requires_cnc ?? false),
           },
         ];
       }
@@ -738,6 +748,7 @@ export default function OrderForm({
         polishPersonId,
         polishLabourRate,
         polishDeliveryDate,
+        requiresCnc,
       }
     ];
 
@@ -752,6 +763,8 @@ export default function OrderForm({
         users,
         idx
       );
+
+      const orderRequiresCnc = Boolean(prod.requiresCnc ?? requiresCnc);
 
       const newOrder: Order = {
         id: orderId,
@@ -781,6 +794,8 @@ export default function OrderForm({
         delivery_date: deliveryDate,
         internal_notes: internalNotes || undefined,
         special_notes: prod.specialNotes || specialNotes || undefined,
+        requires_cnc: orderRequiresCnc,
+        cnc_status: orderRequiresCnc ? 'pending' : 'not_required',
         portal_token: 'pt_' + generateUUID().split('-')[0],
         portal_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         qr_token: 'qr_' + generateUUID().split('-')[0],
@@ -1018,6 +1033,49 @@ export default function OrderForm({
                     <Plus size={13} />
                   </button>
                 </div>
+              </div>
+
+              {/* CNC Wood Carving Requirement Toggle */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl flex items-center justify-between transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${requiresCnc ? 'bg-[#593622] text-amber-300' : 'bg-stone-200 text-stone-500'}`}>
+                    <Cpu size={18} />
+                  </div>
+                  <div>
+                    <label htmlFor="requires-cnc-toggle" className="block text-xs font-bold text-stone-900 cursor-pointer">
+                      Requires CNC Wood Carving?
+                    </label>
+                    <p className="text-[11px] text-stone-500">
+                      {requiresCnc 
+                        ? 'Production workflow: Making Started → CNC Wood Carving → QC 1' 
+                        : 'Standard workflow: Making Started → QC 1'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="requires-cnc-toggle"
+                  role="switch"
+                  aria-checked={requiresCnc}
+                  onClick={() => {
+                    const newVal = !requiresCnc;
+                    setRequiresCnc(newVal);
+                    if (productsList.length > 0) {
+                      setProductsList((prev) =>
+                        prev.map((p, idx) => (idx === activeProductIndex ? { ...p, requiresCnc: newVal } : p))
+                      );
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    requiresCnc ? 'bg-[#593622]' : 'bg-stone-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      requiresCnc ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
 
               <div>

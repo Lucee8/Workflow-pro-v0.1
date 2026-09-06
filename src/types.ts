@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'carpenter' | 'polish_person' | 'qc_staff';
+export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'carpenter' | 'polish_person' | 'qc_staff' | 'cnc_manager';
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOCKED';
 
@@ -75,6 +75,7 @@ export type OrderStage =
   | 'Designing'
   | 'Wood Procurement'
   | 'Making Started'
+  | 'CNC Wood Carving'
   | 'QC 1'
   | 'Making Completed'
   | 'Polish'
@@ -87,7 +88,6 @@ export type OrderStage =
   | 'Carpentry'
   | 'QC Check 1'
   | 'QC Check 2';
-
 
 export function normalizeStage(stage: string | null | undefined): OrderStage {
   if (!stage) return 'Pending';
@@ -140,6 +140,17 @@ export function normalizeStage(stage: string | null | undefined): OrderStage {
     lower === 'carpentry'
   ) {
     return 'Making Started';
+  }
+  if (
+    s === 'CNC Wood Carving' ||
+    s === 'cnc_wood_carving' ||
+    s === 'CNC' ||
+    s === 'cnc' ||
+    lower === 'cnc wood carving' ||
+    lower === 'cnc carving' ||
+    lower === 'cnc'
+  ) {
+    return 'CNC Wood Carving';
   }
   if (
     s === '5. QC 1' ||
@@ -298,7 +309,15 @@ export interface Order {
   qc_2_fail_notes?: string;
   qc_2_failed_at?: string;
   qc_2_failed_by?: string;
-  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed';
+  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'qc_check_1' | 'completed';
+  requires_cnc?: boolean;
+  cnc_job_id?: string;
+  cnc_status?: 'not_required' | 'pending' | 'in_progress' | 'completed';
+  cnc_job_type?: CNCJobType;
+  cnc_tool_used?: string;
+  cnc_amount?: number;
+  cnc_duration_minutes?: number;
+  cnc_notes?: string;
   completion_popup_acknowledged?: boolean;
   completionPopupShown?: boolean;
   total_amount?: number;
@@ -539,5 +558,87 @@ export interface CRMTimelineEvent {
   timestamp: string;
   operator: string;
 }
+
+// ==========================================
+// CNC WOOD WORKSHOP MODULE TYPES
+// ==========================================
+
+export type CNCJobType =
+  | 'Carving'
+  | 'Jali Cutting'
+  | '3D Relief'
+  | 'Grooving'
+  | 'Engraving'
+  | 'Profile Cutting'
+  | 'Moulding'
+  | 'Surfacing'
+  | 'Other';
+
+export type CNCJobStatus = 'Pending' | 'Queued' | 'In Progress' | 'Completed' | 'Rework';
+
+export interface CNCJob {
+  id: string; // UUID
+  order_id?: string; // Foreign key linking to existing production order
+  article_no?: string; // Order Article Number (e.g. 12/03/26/0001)
+  customer_name?: string;
+  job_number: string; // Sequential CNC job ID (e.g. CNC-2026-001)
+  job_date: string; // YYYY-MM-DD
+  product_name: string; // Component or product (e.g. Mandir Jali Panel, Bed Headboard)
+  material: string; // Timber/Sheet (e.g. Teak Wood, MDF 18mm, Sheesham)
+  dimensions: string; // e.g. 48" x 24" x 1.5"
+  job_type: CNCJobType;
+  machine_name: string; // e.g. CNC Router 1 (3-Axis), CNC Heavy Carver
+  tool_id?: string; // FK to CNCTool
+  tool_name: string; // e.g. 60° V-Groove Bit, 6mm Ball Nose
+  run_time_minutes: number;
+  operator_name: string;
+  amount: number; // CNC revenue/rate in ₹
+  status: CNCJobStatus;
+  notes?: string;
+  design_file?: string; // e.g. JALI_FLORAL_04.dxf
+  image_url?: string;
+  completed_at?: string;
+  created_at: string;
+  created_by: string;
+}
+
+export type CNCToolType =
+  | 'End Mill'
+  | 'Ball Nose'
+  | 'V-Bit'
+  | 'Tapered Ball'
+  | 'Surfacing Bit'
+  | 'Profile Bit'
+  | 'Engraving Bit'
+  | 'Other';
+
+export type CNCToolCondition =
+  | 'New'
+  | 'Good'
+  | 'Fair'
+  | 'Dull'
+  | 'Needs Resharpening'
+  | 'Worn Out'
+  | 'Broken/Retired';
+
+export interface CNCTool {
+  id: string;
+  tool_code: string; // e.g. BIT-V60-01, BIT-BN06-01
+  name: string; // e.g. 60° V-Groove Bit 1/2" Shank
+  tool_type: CNCToolType;
+  diameter_mm: string; // e.g. 6mm, 12mm, 32mm
+  shank_mm: string; // e.g. 1/2" (12.7mm) or 6mm
+  quantity_in_stock: number;
+  reorder_level: number;
+  condition: CNCToolCondition;
+  total_run_hours: number;
+  unit_cost?: number; // Cost in ₹
+  status: 'In Service' | 'In Use' | 'Spare' | 'Damaged' | 'Retired';
+  last_sharpened_date?: string;
+  supplier?: string;
+  notes?: string;
+  updated_at?: string;
+}
+
 
 

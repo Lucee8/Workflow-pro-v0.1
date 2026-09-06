@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState, resequenceCRMCustomersInState, generateArticleNumber } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -40,7 +40,11 @@ import {
   saveCRMAttachmentToFirebase,
   deleteCRMAttachmentFromFirebase,
   saveCRMTimelineEventToFirebase,
-  syncResequencedCRMCustomersToFirestore
+  syncResequencedCRMCustomersToFirestore,
+  saveCNCJobToFirebase,
+  deleteCNCJobFromFirebase,
+  saveCNCToolToFirebase,
+  deleteCNCToolFromFirebase
 } from './db/firebaseService';
 
 // Component imports
@@ -60,17 +64,22 @@ import CustomersTab from './components/CustomersTab';
 import DetailOrderFormTab from './components/DetailOrderFormTab';
 import MaterialRequirementPlanning from './components/MaterialRequirementPlanning';
 import CRMTab from './components/CRMTab';
+import CNCWorkshopTab from './components/CNCWorkshopTab';
 import CloudSyncModal from './components/CloudSyncModal';
 import { Cloud, CloudUpload } from 'lucide-react';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
 import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
 import { hasPermission, getDefaultTabForRole, getRoleDisplayName } from './permissions';
+// import { usePreventNumberInputScroll } from './hooks/usePreventNumberInputScroll';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
+  // Prevent mouse wheel scrolling from modifying focused number inputs
+  // usePreventNumberInputScroll();
+
   // Database store loader state (with local cache load)
   const [db, setDb] = React.useState<AppState>(() => loadState());
   const [currentTab, setCurrentTab] = React.useState<string>('dashboard');
@@ -640,7 +649,7 @@ export default function App() {
               if (typeof img === 'string') return { url: img, description: '' };
               if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
               return null;
-            }).filter((img): img is { url: any; description: any } => img !== null)
+            }).filter(Boolean)
           : []
       })) : []
     };
@@ -649,6 +658,7 @@ export default function App() {
     const updatedQuotations = exists
       ? db.crmQuotations.map(q => q.id === sanitizedQuote.id ? sanitizedQuote : q)
       : [sanitizedQuote, ...db.crmQuotations];
+
     saveCRMQuotationToFirebase(sanitizedQuote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
 
     const grandTotal = Number(sanitizedQuote.totalAmount) || 0;
@@ -962,6 +972,103 @@ export default function App() {
     return { changesCount: result.changesCount, idMapping: result.idMapping };
   };
 
+  // CNC Workshop Handlers (Jobs & Tooling Inventory)
+  const handleSaveCNCJob = (job: CNCJob) => {
+    const exists = (db.cncJobs || []).some((j) => j.id === job.id);
+    const updatedJobs = exists
+      ? (db.cncJobs || []).map((j) => (j.id === job.id ? job : j))
+      : [job, ...(db.cncJobs || [])];
+
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'STATUS_CHANGED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `${exists ? 'Updated' : 'Recorded'} CNC job "${job.article_no || job.job_number}" (${job.job_type}) - Status: ${job.status}, Machine: ${job.machine_name}, Amount: ₹${job.amount}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    updateDbState({
+      ...db,
+      cncJobs: updatedJobs,
+      auditLogs: [auditLog, ...(db.auditLogs || [])],
+    });
+
+    saveCNCJobToFirebase(job).catch((err) => console.error("Failed to save CNC job to Firebase:", err));
+    saveAuditLogToFirebase(auditLog).catch((err) => console.error("Failed to save audit log to Firebase:", err));
+  };
+
+  const handleDeleteCNCJob = (jobId: string) => {
+    const targetJob = (db.cncJobs || []).find((j) => j.id === jobId);
+    const updatedJobs = (db.cncJobs || []).filter((j) => j.id !== jobId);
+
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'STATUS_CHANGED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `Deleted CNC job "${targetJob?.article_no || targetJob?.job_number || jobId}"`,
+      timestamp: new Date().toISOString(),
+    };
+
+    updateDbState({
+      ...db,
+      cncJobs: updatedJobs,
+      auditLogs: [auditLog, ...(db.auditLogs || [])],
+    });
+
+    deleteCNCJobFromFirebase(jobId).catch((err) => console.error("Failed to delete CNC job from Firebase:", err));
+    saveAuditLogToFirebase(auditLog).catch((err) => console.error("Failed to save audit log to Firebase:", err));
+  };
+
+  const handleSaveCNCTool = (tool: CNCTool) => {
+    const exists = (db.cncTools || []).some((t) => t.id === tool.id);
+    const updatedTools = exists
+      ? (db.cncTools || []).map((t) => (t.id === tool.id ? tool : t))
+      : [tool, ...(db.cncTools || [])];
+
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'STATUS_CHANGED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `${exists ? 'Updated' : 'Cataloged'} CNC tool "${tool.name}" (${tool.tool_code}) - Condition: ${tool.condition}, Stock: ${tool.quantity_in_stock}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    updateDbState({
+      ...db,
+      cncTools: updatedTools,
+      auditLogs: [auditLog, ...(db.auditLogs || [])],
+    });
+
+    saveCNCToolToFirebase(tool).catch((err) => console.error("Failed to save CNC tool to Firebase:", err));
+    saveAuditLogToFirebase(auditLog).catch((err) => console.error("Failed to save audit log to Firebase:", err));
+  };
+
+  const handleDeleteCNCTool = (toolId: string) => {
+    const targetTool = (db.cncTools || []).find((t) => t.id === toolId);
+    const updatedTools = (db.cncTools || []).filter((t) => t.id !== toolId);
+
+    const auditLog: AuditLog = {
+      id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      event_type: 'STATUS_CHANGED',
+      user_email: currentUser?.email || 'Admin',
+      user_role: currentUser?.role || 'admin',
+      details: `Deleted CNC tool "${targetTool?.name || toolId}" (${targetTool?.tool_code || 'N/A'})`,
+      timestamp: new Date().toISOString(),
+    };
+
+    updateDbState({
+      ...db,
+      cncTools: updatedTools,
+      auditLogs: [auditLog, ...(db.auditLogs || [])],
+    });
+
+    deleteCNCToolFromFirebase(toolId).catch((err) => console.error("Failed to delete CNC tool from Firebase:", err));
+    saveAuditLogToFirebase(auditLog).catch((err) => console.error("Failed to save audit log to Firebase:", err));
+  };
+
   // Nav to specific order details tab
   const handleViewOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -1106,56 +1213,6 @@ export default function App() {
 
         {/* Dynamic Inner Application Page Canvas */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pb-6 sm:pb-8">
-            
-          {/* Workshop Live Status Feed Header Row
-          {currentTab !== 'profile' && (
-            <div className="flex justify-between items-center bg-white border border-stone-200/80 rounded-2xl p-4 mb-6 shadow-xs gap-4 workshop-live-feed-header print:hidden">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="bg-amber-100 text-[#593622] p-2.5 rounded-xl hidden sm:flex items-center justify-center">
-                  <ShieldCheck size={20} className="stroke-[2.5]" />
-                </div>
-                <div className="min-w-0 text-left">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-extrabold text-[#593622] text-xs uppercase tracking-wider leading-none">Workshop Live Feed</h4>
-                    {firebaseConnected && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold font-mono tracking-wider uppercase bg-green-500/10 text-green-700 border border-green-500/20">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                        {firebaseSeeding ? "Seeding..." : "Cloud Sync Live"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-stone-500 mt-1 truncate">
-                    Poller active: Monitoring assignments for <span className="font-semibold text-stone-800">{currentUser.name}</span> ({currentUser.role.replace('_', ' ')})
-                  </p>
-                </div>
-              </div>
-              
-              <div className="shrink-0 flex items-center gap-3">
-                <button
-                  onClick={() => setIsCloudSyncOpen(true)}
-                  title="Cloud Sync & Multi-Device Settings"
-                  className="bg-amber-50 border border-amber-200/80 hover:bg-amber-100 text-[#593622] px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-2xs text-xs font-bold"
-                >
-                  <Cloud size={15} className="stroke-[2.5] text-amber-700" />
-                  <span className="hidden sm:inline">Cloud Sync</span>
-                </button>
-                <button
-                  onClick={handleRestartApp}
-                  title="Restart App"
-                  className="bg-stone-50 border border-stone-200 hover:bg-stone-100 hover:text-[#593622] text-stone-600 p-2.5 rounded-xl flex items-center justify-center transition cursor-pointer shadow-2xs"
-                >
-                  <RefreshCw size={16} className="stroke-[2.5]" />
-                </button>
-                <NotificationCenter
-                  orders={db.orders}
-                  currentUser={currentUser}
-                  users={db.users}
-                  onViewOrder={handleViewOrder}
-                  onUpdateOrder={handleUpdateOrder}
-                />
-              </div>
-            </div>
-          )} */}
 
           {/* TAB: DASHBOARD VIEW (Admin Only) */}
           {currentTab === 'dashboard' && hasPermission(currentUser.role, 'dashboard') && (
@@ -1276,6 +1333,31 @@ export default function App() {
                 orders={db.orders}
                 customers={db.customers}
                 onOrderUpdate={handleUpdateOrder}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: CNC WORKSHOP (Admin & CNC Manager) */}
+          {currentTab === 'cnc_workshop' && hasPermission(currentUser.role, 'cnc_workshop') && (
+            <motion.div
+              key="cnc_workshop"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+            >
+              <CNCWorkshopTab
+                orders={db.orders}
+                customers={db.customers}
+                users={db.users}
+                currentUser={currentUser!}
+                cncJobs={db.cncJobs || []}
+                cncTools={db.cncTools || []}
+                statusLogs={db.statusLogs || []}
+                onSaveJob={handleSaveCNCJob}
+                onDeleteJob={handleDeleteCNCJob}
+                onSaveTool={handleSaveCNCTool}
+                onDeleteTool={handleDeleteCNCTool}
+                onUpdateOrder={handleUpdateOrder}
               />
             </motion.div>
           )}

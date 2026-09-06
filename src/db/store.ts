@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog } from '../types';
+import { User, Customer, Order, StatusLog, Payment, Material, AlertRule, OrderStage, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, CNCJob, CNCTool } from '../types';
 import { reconcileQuotationsAndCustomers } from '../utils';
 
 // Helper to generate UUIDs
@@ -198,6 +198,19 @@ export const SEED_USERS: User[] = [
     phone: '9876543229',
   },
   {
+    id: 'user_cnc_mgr',
+    name: 'CNC Workshop Manager',
+    email: 'cnc@bhisesworkshop.com',
+    role: 'cnc_manager',
+    initials: 'CN',
+    status: 'ACTIVE',
+    is_active: true,
+    last_seen: 'Just now',
+    created_at: '2026-07-04T02:00:00Z',
+    google_linked: false,
+    phone: '9876543233',
+  },
+  {
     id: 'user_suspended_sample',
     name: 'Suspended Account Sample',
     email: 'suspended_user@gmail.com',
@@ -260,6 +273,115 @@ const SEED_MATERIALS: Material[] = [];
 
 const SEED_PAYMENTS: Payment[] = [];
 
+// Seed CNC Workshop Tools & Router Bits
+export const SEED_CNC_TOOLS: CNCTool[] = [
+  {
+    id: 'tool_v60_1',
+    tool_code: 'BIT-V60-01',
+    name: '60° V-Groove Carving Bit (1/2" Shank)',
+    tool_type: 'V-Bit',
+    diameter_mm: '12.7mm',
+    shank_mm: '1/2" (12.7mm)',
+    quantity_in_stock: 4,
+    reorder_level: 2,
+    condition: 'Good',
+    total_run_hours: 42,
+    unit_cost: 1450,
+    status: 'In Service',
+    notes: 'Primary bit for door and panel flower carvings',
+  },
+  {
+    id: 'tool_v90_1',
+    tool_code: 'BIT-V90-01',
+    name: '90° V-Carve Chamfer Bit (1/2" Shank)',
+    tool_type: 'V-Bit',
+    diameter_mm: '19.0mm',
+    shank_mm: '1/2" (12.7mm)',
+    quantity_in_stock: 3,
+    reorder_level: 1,
+    condition: 'New',
+    total_run_hours: 12,
+    unit_cost: 1600,
+    status: 'In Service',
+    notes: 'Used for letter engraving and chamfering edges',
+  },
+  {
+    id: 'tool_bn06_1',
+    tool_code: 'BIT-BN06-01',
+    name: '6mm Solid Carbide Ball Nose',
+    tool_type: 'Ball Nose',
+    diameter_mm: '6.0mm',
+    shank_mm: '6mm',
+    quantity_in_stock: 6,
+    reorder_level: 2,
+    condition: 'Good',
+    total_run_hours: 68,
+    unit_cost: 1200,
+    status: 'In Service',
+    notes: 'For 3D relief roughing and contouring',
+  },
+  {
+    id: 'tool_em06_1',
+    tool_code: 'BIT-EM06-01',
+    name: '6mm 2-Flute Downcut Spiral End Mill',
+    tool_type: 'End Mill',
+    diameter_mm: '6.0mm',
+    shank_mm: '6mm',
+    quantity_in_stock: 5,
+    reorder_level: 3,
+    condition: 'Good',
+    total_run_hours: 85,
+    unit_cost: 950,
+    status: 'In Service',
+    notes: 'Main tool for Mandir Jali cutting and MDF profiling',
+  },
+  {
+    id: 'tool_em08_1',
+    tool_code: 'BIT-EM08-01',
+    name: '8mm Upcut Roughing End Mill',
+    tool_type: 'End Mill',
+    diameter_mm: '8.0mm',
+    shank_mm: '8mm',
+    quantity_in_stock: 2,
+    reorder_level: 2,
+    condition: 'Fair',
+    total_run_hours: 110,
+    unit_cost: 1100,
+    status: 'In Service',
+    notes: 'For heavy wood pocketing and tenons',
+  },
+  {
+    id: 'tool_tap05_1',
+    tool_code: 'BIT-TAP05-01',
+    name: 'Tapered Ball Nose R0.5mm 3D Finishing',
+    tool_type: 'Tapered Ball',
+    diameter_mm: '0.5mm Tip',
+    shank_mm: '6mm',
+    quantity_in_stock: 3,
+    reorder_level: 1,
+    condition: 'New',
+    total_run_hours: 24,
+    unit_cost: 2100,
+    status: 'In Service',
+    notes: 'Ultra-fine 3D face and god idol carvings',
+  },
+  {
+    id: 'tool_fly50_1',
+    tool_code: 'BIT-FLY50-01',
+    name: '50mm Spoilboard Surfacing Flycutter',
+    tool_type: 'Surfacing Bit',
+    diameter_mm: '50mm',
+    shank_mm: '1/2" (12.7mm)',
+    quantity_in_stock: 2,
+    reorder_level: 1,
+    condition: 'Good',
+    total_run_hours: 30,
+    unit_cost: 3200,
+    status: 'In Service',
+    notes: 'Bed flattening and thick slab leveling',
+  },
+];
+
 export interface AppState {
   users: User[];
   customers: Customer[];
@@ -276,6 +398,8 @@ export interface AppState {
   crmNotes: CRMNote[];
   crmAttachments: CRMAttachment[];
   crmTimelineEvents: CRMTimelineEvent[];
+  cncJobs: CNCJob[];
+  cncTools: CNCTool[];
 }
 
 export function loadState(): AppState {
@@ -377,6 +501,8 @@ export function loadState(): AppState {
             crmNotes: reconciled.crmNotes || [],
             crmAttachments: reconciled.crmAttachments || [],
             crmTimelineEvents: reconciled.crmTimelineEvents || [],
+            cncJobs: reconciled.cncJobs || [],
+            cncTools: (reconciled.cncTools && reconciled.cncTools.length > 0) ? reconciled.cncTools : SEED_CNC_TOOLS,
           };
         }
       }
@@ -402,6 +528,8 @@ export function loadState(): AppState {
     crmNotes: [],
     crmAttachments: [],
     crmTimelineEvents: [],
+    cncJobs: [],
+    cncTools: SEED_CNC_TOOLS,
   };
   saveState(state);
   return state;

@@ -1,98 +1,60 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128;
-    }
-
-    // USERS COLLECTION
+    // Production ERP Collections
     match /users/{userId} {
-      allow read, write: if isValidId(userId);
+      allow read, write: if true;
     }
-
-    // ORDERS & ORDER STATUS LOGS (MANAGERS, WORKERS, ADMINS)
-    match /orders/{orderId} {
-      allow read, write: if isValidId(orderId);
-    }
-
-    match /statusLogs/{logId} {
-      allow read, write: if isValidId(logId);
-    }
-
-    // CUSTOMERS & CRM DATA (MANAGERS & ADMINS)
     match /customers/{customerId} {
-      allow read, write: if isValidId(customerId);
+      allow read, write: if true;
     }
-
-    match /crmCustomers/{customerId} {
-      allow read, write: if isValidId(customerId);
+    match /orders/{orderId} {
+      allow read, write: if true;
     }
-
-    match /crmQuotations/{quotationId} {
-      allow read, write: if isValidId(quotationId);
+    match /statusLogs/{logId} {
+      allow read, write: if true;
     }
-
-    match /crmFollowUps/{followUpId} {
-      allow read, write: if isValidId(followUpId);
-    }
-
-    match /crmPayments/{paymentId} {
-      allow read, write: if isValidId(paymentId);
-    }
-
-    match /crmNotes/{noteId} {
-      allow read, write: if isValidId(noteId);
-    }
-
-    match /crmAttachments/{attachmentId} {
-      allow read, write: if isValidId(attachmentId);
-    }
-
-    match /crmTimelineEvents/{eventId} {
-      allow read, write: if isValidId(eventId);
-    }
-
-    // PAYMENTS & FINANCIAL DATA (MANAGERS & ADMINS)
-    match /payments/{paymentId} {
-      allow read, write: if isValidId(paymentId);
-    }
-
-    // WOOD MANAGEMENT & MRP INVENTORY (WOOD TAB MANAGERS & ADMINS)
-    match /woodRequests/{requestId} {
-      allow read, write: if isValidId(requestId);
-    }
-
     match /materials/{materialId} {
-      allow read, write: if isValidId(materialId);
+      allow read, write: if true;
     }
-
-    match /mrp_wood/{itemId} {
-      allow read, write: if isValidId(itemId);
+    match /payments/{paymentId} {
+      allow read, write: if true;
     }
-
-    match /mrp_hardware/{itemId} {
-      allow read, write: if isValidId(itemId);
+    match /crmCustomers/{customerId} {
+      allow read, write: if true;
     }
-
-    match /mrp_consumption_logs/{logId} {
-      allow read, write: if isValidId(logId);
+    match /crmQuotations/{quotationId} {
+      allow read, write: if true;
     }
-
-    match /mrp_project_boms/{projectId} {
-      allow read, write: if isValidId(projectId);
+    match /crmFollowUps/{followUpId} {
+      allow read, write: if true;
     }
-
-    // AUDIT LOGS (IMMUTABLE AUDIT TRAILS)
+    match /crmPayments/{paymentId} {
+      allow read, write: if true;
+    }
+    match /crmNotes/{noteId} {
+      allow read, write: if true;
+    }
+    match /crmAttachments/{attachmentId} {
+      allow read, write: if true;
+    }
+    match /crmTimelineEvents/{eventId} {
+      allow read, write: if true;
+    }
     match /auditLogs/{logId} {
-      allow read, create: if isValidId(logId);
-      allow update, delete: if false;
+      allow read, write: if true;
     }
-
-    // System connection probe
-    match /test/{testId} {
+    match /cncJobs/{jobId} {
+      allow read, write: if true;
+    }
+    match /cncTools/{toolId} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
       allow read, write: if true;
     }
   }
 }
+
+
 

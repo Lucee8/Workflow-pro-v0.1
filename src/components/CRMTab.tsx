@@ -4669,7 +4669,7 @@ export default function CRMTab({
                       Generate Invoice
                     </button>
                   )}
-                  
+
                   <button
                     onClick={handlePrintEstimate}
                     className="bg-[#593622] hover:bg-[#4d2f1e] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -4974,7 +4974,7 @@ export default function CRMTab({
                         <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[95px] print:min-h-[85px]">
                           <div className="col-span-7 space-y-0.5 text-[11px] text-slate-700 font-semibold">
                             <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
-                            <p>Account No.: <span className="text-slate-900 font-extrabold">aradhyabhise-1@okhdfcbank</span></p>
+                            <p>Account No.: <span className="text-slate-900 font-extrabold">50100705616156</span></p>
                             <p>IFSC code: <span className="text-slate-900 font-extrabold">HDFC0009348</span></p>
                             <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
                           </div>

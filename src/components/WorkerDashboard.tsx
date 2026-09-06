@@ -53,6 +53,7 @@ import {
   AlertTriangle,
   ChevronDown,
   TreePine,
+  Cpu,
 } from 'lucide-react';
 
 function getQCFailureInfo(ord: Order | null): QCFailureInfo | null {
@@ -219,6 +220,7 @@ export default function WorkerDashboard({
         normalized === 'Wood Procurement' ||
         normalized === 'Making Started' ||
         normalized === 'Carpentry' ||
+        normalized === 'CNC Wood Carving' ||
         normalized === 'Pending' ||
         normalized === 'Designing' ||
         normalized === 'QC 1' ||
@@ -231,7 +233,7 @@ export default function WorkerDashboard({
 
   // Search, Filter & Sort states
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_update' | 'wood_procurement' | 'under_carpentry' | 'qc_1' | 'completed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_update' | 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'qc_1' | 'completed'>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'deadline' | 'priority' | 'article'>('newest');
 
@@ -334,6 +336,9 @@ export default function WorkerDashboard({
         if (statusFilter === 'under_carpentry') {
           return !isDone && (ord.carpenter_sub_status === 'under_carpentry' || ord.current_status === 'Making Started');
         }
+        if (statusFilter === 'cnc_wood_carving') {
+          return !isDone && (ord.carpenter_sub_status === 'cnc_wood_carving' || ord.current_status === 'CNC Wood Carving');
+        }
         if (statusFilter === 'qc_1') {
           return !isDone && (ord.carpenter_sub_status === 'qc_check_1' || ord.current_status === 'QC 1' || ord.qc_1_status === 'pending_admin_approval');
         }
@@ -373,6 +378,7 @@ export default function WorkerDashboard({
     const total = baseAssignedOrders.length;
     let woodPending = 0;
     let underCarpentry = 0;
+    let cncPending = 0;
     let qc1Pending = 0;
     let completed = 0;
 
@@ -389,12 +395,14 @@ export default function WorkerDashboard({
         woodPending++;
       } else if (o.carpenter_sub_status === 'under_carpentry' || o.current_status === 'Making Started') {
         underCarpentry++;
+      } else if (o.carpenter_sub_status === 'cnc_wood_carving' || o.current_status === 'CNC Wood Carving') {
+        cncPending++;
       } else if (o.carpenter_sub_status === 'qc_check_1' || o.current_status === 'QC 1') {
         qc1Pending++;
       }
     });
 
-    return { total, woodPending, underCarpentry, qc1Pending, completed };
+    return { total, woodPending, underCarpentry, cncPending, qc1Pending, completed };
   }, [baseAssignedOrders]);
 
   // Webcam stream handlers
@@ -686,7 +694,7 @@ export default function WorkerDashboard({
     }
 
     let nextStage: OrderStage = activeOrder.current_status;
-    let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
+    let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
       if (progressStatus === 'wood_procurement') {
@@ -702,8 +710,20 @@ export default function WorkerDashboard({
           alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
           return;
         }
-        nextSubStatus = 'qc_check_1';
-        nextStage = 'Making Started';
+        if (activeOrder.requires_cnc) {
+          nextSubStatus = 'cnc_wood_carving';
+          nextStage = 'CNC Wood Carving';
+        } else {
+          nextSubStatus = 'qc_check_1';
+          nextStage = 'Making Started';
+        }
+      } else if (progressStatus === 'cnc_wood_carving') {
+        if (!isWoodScheduleApproved) {
+          alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
+          return;
+        }
+        nextSubStatus = 'cnc_wood_carving';
+        nextStage = 'CNC Wood Carving';
       } else if (progressStatus === 'qc_check_1') {
         if (!isWoodScheduleApproved) {
           alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
@@ -729,6 +749,8 @@ export default function WorkerDashboard({
         ? 'Wood Procurement'
         : progressStatus === 'under_carpentry'
         ? 'Under Carpentry'
+        : progressStatus === 'cnc_wood_carving'
+        ? 'CNC Wood Carving'
         : progressStatus === 'qc_check_1'
         ? 'QC Check 1 (Pending Admin Approval)'
         : progressStatus === 'completed'
@@ -1237,6 +1259,7 @@ export default function WorkerDashboard({
                       {(() => {
                         const isSelected = progressStatus === 'under_carpentry';
                         const isCompleted =
+                          progressStatus === 'cnc_wood_carving' ||
                           progressStatus === 'qc_check_1' ||
                           isCarpentryDone ||
                           activeOrder.current_status === 'Making Completed';
@@ -1268,6 +1291,47 @@ export default function WorkerDashboard({
                               </strong>
                               <span className="text-[10px] text-stone-500 font-medium block leading-tight">
                                 Cut and assemble parts
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Conditional Step: CNC Wood Carving */}
+                      {activeOrder?.requires_cnc && (() => {
+                        const isSelected = progressStatus === 'cnc_wood_carving';
+                        const isCompleted =
+                          progressStatus === 'qc_check_1' ||
+                          activeOrder.cnc_status === 'completed' ||
+                          isCarpentryDone;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setProgressStatus('cnc_wood_carving')}
+                            className={`flex-1 min-w-[105px] p-3 rounded-2xl border flex flex-col items-center justify-between text-center transition cursor-pointer active:scale-[0.98] ${
+                              isSelected
+                                ? 'bg-white border-2 border-cyan-700 ring-2 ring-cyan-700/10 shadow-xs'
+                                : 'bg-[#F0EEF7]/50 border-stone-200/80 hover:bg-stone-100/70'
+                            }`}
+                          >
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors ${
+                                isSelected
+                                  ? 'bg-cyan-100 text-cyan-800'
+                                  : isCompleted
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-stone-200/70 text-stone-600'
+                              }`}
+                            >
+                              {isCompleted && !isSelected ? <Check size={18} strokeWidth={2.5} /> : <Cpu size={18} />}
+                            </div>
+                            <div className="min-w-0 w-full">
+                              <strong className="text-xs font-bold text-stone-900 block leading-tight mb-1">
+                                CNC Carving
+                              </strong>
+                              <span className="text-[10px] text-cyan-800 font-medium block leading-tight">
+                                {activeOrder.cnc_status === 'completed' ? 'Completed ✔' : 'Carving / Jali'}
                               </span>
                             </div>
                           </button>
@@ -1313,8 +1377,8 @@ export default function WorkerDashboard({
                       })()}
                     </div>
 
-                    {/* DESKTOP / TABLET VIEW: 3 Stages Grid */}
-                    <div className="hidden sm:grid sm:grid-cols-3 gap-3">
+                    {/* DESKTOP / TABLET VIEW: Stages Grid */}
+                    <div className={`hidden sm:grid ${activeOrder?.requires_cnc ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3`}>
                       {/* Step 1: Get Wood */}
                       <button
                         type="button"
@@ -1369,6 +1433,38 @@ export default function WorkerDashboard({
                         </div>
                       </button>
 
+                      {/* Conditional Step: CNC Wood Carving */}
+                      {activeOrder?.requires_cnc && (
+                        <button
+                          type="button"
+                          onClick={() => setProgressStatus('cnc_wood_carving')}
+                          className={`p-3.5 rounded-2xl border flex items-center gap-3 transition text-left cursor-pointer ${
+                            progressStatus === 'cnc_wood_carving'
+                              ? 'bg-white border-2 border-cyan-700 ring-2 ring-cyan-700/10 shadow-sm relative'
+                              : 'bg-stone-50/80 hover:bg-stone-100/70 border-stone-200'
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              progressStatus === 'cnc_wood_carving'
+                                ? 'bg-cyan-100 text-cyan-800'
+                                : 'bg-stone-200/80 text-stone-600'
+                            }`}
+                          >
+                            <Cpu size={18} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <strong className="text-xs font-bold text-stone-900 block leading-tight">CNC Carving</strong>
+                              <span className="px-1.5 py-0.2 bg-cyan-100 text-cyan-800 text-[9px] font-bold rounded">Required</span>
+                            </div>
+                            <span className="text-[10px] text-stone-500 block mt-0.5 truncate">
+                              {activeOrder.cnc_status === 'completed' ? 'Completed ✔' : activeOrder.cnc_status === 'in_progress' ? 'In Progress ⚙' : 'Carving & Jali'}
+                            </span>
+                          </div>
+                        </button>
+                      )}
+
                       {/* Step 3: Quality Check */}
                       <button
                         type="button"
@@ -1396,6 +1492,67 @@ export default function WorkerDashboard({
                         </div>
                       </button>
                     </div>
+
+                    {/* CNC Wood Carving Workshop Status Card for Carpenter */}
+                    {progressStatus === 'cnc_wood_carving' && (
+                      <div className="p-3.5 bg-cyan-50/80 border border-cyan-300 rounded-xl space-y-2.5">
+                        <div className="flex items-center justify-between pb-1.5 border-b border-cyan-200">
+                          <div className="flex items-center gap-1.5">
+                            <Cpu className="text-cyan-800" size={15} />
+                            <span className="font-bold text-xs text-cyan-950">
+                              CNC Wood Carving Status & Specification
+                            </span>
+                          </div>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                            activeOrder.cnc_status === 'completed'
+                              ? 'bg-emerald-200 text-emerald-950'
+                              : activeOrder.cnc_status === 'in_progress'
+                              ? 'bg-amber-200 text-amber-950'
+                              : 'bg-cyan-200 text-cyan-950'
+                          }`}>
+                            Status: {activeOrder.cnc_status === 'completed' ? 'Carving Completed' : activeOrder.cnc_status === 'in_progress' ? 'Machining in Progress' : 'Queued for CNC'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-cyan-950">
+                          <div className="bg-white/80 p-2 rounded-lg border border-cyan-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block">Job Type</span>
+                            <span className="font-semibold">{activeOrder.cnc_job_type || 'Carving / 3D Relief'}</span>
+                          </div>
+                          <div className="bg-white/80 p-2 rounded-lg border border-cyan-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block">Machine / Tool</span>
+                            <span className="font-semibold">{activeOrder.cnc_tool_used || 'Standard CNC Router / Bit'}</span>
+                          </div>
+                          <div className="bg-white/80 p-2 rounded-lg border border-cyan-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block">Carpentry Handoff</span>
+                            <span className="font-semibold">{activeOrder.cnc_status === 'completed' ? 'Carving Done — Proceed to QC 1' : 'Awaiting CNC Workshop'}</span>
+                          </div>
+                        </div>
+
+                        {activeOrder.cnc_notes && (
+                          <div className="bg-white/90 p-2 rounded-lg border border-cyan-200 text-xs">
+                            <strong className="text-stone-700">Workshop Instructions: </strong>
+                            <span className="text-stone-600">{activeOrder.cnc_notes}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1">
+                          <p className="text-[11px] text-cyan-800">
+                            {activeOrder.cnc_status === 'completed'
+                              ? 'Carving is marked complete by CNC Manager. You may proceed to Quality Check.'
+                              : 'When timber has been carved and finished by CNC, advance to Quality Check.'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setProgressStatus('qc_check_1')}
+                            className="px-3 py-1.5 bg-cyan-800 hover:bg-cyan-900 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0"
+                          >
+                            <span>Proceed to Quality Check</span>
+                            <ShieldCheck size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Quality Check Verification Checklist */}
                     {progressStatus === 'qc_check_1' && (

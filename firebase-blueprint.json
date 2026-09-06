@@ -335,6 +335,60 @@
         "operator": { "type": "string" }
       },
       "required": ["id", "customer_id", "type", "title", "description", "timestamp", "operator"]
+    },
+    "cncJob": {
+      "title": "CNC Workshop Job",
+      "description": "Daily CNC carving, cutting, grooving, or relief job record linked to production orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_id": { "type": "string", "description": "Foreign key to original production order" },
+        "article_no": { "type": "string", "description": "Original order article number" },
+        "customer_name": { "type": "string" },
+        "job_number": { "type": "string", "description": "Sequential CNC job identifier" },
+        "job_date": { "type": "string", "format": "date" },
+        "product_name": { "type": "string" },
+        "material": { "type": "string", "description": "Wood or panel material type" },
+        "dimensions": { "type": "string" },
+        "job_type": { "type": "string", "enum": ["Carving", "Jali Cutting", "3D Relief", "Grooving", "Engraving", "Profile Cutting", "Moulding", "Surfacing", "Other"] },
+        "machine_name": { "type": "string" },
+        "tool_id": { "type": "string" },
+        "tool_name": { "type": "string" },
+        "run_time_minutes": { "type": "number" },
+        "operator_name": { "type": "string" },
+        "amount": { "type": "number", "description": "CNC Workshop job revenue or rate" },
+        "status": { "type": "string", "enum": ["Pending", "Queued", "In Progress", "Completed", "Rework"] },
+        "notes": { "type": "string" },
+        "design_file": { "type": "string" },
+        "image_url": { "type": "string" },
+        "completed_at": { "type": "string" },
+        "created_at": { "type": "string" },
+        "created_by": { "type": "string" }
+      },
+      "required": ["id", "job_date", "product_name", "job_type", "status", "created_at"]
+    },
+    "cncTool": {
+      "title": "CNC Tool & Bit Inventory",
+      "description": "Inventory and usage tracking for CNC router bits and carving tools",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tool_code": { "type": "string" },
+        "name": { "type": "string" },
+        "tool_type": { "type": "string", "enum": ["End Mill", "Ball Nose", "V-Bit", "Tapered Ball", "Surfacing Bit", "Profile Bit", "Engraving Bit", "Other"] },
+        "diameter_mm": { "type": "string" },
+        "shank_mm": { "type": "string" },
+        "quantity_in_stock": { "type": "number" },
+        "reorder_level": { "type": "number" },
+        "condition": { "type": "string", "enum": ["New", "Good", "Fair", "Dull", "Needs Resharpening", "Broken/Retired"] },
+        "total_run_hours": { "type": "number" },
+        "unit_cost": { "type": "number" },
+        "status": { "type": "string", "enum": ["In Service", "In Use", "Spare", "Damaged", "Retired"] },
+        "last_sharpened_date": { "type": "string" },
+        "notes": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "tool_code", "name", "tool_type", "quantity_in_stock", "condition"]
     }
   },
   "firestore": {
@@ -409,6 +463,14 @@
     "/auditLogs/{logId}": {
       "schema": "auditLog",
       "description": "Immutable security and access audit logs"
+    },
+    "/cncJobs/{jobId}": {
+      "schema": "cncJob",
+      "description": "Daily CNC Workshop jobs directory linked to furniture production"
+    },
+    "/cncTools/{toolId}": {
+      "schema": "cncTool",
+      "description": "CNC Workshop tools, bits and router inventory roster"
     }
   }
 }
