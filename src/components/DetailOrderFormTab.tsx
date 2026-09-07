@@ -1,6 +1,6 @@
 import React from 'react';
 import { Customer, Order, User, Payment } from '../types';
-import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { FileText, Printer, Sparkles, RefreshCw, AlertCircle, ArrowLeft, Trash2, Plus, Minus, UploadCloud, HardHat, ChevronRight, Image as ImageIcon, Cpu } from 'lucide-react';
 import { formatToDDMMYYYY, compareOrdersByArticleSerialDesc, generateNewOrderNo } from '../utils';
 import logoImg from '../assets/images/logo.png';
 
@@ -23,48 +23,8 @@ interface AgreementItem {
   productName: string;
   itemDescription: string;
   images?: Array<{ id: string; url: string; type: 'Design Reference' }>;
+  requiresCnc?: boolean;
 }
-
-type SelectedQuoteItem = {
-  quoteId: string;
-  item: any;
-  customer: any;
-  notes: string;
-  created_at: string;
-  validUntil: string;
-  quoteObj?: any;
-};
-
-const DEFAULT_AGREEMENT_ITEM: Omit<AgreementItem, 'id'> = {
-  category: 'Door Frames',
-  subCategory: 'Set',
-  size: '6ft',
-  customSize: '',
-  designType: 'Standard',
-  material: 'Sagwan',
-  finish: 'Hand Polish',
-  colorShade: 'Walnut',
-  specialNotes: '',
-  qty: 1,
-  quotedRate: 0,
-  cushion: 0,
-  discount: 0,
-  hardware: 0,
-  productName: 'Door Frames \u203a Set (6ft)',
-  itemDescription: 'Structure: Sagwan. Finish: Hand Polish. Color: Walnut.',
-};
-
-const createDefaultAgreementItem = (overrides: Partial<AgreementItem> = {}): AgreementItem => ({
-  ...DEFAULT_AGREEMENT_ITEM,
-  ...overrides,
-  id: overrides.id || `item_${Math.random().toString(36).substring(2, 9)}`,
-});
-
-const getAgreementItemFinalRate = (
-  item: Pick<AgreementItem, 'quotedRate' | 'cushion' | 'hardware' | 'discount'>
-) => Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
-
-const getAgreementItemAmount = (item: AgreementItem) => getAgreementItemFinalRate(item) * Number(item.qty || 0);
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'Door Frames': ['Set', 'Mandir Room', 'Door', 'Christian Door', 'Frame'],
@@ -119,10 +79,10 @@ export default function DetailOrderFormTab({
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>('');
   const [language, setLanguage] = React.useState<'en' | 'mr'>('en');
 
-  const [items, setItems] = React.useState<AgreementItem[]>(() => [createDefaultAgreementItem()]);
+  const [items, setItems] = React.useState<AgreementItem[]>([]);
   const [activeItemIndex, setActiveItemIndex] = React.useState<number>(0);
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
-  const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<SelectedQuoteItem[]>([]);
+  const [selectedQuoteItems, setSelectedQuoteItems] = React.useState<Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string; quoteObj?: any }>>([]);
   const isUpdatingRef = React.useRef(false);
 
   // Form Fields - Page 1
@@ -135,55 +95,31 @@ export default function DetailOrderFormTab({
   const [whatsappNo, setWhatsappNo] = React.useState('');
   const [address, setAddress] = React.useState('');
 
-  const [productName, setProductName] = React.useState(DEFAULT_AGREEMENT_ITEM.productName);
-  const [itemDescription, setItemDescription] = React.useState(DEFAULT_AGREEMENT_ITEM.itemDescription);
-  const [qty, setQty] = React.useState<number>(DEFAULT_AGREEMENT_ITEM.qty);
+  const [productName, setProductName] = React.useState('');
+  const [itemDescription, setItemDescription] = React.useState('');
+  const [qty, setQty] = React.useState<number>(1);
   const [amount, setAmount] = React.useState<number>(0);
 
-  const [quotedRate, setQuotedRate] = React.useState<number>(DEFAULT_AGREEMENT_ITEM.quotedRate);
-  const [cushion, setCushion] = React.useState<number>(DEFAULT_AGREEMENT_ITEM.cushion);
-  const [discount, setDiscount] = React.useState<number>(DEFAULT_AGREEMENT_ITEM.discount);
-  const [hardware, setHardware] = React.useState<number>(DEFAULT_AGREEMENT_ITEM.hardware);
+  const [quotedRate, setQuotedRate] = React.useState<number>(0);
+  const [cushion, setCushion] = React.useState<number>(0);
+  const [discount, setDiscount] = React.useState<number>(0);
+  const [hardware, setHardware] = React.useState<number>(0);
   
   // Product Configuration states
-  const [category, setCategory] = React.useState(DEFAULT_AGREEMENT_ITEM.category);
-  const [subCategory, setSubCategory] = React.useState(DEFAULT_AGREEMENT_ITEM.subCategory);
-  const [size, setSize] = React.useState(DEFAULT_AGREEMENT_ITEM.size);
-  const [customSize, setCustomSize] = React.useState(DEFAULT_AGREEMENT_ITEM.customSize);
-  const [designType, setDesignType] = React.useState<'Standard' | 'Custom'>(DEFAULT_AGREEMENT_ITEM.designType);
-  const [material, setMaterial] = React.useState(DEFAULT_AGREEMENT_ITEM.material);
-  const [finish, setFinish] = React.useState(DEFAULT_AGREEMENT_ITEM.finish);
-  const [colorShade, setColorShade] = React.useState(DEFAULT_AGREEMENT_ITEM.colorShade);
-  const [specialNotes, setSpecialNotes] = React.useState(DEFAULT_AGREEMENT_ITEM.specialNotes);
+  const [category, setCategory] = React.useState('Door Frames');
+  const [subCategory, setSubCategory] = React.useState('Set');
+  const [size, setSize] = React.useState('6ft');
+  const [customSize, setCustomSize] = React.useState('');
+  const [designType, setDesignType] = React.useState<'Standard' | 'Custom'>('Standard');
+  const [material, setMaterial] = React.useState('Sagwan');
+  const [finish, setFinish] = React.useState('Hand Polish');
+  const [colorShade, setColorShade] = React.useState('Walnut');
+  const [specialNotes, setSpecialNotes] = React.useState('');
+  const [requiresCnc, setRequiresCnc] = React.useState<boolean>(false);
 
   // Reference Images
   const [refImages, setRefImages] = React.useState<Array<{ id: string; url: string; type: 'Design Reference' }>>([]);
   const [imgUrlInput, setImgUrlInput] = React.useState('');
-
-  const applyItemToForm = React.useCallback((item: AgreementItem, index: number) => {
-    isUpdatingRef.current = true;
-    setActiveItemIndex(index);
-    setCategory(item.category);
-    setSubCategory(item.subCategory);
-    setSize(item.size);
-    setCustomSize(item.customSize);
-    setDesignType(item.designType);
-    setMaterial(item.material);
-    setFinish(item.finish);
-    setColorShade(item.colorShade);
-    setSpecialNotes(item.specialNotes);
-    setQty(item.qty);
-    setQuotedRate(item.quotedRate);
-    setCushion(item.cushion);
-    setDiscount(item.discount);
-    setHardware(item.hardware);
-    setProductName(item.productName);
-    setItemDescription(item.itemDescription);
-    setAmount(getAgreementItemAmount(item));
-    setTimeout(() => {
-      isUpdatingRef.current = false;
-    }, 50);
-  }, []);
 
   // Handle local image file load & compression to keep size optimal
   const compressImage = (base64Str: string): Promise<string> => {
@@ -212,7 +148,6 @@ export default function DetailOrderFormTab({
         ctx?.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', 0.6));
       };
-      img.onerror = () => resolve(base64Str);
     });
   };
 
@@ -277,11 +212,31 @@ export default function DetailOrderFormTab({
   // Initialize with a default product if empty
   React.useEffect(() => {
     if (items.length === 0) {
-      const defaultItem = createDefaultAgreementItem();
-      setItems([defaultItem]);
-      applyItemToForm(defaultItem, 0);
+      setItems([
+        {
+          id: `item_${Math.random().toString(36).substring(2, 9)}`,
+          category: 'Door Frames',
+          subCategory: 'Set',
+          size: '6ft',
+          customSize: '',
+          designType: 'Standard',
+          material: 'Sagwan',
+          finish: 'Hand Polish',
+          colorShade: 'Walnut',
+          specialNotes: '',
+          qty: 1,
+          quotedRate: 0,
+          cushion: 0,
+          discount: 0,
+          hardware: 0,
+          productName: 'Door Frames › Set (6ft)',
+          itemDescription: 'Structure: Sagwan. Finish: Hand Polish. Color: Walnut.',
+          requiresCnc: false,
+        },
+      ]);
+      setActiveItemIndex(0);
     }
-  }, [items.length, applyItemToForm]);
+  }, [items]);
 
   // Synchronize active item in state when edit form fields change
   React.useEffect(() => {
@@ -307,6 +262,7 @@ export default function DetailOrderFormTab({
           hardware,
           productName,
           itemDescription,
+          requiresCnc,
         };
       }
       return updated;
@@ -328,13 +284,35 @@ export default function DetailOrderFormTab({
     hardware,
     productName,
     itemDescription,
+    requiresCnc,
     activeItemIndex,
   ]);
 
   const loadItemToForm = (index: number) => {
     const item = items[index];
     if (!item) return;
-    applyItemToForm(item, index);
+    isUpdatingRef.current = true;
+    setActiveItemIndex(index);
+    setCategory(item.category);
+    setSubCategory(item.subCategory);
+    setSize(item.size);
+    setCustomSize(item.customSize);
+    setDesignType(item.designType);
+    setMaterial(item.material);
+    setFinish(item.finish);
+    setColorShade(item.colorShade);
+    setSpecialNotes(item.specialNotes);
+    setQty(item.qty);
+    setQuotedRate(item.quotedRate);
+    setCushion(item.cushion);
+    setDiscount(item.discount);
+    setHardware(item.hardware);
+    setProductName(item.productName);
+    setItemDescription(item.itemDescription);
+    setRequiresCnc(Boolean(item.requiresCnc));
+    setTimeout(() => {
+      isUpdatingRef.current = false;
+    }, 50);
   };
 
   React.useEffect(() => {
@@ -367,17 +345,16 @@ export default function DetailOrderFormTab({
     return Math.max(0, Number(quotedRate) + Number(cushion) + Number(hardware) - Number(discount));
   }, [quotedRate, cushion, hardware, discount]);
 
-  React.useEffect(() => {
-    setAmount(finalRate * Number(qty || 0));
-  }, [finalRate, qty]);
-
   const [packingForwarding, setPackingForwarding] = React.useState<number>(0);
   const [advance, setAdvance] = React.useState<number>(0);
   const [transportation, setTransportation] = React.useState<number>(0);
 
   // Totals calculated across all items in the agreement
   const itemsSubtotal = React.useMemo(() => {
-    return items.reduce((sum, item) => sum + getAgreementItemAmount(item), 0);
+    return items.reduce((sum, item) => {
+      const itemFinalRate = Math.max(0, Number(item.quotedRate) + Number(item.cushion) + Number(item.hardware) - Number(item.discount));
+      return sum + (itemFinalRate * Number(item.qty));
+    }, 0);
   }, [items]);
 
   const totalInvoiced = React.useMemo(() => {
@@ -413,15 +390,12 @@ export default function DetailOrderFormTab({
     }
 
     const draft = {
-      items: items.map((itm) => {
-        const itemFinalRate = getAgreementItemFinalRate(itm);
-        return {
-          ...itm,
-          finalRate: itemFinalRate,
-          amount: itemFinalRate * Number(itm.qty || 0),
-          refImages: (itm.images && itm.images.length > 0) ? itm.images : allCombinedRefImages,
-        };
-      }),
+      items: items.map((itm) => ({
+        ...itm,
+        requires_cnc: Boolean(itm.requiresCnc),
+        requiresCnc: Boolean(itm.requiresCnc),
+        refImages: (itm.images && itm.images.length > 0) ? itm.images : allCombinedRefImages,
+      })),
       category,
       subCategory,
       size,
@@ -447,7 +421,7 @@ export default function DetailOrderFormTab({
       deliveryDate,
       productName,
       itemDescription,
-      amount: finalRate * Number(qty || 0),
+      amount,
       finalRate,
       balance,
       polishShade,
@@ -455,7 +429,9 @@ export default function DetailOrderFormTab({
       typeOfPolish,
       orderNo,
       articleNo,
-      toArticleNo
+      toArticleNo,
+      requires_cnc: Boolean(requiresCnc),
+      requiresCnc: Boolean(requiresCnc),
     };
 
     if (onSendToWorkOrder) {
@@ -536,18 +512,26 @@ export default function DetailOrderFormTab({
     validUntil: string,
     quoteObj?: any
   ) => {
-    const exists = selectedQuoteItems.some((p) => p.quoteId === quoteId && p.item.id === item.id);
-    const next = exists
-      ? selectedQuoteItems.filter((p) => !(p.quoteId === quoteId && p.item.id === item.id))
-      : selectedQuoteItems.length > 0 && selectedQuoteItems[0].customer.id !== customer.id
-        ? [{ quoteId, item, customer, notes, created_at, validUntil, quoteObj }]
-        : [...selectedQuoteItems, { quoteId, item, customer, notes, created_at, validUntil, quoteObj }];
+    setSelectedQuoteItems((prev) => {
+      const exists = prev.some((p) => p.quoteId === quoteId && p.item.id === item.id);
+      let next = [];
+      if (exists) {
+        next = prev.filter((p) => !(p.quoteId === quoteId && p.item.id === item.id));
+      } else {
+        const hasDifferentCustomer = prev.length > 0 && prev[0].customer.id !== customer.id;
+        if (hasDifferentCustomer) {
+          next = [{ quoteId, item, customer, notes, created_at, validUntil, quoteObj }];
+        } else {
+          next = [...prev, { quoteId, item, customer, notes, created_at, validUntil, quoteObj }];
+        }
+      }
 
-    setSelectedQuoteItems(next);
-    loadSelectedQuoteItems(next);
+      loadSelectedQuoteItems(next);
+      return next;
+    });
   };
 
-  const loadSelectedQuoteItems = (selectedItems: SelectedQuoteItem[]) => {
+  const loadSelectedQuoteItems = (selectedItems: Array<{ quoteId: string; item: any; customer: any; notes: string; created_at: string; validUntil: string; quoteObj?: any }>) => {
     if (selectedItems.length === 0) {
       clearForm();
       return;
@@ -590,8 +574,8 @@ export default function DetailOrderFormTab({
       const { quoteId, item, notes, quoteObj } = selected;
       const quote = quoteObj || crmQuotations?.find((q) => q.id === quoteId);
 
-      // Extract reference images uploaded during quotation stage for this specific item
-      const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
+// Extract reference images uploaded during quotation stage for this specific item
+const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
       
 const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> =
   rawItemImages
@@ -660,6 +644,7 @@ const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }
         productName: nameStr,
         itemDescription: descStr,
         images: itemRefImages,
+        requiresCnc: Boolean(item.requiresCnc ?? item.requires_cnc ?? false),
       };
     });
 
@@ -690,7 +675,27 @@ const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }
 
     const firstItem = mappedItems[0];
     if (firstItem) {
-      applyItemToForm(firstItem, 0);
+      isUpdatingRef.current = true;
+      setCategory(firstItem.category);
+      setSubCategory(firstItem.subCategory);
+      setSize(firstItem.size);
+      setCustomSize(firstItem.customSize);
+      setDesignType(firstItem.designType);
+      setMaterial(firstItem.material);
+      setFinish(firstItem.finish);
+      setColorShade(firstItem.colorShade);
+      setSpecialNotes(firstItem.specialNotes);
+      setQty(firstItem.qty);
+      setQuotedRate(firstItem.quotedRate);
+      setCushion(firstItem.cushion);
+      setDiscount(firstItem.discount);
+      setHardware(firstItem.hardware);
+      setProductName(firstItem.productName);
+      setItemDescription(firstItem.itemDescription);
+      setRequiresCnc(Boolean(firstItem.requiresCnc));
+      setTimeout(() => {
+        isUpdatingRef.current = false;
+      }, 50);
     }
 
     // Prefill advance payment from unique quotation(s) recorded received_amount at ORDER-LEVEL
@@ -709,8 +714,9 @@ const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }
       const transAmt = quote?.transportation_charges !== undefined ? quote.transportation_charges : (quote?.transportation || 0);
       return sum + Math.max(0, Number(transAmt) || 0);
     }, 0);
-    setPackingForwarding(0);
-    setTransportation(totalQuoteTransportation);
+    if (totalQuoteTransportation > 0) {
+      setTransportation(totalQuoteTransportation);
+    }
 
     setSelectedOrderId('');
   };
@@ -818,11 +824,30 @@ const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }
         productName: `${order.category || 'Beds'} › ${order.sub_category || 'Custom'} (${order.size || 'Custom'})`,
         itemDescription: `Structure: ${order.material || 'Sagwan'}. Finish: ${order.finish_type || order.finish || 'Hand Polish'}. Color: ${order.color_shade || 'Walnut'}. ${order.special_notes || ''}`,
         images: loadedImgs,
+        requiresCnc: Boolean(order.requires_cnc),
       };
 
       setRefImages(loadedImgs);
       setItems([ordItem]);
-      applyItemToForm(ordItem, 0);
+      setActiveItemIndex(0);
+
+      setCategory(ordItem.category);
+      setSubCategory(ordItem.subCategory);
+      setSize(ordItem.size);
+      setCustomSize(ordItem.customSize);
+      setDesignType(ordItem.designType);
+      setMaterial(ordItem.material);
+      setFinish(ordItem.finish);
+      setColorShade(ordItem.colorShade);
+      setSpecialNotes(ordItem.specialNotes);
+      setRequiresCnc(Boolean(order.requires_cnc));
+      setQty(ordItem.qty);
+      setQuotedRate(ordItem.quotedRate);
+      setCushion(ordItem.cushion);
+      setDiscount(ordItem.discount);
+      setHardware(ordItem.hardware);
+      setProductName(ordItem.productName);
+      setItemDescription(ordItem.itemDescription);
 
       setPackingForwarding(1200);
       setTransportation(1800);
@@ -887,7 +912,6 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
   };
 
   const clearForm = () => {
-    const defaultItem = createDefaultAgreementItem();
     setSelectedOrderId('');
     setSelectedQuoteItems([]);
     const today = formatToDDMMYYYY(new Date().toISOString().split('T')[0]);
@@ -899,15 +923,42 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     setCustomerName('');
     setWhatsappNo('');
     setAddress('');
-    setRefImages([]);
+    setProductName('');
+    setItemDescription('');
+    setQty(1);
+    setAmount(0);
+    setQuotedRate(0);
+    setCushion(0);
+    setDiscount(0);
+    setHardware(0);
     setPackingForwarding(0);
     setTransportation(0);
     setAdvance(0);
     setPolishShade('');
     setPaymentMode('CASH');
     setTypeOfPolish('HAND');
-    setItems([defaultItem]);
-    applyItemToForm(defaultItem, 0);
+    setItems([
+      {
+        id: `item_${Math.random().toString(36).substring(2, 9)}`,
+        category: 'Door Frames',
+        subCategory: 'Set',
+        size: '6ft',
+        customSize: '',
+        designType: 'Standard',
+        material: 'Sagwan',
+        finish: 'Hand Polish',
+        colorShade: 'Walnut',
+        specialNotes: '',
+        qty: 1,
+        quotedRate: 0,
+        cushion: 0,
+        discount: 0,
+        hardware: 0,
+        productName: 'Door Frames › Set (6ft)',
+        itemDescription: 'Structure: Sagwan. Finish: Hand Polish. Color: Walnut.',
+      }
+    ]);
+    setActiveItemIndex(0);
   };
 
   const itemPages = React.useMemo(() => {
@@ -1243,9 +1294,27 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               <button
                 type="button"
                 onClick={() => {
-                  const newItem = createDefaultAgreementItem();
+                  const newItem: AgreementItem = {
+                    id: `item_${Math.random().toString(36).substring(2, 9)}`,
+                    category: 'Door Frames',
+                    subCategory: 'Set',
+                    size: '6ft',
+                    customSize: '',
+                    designType: 'Standard',
+                    material: 'Plywood',
+                    finish: 'hand polish',
+                    colorShade: 'Walnut',
+                    specialNotes: '',
+                    qty: 1,
+                    quotedRate: 0,
+                    cushion: 0,
+                    discount: 0,
+                    hardware: 0,
+                    productName: 'Door Frames › Set (6ft)',
+                    itemDescription: 'Structure: Plywood. Finish: hand polish. Color: Walnut.',
+                  };
                   setItems((prev) => [...prev, newItem]);
-                  applyItemToForm(newItem, items.length);
+                  setTimeout(() => loadItemToForm(items.length), 60);
                 }}
                 className="px-2.5 py-1 bg-[#593622]/10 hover:bg-[#593622]/20 text-[#593622] rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1 transition"
               >
@@ -1280,15 +1349,9 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                         e.stopPropagation();
                         const nextItems = items.filter((_, i) => i !== idx);
                         setItems(nextItems);
-                        const nextIdx = idx === activeItemIndex
-                          ? Math.min(idx, nextItems.length - 1)
-                          : idx < activeItemIndex
-                            ? activeItemIndex - 1
-                            : activeItemIndex;
-                        const nextItem = nextItems[nextIdx];
-                        if (nextItem) {
-                          applyItemToForm(nextItem, nextIdx);
-                        }
+                        const nextIdx = Math.max(0, idx - 1);
+                        setActiveItemIndex(nextIdx);
+                        setTimeout(() => loadItemToForm(nextIdx), 60);
                       }}
                       className={`p-0.5 rounded-full hover:bg-black/10 transition ${
                         idx === activeItemIndex ? 'text-white/85 hover:text-white' : 'text-stone-400 hover:text-stone-600'
@@ -1433,7 +1496,10 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
               <input
                 type="number"
                 value={quotedRate}
-                onChange={(e) => setQuotedRate(Number(e.target.value))}
+                onChange={(e) => {
+                  setQuotedRate(Number(e.target.value));
+                  setAmount(Number(e.target.value) * qty);
+                }}
                 className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
               />
             </div>
@@ -1447,6 +1513,47 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                 placeholder="Add special requests, internal parameters, or edge banding details..."
                 className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 focus:border-[#593622] rounded-lg text-xs focus:outline-none focus:ring-0 text-stone-750 font-semibold"
               />
+            </div>
+
+            {/* CNC Wood Carving Requirement Toggle */}
+            <div className="md:col-span-12 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl flex items-center justify-between transition-colors">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-1.5 rounded-lg ${requiresCnc ? 'bg-[#593622] text-amber-300' : 'bg-stone-200 text-stone-500'}`}>
+                  <Cpu size={16} />
+                </div>
+                <div>
+                  <label htmlFor="detail-requires-cnc-toggle" className="block text-xs font-bold text-stone-900 cursor-pointer">
+                    Requires CNC Wood Carving?
+                  </label>
+                  <p className="text-[11px] text-stone-500">
+                    {requiresCnc 
+                      ? 'Workflow path: Making Started → CNC Wood Carving → QC 1' 
+                      : 'Workflow path: Making Started → QC 1'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="detail-requires-cnc-toggle"
+                role="switch"
+                aria-checked={requiresCnc}
+                onClick={() => {
+                  const newVal = !requiresCnc;
+                  setRequiresCnc(newVal);
+                  setItems((prev) =>
+                    prev.map((itm, i) => (i === activeItemIndex ? { ...itm, requiresCnc: newVal } : itm))
+                  );
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  requiresCnc ? 'bg-[#593622]' : 'bg-stone-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    requiresCnc ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
 
             <div className="md:col-span-12">
