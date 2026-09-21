@@ -7,7 +7,10 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import companyLogoImg from '../assets/images/logo.png';
 import signatureImg from '../assets/images/Authorized Signatory.png';
-import { buildUPIPaymentString, getUPIQRCodeUrl } from '../config';
+import upiQrImg from '../assets/images/UPI QR code.jpeg';
+import { buildUPIPaymentString, generateUPIQRCodeDataUrl, getUPIQRCodeUrl, launchGooglePay, UPI_CONFIG } from '../config';
+import UPISettingsModal from '../components/UPISettingsModel.tsx';
+import { GooglePayModal } from './GooglePayModal';
 import { 
   AppState,
   generateArticleNumber
@@ -416,7 +419,7 @@ export default function CRMTab({
           return;
         }
         try {
-          const img: HTMLImageElement = document.createElement('img');
+          const img = new window.Image();
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
@@ -452,7 +455,7 @@ export default function CRMTab({
                     compressedDataUrl = canvas2.toDataURL('image/jpeg', 0.50);
                   }
                 }
-                                resolve(compressedDataUrl || rawDataUrl);
+                resolve(compressedDataUrl || rawDataUrl);
               } else {
                 resolve(rawDataUrl);
               }
@@ -566,6 +569,43 @@ export default function CRMTab({
   const [customLogo, setCustomLogo] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_logo'));
   const [customQR, setCustomQR] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_qr'));
   const [customSignature, setCustomSignature] = React.useState<string | null>(() => localStorage.getItem('estimate_custom_signature'));
+  const [customUPIId, setCustomUPIId] = React.useState<string>(() => localStorage.getItem('estimate_custom_upi_id') || '');
+  const [customPayeeName, setCustomPayeeName] = React.useState<string>(() => localStorage.getItem('estimate_custom_payee_name') || '');
+  const [showUPISettingsModal, setShowUPISettingsModal] = React.useState(false);
+  const [showGooglePayModal, setShowGooglePayModal] = React.useState(false);
+  const [generatedQRDataUrl, setGeneratedQRDataUrl] = React.useState<string>('');
+  const [copiedUPI, setCopiedUPI] = React.useState(false);
+
+  // Generate dynamic client-side high-contrast QR Data URL whenever active quote or UPI settings change
+  React.useEffect(() => {
+    if (!viewingEstimateQuote) return;
+    const activeQ = db.crmQuotations?.find(q => q.id === viewingEstimateQuote.id) || viewingEstimateQuote;
+    const quoteDisplayId = activeQ.id.startsWith('QT-') ? activeQ.id : `QT-${activeQ.id}`;
+    const receivedAmt = Math.max(0, activeQ.received_amount || 0);
+    const balanceAmt = Math.max(0, activeQ.totalAmount - receivedAmt);
+
+    const upiString = buildUPIPaymentString({
+      amount: balanceAmt,
+      invoiceRef: quoteDisplayId,
+      upiId: customUPIId || undefined,
+      payeeName: customPayeeName || undefined,
+    });
+
+    generateUPIQRCodeDataUrl(upiString, { width: 280, margin: 2 })
+      .then((dataUrl) => {
+        setGeneratedQRDataUrl(dataUrl);
+      })
+      .catch((err) => {
+        console.error('Failed to generate local QR Data URL:', err);
+      });
+  }, [
+    viewingEstimateQuote?.id,
+    viewingEstimateQuote?.totalAmount,
+    viewingEstimateQuote?.received_amount,
+    customUPIId,
+    customPayeeName,
+    db.crmQuotations
+  ]);
 
   // Attachment Dialog States
   const [showAttachmentModal, setShowAttachmentModal] = React.useState(false);
@@ -1311,6 +1351,7 @@ export default function CRMTab({
         setQuoteItems([{ ...quoteItems[0], furnitureItem: newCust.productRequirement }]);
       }
     }
+
     setShowAddCustModal(false);
     setEditingCustomer(null);
     alert(`Success: Customer ${newCust.name} saved successfully!`);
@@ -1947,7 +1988,7 @@ export default function CRMTab({
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(val: any) => [`${val || 0} lead(s)`, 'Count']} />
+                          <Tooltip formatter={(value) => [`${value ?? 0} lead(s)`, 'Count']} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -2070,7 +2111,7 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value: any) => `₹${(value || 0).toLocaleString()}`} />
+                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -2735,7 +2776,10 @@ export default function CRMTab({
                           <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                             {selectedCustQuotes.length > 0 ? (
                               selectedCustQuotes.map(q => {
-                                const qImages: string[] = (q.items || []).flatMap(i => i.images || []).filter(Boolean).map(img => typeof img === 'string' ? img : img.url);
+                                const qImages = (q.items || [])
+                                  .flatMap(i => i.images || [])
+                                  .map(image => typeof image === 'string' ? image : image.url)
+                                  .filter((url): url is string => Boolean(url));
                                 return (
                                   <div key={q.id} className="bg-white border border-stone-200 p-3 rounded-xl flex items-center justify-between shadow-xs">
                                     <div>
@@ -2763,7 +2807,7 @@ export default function CRMTab({
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                       q.status === 'INVOICED' || q.status === 'Invoiced' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                        q.status === 'INVOICED' || q.status === 'Invoiced' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                                         q.status === 'Approved' ? 'bg-green-100 text-green-700' :
                                         q.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
                                         'bg-amber-100 text-amber-700'
@@ -3078,7 +3122,7 @@ export default function CRMTab({
                             <div className="flex justify-end gap-1.5 items-center">
                               {/* Approve & Convert: ONLY visible when status is INVOICED */}
                               {(quote.status === 'INVOICED' || quote.status === 'Invoiced') && hasWriteAccess && (
-                            <button
+                                <button
                                   onClick={() => handleConvertQuotationToOrder(quote)}
                                   className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition shadow-xs whitespace-nowrap"
                                   title="Approve & Convert to Production Order"
@@ -3981,14 +4025,14 @@ export default function CRMTab({
                         <div className="flex gap-1 text-[10px]">
                           <button
                             type="button"
-                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% before dispatch post-QC inspection.')}
+                            onClick={() => setQuotePaymentTerms('40% Advance on order confirmation, 60% before dispatch post-QC inspection.')}
                             className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
                           >
-                            50% / 50%
+                            40% / 60%
                           </button>
                           <button
                             type="button"
-                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% on final delivery & installation.')}
+                            onClick={() => setQuotePaymentTerms('50% Advance on order confirmation, 50% before dispatch post-QC inspection.')}
                             className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-0.5 rounded cursor-pointer"
                           >
                             50% / 50%
@@ -4217,7 +4261,7 @@ export default function CRMTab({
                   onClick={() => handleSaveQuotation('Draft')}
                   className="px-4 py-2.5 rounded-xl border border-amber-600 text-amber-900 bg-amber-50 hover:bg-amber-100 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
                   title="Save as Draft (Approve & Convert will remain hidden)"
-                 >
+                >
                   <span>Save as Draft</span>
                 </button>
                 <button
@@ -4237,8 +4281,8 @@ export default function CRMTab({
                 >
                   <Receipt size={15} />
                   <span>Generate Invoice</span>
-                </button>              
-                </div>
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -4593,8 +4637,11 @@ export default function CRMTab({
         const upiPaymentString = buildUPIPaymentString({
           amount: balanceAmt,
           invoiceRef: quoteDisplayId,
+          upiId: customUPIId || undefined,
+          payeeName: customPayeeName || undefined,
         });
-        const qrCodeUrl = getUPIQRCodeUrl(upiPaymentString, 250);
+        const currentEffectiveUPIId = customUPIId && customUPIId.trim() ? customUPIId.trim() : UPI_CONFIG.upiId;
+        const qrCodeUrl = customQR || generatedQRDataUrl || upiQrImg || getUPIQRCodeUrl(upiPaymentString, 280);
 
         const shareText = `Hello ${customer.name},\n\nPlease find the custom price ${docTitle} from *Bhisez Furniture*:\n\n*${docTitle} No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(activeQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Grand Total:* ₹${activeQuote.totalAmount.toLocaleString('en-IN')}${receivedAmt > 0 ? `\n*Received Amount:* ₹${receivedAmt.toLocaleString('en-IN')}\n*Balance Amount:* ₹${balanceAmt.toLocaleString('en-IN')}` : ''}\n\nThank you for choosing Bhisez Furniture!`;
         const phoneForWa = customer.phone ? customer.phone.replace(/\D/g, '') : '';
@@ -4646,7 +4693,17 @@ export default function CRMTab({
                   <p className="text-[11px] text-stone-500 mt-0.5 font-medium">Generate, share on WhatsApp, or download standard high-fidelity A4 {docTitle} PDFs.</p>
                 </div>
 
-                <div className="flex items-center gap-2 self-end sm:self-auto">
+                <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowUPISettingsModal(true)}
+                    className="bg-white hover:bg-stone-50 border border-stone-300 text-stone-700 px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    title="Configure UPI QR code, payment VPA, or upload merchant standee"
+                  >
+                    <QrCode size={13} className="text-emerald-600" />
+                    UPI QR Settings
+                  </button>
+
                   <a
                     href={whatsappUrl}
                     target="_blank"
@@ -4980,7 +5037,7 @@ export default function CRMTab({
                           </div>
                           <div 
                             className="col-span-5 flex flex-col items-center justify-center border-l border-slate-200 pl-2 group relative"
-                             title={balanceAmt <= 0 ? 'Invoice Fully Paid' : `UPI Payment QR (Balance: ₹${balanceAmt.toFixed(2)})`}
+                            title={balanceAmt <= 0 ? 'Invoice Fully Paid' : `UPI Payment QR (Balance: ₹${balanceAmt.toFixed(2)})`}
                           >
                             {balanceAmt <= 0 ? (
                               <div className="flex flex-col items-center justify-center py-2.5 px-3 border-2 border-emerald-600 bg-emerald-50 rounded-xl text-center shadow-xs">
@@ -4988,22 +5045,55 @@ export default function CRMTab({
                                 <span className="text-[9px] text-emerald-800 font-bold mt-0.5">No Balance Due</span>
                               </div>
                             ) : (
-                              <div className="flex flex-col items-center justify-center">
-                                <img 
-                                  src={qrCodeUrl} 
-                                  alt={`UPI QR Code for ${docTitle} ${quoteDisplayId}`} 
-                                  className="w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20 object-contain" 
-                                  crossOrigin="anonymous"
-                                />
-                                <a
-                                  href={upiPaymentString}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="mt-1 bg-[#1b9a59] hover:bg-[#158047] text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:bg-emerald-600 inline-block transition cursor-pointer"
-                                  title={`Click to pay ₹${balanceAmt.toFixed(2)} via UPI`}
+                              <div className="flex flex-col items-center justify-center relative">
+                                <div 
+                                  onClick={() => setShowGooglePayModal(true)}
+                                  className="p-1 bg-white rounded border border-slate-200 shadow-2xs cursor-pointer hover:border-emerald-500 transition"
+                                  title="Click to view Google Pay QR & bank transfer details"
                                 >
-                                  UPI Click to Pay
-                                </a>
+                                  <img 
+                                    src={qrCodeUrl} 
+                                    alt={`Google Pay QR Code for ${docTitle} ${quoteDisplayId}`} 
+                                    className="w-24 h-24 sm:w-28 sm:h-28 print:w-22 print:h-22 object-contain block bg-white" 
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
+                                    if (isMobile) {
+                                      launchGooglePay({
+                                        amount: balanceAmt,
+                                        invoiceRef: quoteDisplayId,
+                                        upiId: currentEffectiveUPIId,
+                                        payeeName: customPayeeName || undefined,
+                                      });
+                                    } else {
+                                      setShowGooglePayModal(true);
+                                    }
+                                  }}
+                                  className="mt-1 bg-[#1b9a59] hover:bg-[#158047] active:scale-[0.98] text-white px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:hidden inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
+                                  title={`Click to pay ₹${balanceAmt.toFixed(2)} with Google Pay`}
+                                >
+                                  <span>Pay with Google Pay</span>
+                                </button>
+                                <div 
+                                  onClick={() => setShowGooglePayModal(true)}
+                                  className="text-[8px] text-slate-500 font-mono mt-0.5 max-w-[135px] truncate text-center cursor-pointer hover:text-emerald-700 hover:underline print:no-underline select-all"
+                                  title={`UPI ID: ${currentEffectiveUPIId} (Click for Google Pay & Bank details)`}
+                                >
+                                  {copiedUPI ? '✓ Copied UPI ID!' : currentEffectiveUPIId}
+                                </div>
+                                
+                                {/* Quick config icon in preview (hidden in print) */}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowUPISettingsModal(true)}
+                                  className="print:hidden opacity-0 group-hover:opacity-100 absolute -top-1 -right-1 p-1 bg-white hover:bg-stone-100 text-stone-600 rounded-full shadow border border-stone-200 transition cursor-pointer"
+                                  title="Configure Google Pay UPI or custom QR"
+                                >
+                                  <Settings size={11} />
+                                </button>
                               </div>
                             )}
                           </div>
@@ -5186,9 +5276,36 @@ export default function CRMTab({
         </div>
       )}
 
+      {/* 8. UPI PAYMENT & QR CODE SETTINGS MODAL */}
+      <UPISettingsModal
+        isOpen={showUPISettingsModal}
+        onClose={() => setShowUPISettingsModal(false)}
+        customUPIId={customUPIId}
+        setCustomUPIId={setCustomUPIId}
+        customPayeeName={customPayeeName}
+        setCustomPayeeName={setCustomPayeeName}
+        customQR={customQR}
+        setCustomQR={setCustomQR}
+        sampleInvoiceRef={viewingEstimateQuote ? (viewingEstimateQuote.id.startsWith('QT-') ? viewingEstimateQuote.id : `QT-${viewingEstimateQuote.id}`) : 'QT-ESTIMATE'}
+        sampleAmount={viewingEstimateQuote ? Math.max(0, viewingEstimateQuote.totalAmount - (viewingEstimateQuote.received_amount || 0)) : 5000}
+      />
+
+      {/* 9. GOOGLE PAY & DIRECT UPI PAYMENT MODAL */}
+      <GooglePayModal
+        isOpen={showGooglePayModal}
+        onClose={() => setShowGooglePayModal(false)}
+        amount={viewingEstimateQuote ? Math.max(0, viewingEstimateQuote.totalAmount - (viewingEstimateQuote.received_amount || 0)) : 0}
+        invoiceRef={viewingEstimateQuote ? (viewingEstimateQuote.id.startsWith('QT-') ? viewingEstimateQuote.id : `QT-${viewingEstimateQuote.id}`) : 'QT-INVOICE'}
+        qrCodeUrl={customQR || generatedQRDataUrl || upiQrImg || getUPIQRCodeUrl(buildUPIPaymentString({
+          amount: viewingEstimateQuote ? Math.max(0, viewingEstimateQuote.totalAmount - (viewingEstimateQuote.received_amount || 0)) : 0,
+          invoiceRef: viewingEstimateQuote ? (viewingEstimateQuote.id.startsWith('QT-') ? viewingEstimateQuote.id : `QT-${viewingEstimateQuote.id}`) : 'QT-INVOICE',
+          upiId: customUPIId || undefined,
+          payeeName: customPayeeName || undefined,
+        }), 280)}
+        effectiveUPIId={customUPIId && customUPIId.trim() ? customUPIId.trim() : UPI_CONFIG.upiId}
+        effectivePayeeName={customPayeeName || UPI_CONFIG.payeeName}
+      />
+
     </div>
   );
 }
-
-// commited
-// Updated: 2024-06-20
