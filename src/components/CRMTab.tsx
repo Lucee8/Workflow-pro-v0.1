@@ -9,7 +9,7 @@ import companyLogoImg from '../assets/images/logo.png';
 import signatureImg from '../assets/images/Authorized Signatory.png';
 import upiQrImg from '../assets/images/UPI QR code.jpeg';
 import { buildUPIPaymentString, generateUPIQRCodeDataUrl, getUPIQRCodeUrl, launchGooglePay, UPI_CONFIG } from '../config';
-import UPISettingsModal from '../components/UPISettingsModel.tsx';
+import { UPISettingsModal } from '../components/UPISettingsModel.tsx';
 import { GooglePayModal } from './GooglePayModal';
 import { 
   AppState,
@@ -2111,7 +2111,12 @@ export default function CRMTab({
                   <BarChart data={revenueTrendData}>
                     <XAxis dataKey="name" fontSize={10} tickLine={false} />
                     <YAxis fontSize={10} tickLine={false} />
-                    <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
+                    <Tooltip
+  formatter={(value) => {
+    const amount = Number(value ?? 0);
+    return `₹${amount.toLocaleString('en-IN')}`;
+  }}
+/>
                     <Bar dataKey="revenue" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -4641,6 +4646,10 @@ export default function CRMTab({
           payeeName: customPayeeName || undefined,
         });
         const currentEffectiveUPIId = customUPIId && customUPIId.trim() ? customUPIId.trim() : UPI_CONFIG.upiId;
+        const currentEffectivePayee = customPayeeName && customPayeeName.trim() ? customPayeeName.trim() : UPI_CONFIG.accountHolder;
+        const appOrigin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : '';
+        const onlinePaymentUrl = `${appOrigin}/?pay=gpay&am=${balanceAmt.toFixed(2)}&ref=${encodeURIComponent(quoteDisplayId)}&pa=${encodeURIComponent(currentEffectiveUPIId)}&pn=${encodeURIComponent(currentEffectivePayee)}`;
+                
         const qrCodeUrl = customQR || generatedQRDataUrl || upiQrImg || getUPIQRCodeUrl(upiPaymentString, 280);
 
         const shareText = `Hello ${customer.name},\n\nPlease find the custom price ${docTitle} from *Bhisez Furniture*:\n\n*${docTitle} No:* ${quoteDisplayId}\n*Date:* ${formatToDDMMYYYY(activeQuote.created_at)}\n*Item:* ${firstItem?.furnitureItem || 'Bespoke Item'}\n*Specs:* ${firstItem?.dimensions || '-'}\n*Material:* ${firstItem?.material || '-'}\n*Quantity:* ${firstItem?.quantity || 1}\n*Grand Total:* ₹${activeQuote.totalAmount.toLocaleString('en-IN')}${receivedAmt > 0 ? `\n*Received Amount:* ₹${receivedAmt.toLocaleString('en-IN')}\n*Balance Amount:* ₹${balanceAmt.toLocaleString('en-IN')}` : ''}\n\nThank you for choosing Bhisez Furniture!`;
@@ -4664,7 +4673,9 @@ export default function CRMTab({
               '.print\\:hidden { display: none !important; }' +
               '.print\\:inline { display: inline !important; }' +
               '.print\\:block { display: block !important; }' +
-              '@media print { body { padding: 0; margin: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } .page-break-before-always, .break-before-page { page-break-before: always !important; break-before: page !important; } }' +
+              'a { text-decoration: none; color: inherit; }' +
+              '.pdf-pay-btn { background-color: #1b9a59 !important; color: #ffffff !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 5px 12px !important; border-radius: 6px !important; font-weight: 900 !important; font-size: 9px !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; text-decoration: none !important; text-align: center !important; margin-top: 4px !important; box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important; cursor: pointer !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }' +
+              '@media print { body { padding: 0; margin: 0; } .print\\:hidden { display: none !important; } .print\\:inline { display: inline !important; } .print\\:block { display: block !important; } .page-break-before-always, .break-before-page { page-break-before: always !important; break-before: page !important; } .pdf-pay-btn { display: inline-flex !important; background-color: #1b9a59 !important; color: #ffffff !important; } }' +
               '.page-break-before-always, .break-before-page { page-break-before: always; break-before: page; }' +
               '</style>' +
               '</head><body onload="window.print(); setTimeout(function(){ window.close(); }, 500);">' +
@@ -5030,10 +5041,11 @@ export default function CRMTab({
                         </div>
                         <div className="p-2.5 print:p-2 grid grid-cols-12 gap-2 items-center min-h-[95px] print:min-h-[85px]">
                           <div className="col-span-7 space-y-0.5 text-[11px] text-slate-700 font-semibold">
-                            <p>Bank Name: <span className="text-slate-900 font-bold">Hdfc Bank, Malwan</span></p>
-                            <p>Account No.: <span className="text-slate-900 font-extrabold">50100705616156</span></p>
-                            <p>IFSC code: <span className="text-slate-900 font-extrabold">HDFC0009348</span></p>
-                            <p>Account Holder's Name: <span className="text-slate-900 font-bold">Aaradhya Mandar Bhise</span></p>
+                            <p>Account Holder: <span className="text-slate-900 font-bold">{UPI_CONFIG.accountHolder}</span></p>
+                            <p>Account Number: <span className="text-slate-900 font-extrabold">{UPI_CONFIG.accountNumber}</span></p>
+                            <p>IFSC: <span className="text-slate-900 font-extrabold">{UPI_CONFIG.ifscCode}</span></p>
+                            <p>Branch: <span className="text-slate-900 font-bold">{UPI_CONFIG.branch}</span></p>
+                            <p>Account Type: <span className="text-slate-900 font-bold">{UPI_CONFIG.accountType}</span></p>
                           </div>
                           <div 
                             className="col-span-5 flex flex-col items-center justify-center border-l border-slate-200 pl-2 group relative"
@@ -5046,20 +5058,31 @@ export default function CRMTab({
                               </div>
                             ) : (
                               <div className="flex flex-col items-center justify-center relative">
-                                <div 
-                                  onClick={() => setShowGooglePayModal(true)}
-                                  className="p-1 bg-white rounded border border-slate-200 shadow-2xs cursor-pointer hover:border-emerald-500 transition"
+                                <a 
+                                  href={onlinePaymentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setShowGooglePayModal(true);
+                                  }}
+                                  className="p-1 bg-white rounded border border-slate-200 shadow-2xs cursor-pointer hover:border-emerald-500 transition block"
                                   title="Click to view Google Pay QR & bank transfer details"
+                                  style={{ textDecoration: 'none', display: 'block' }}
                                 >
                                   <img 
                                     src={qrCodeUrl} 
                                     alt={`Google Pay QR Code for ${docTitle} ${quoteDisplayId}`} 
                                     className="w-24 h-24 sm:w-28 sm:h-28 print:w-22 print:h-22 object-contain block bg-white" 
                                   />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
+                                </a>
+                                <a
+                                  href={onlinePaymentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+
                                     const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
                                     if (isMobile) {
                                       launchGooglePay({
@@ -5072,18 +5095,44 @@ export default function CRMTab({
                                       setShowGooglePayModal(true);
                                     }
                                   }}
-                                  className="mt-1 bg-[#1b9a59] hover:bg-[#158047] active:scale-[0.98] text-white px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-center select-none print:hidden inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
+                                  style={{
+                                    backgroundColor: '#1b9a59',
+                                    color: '#ffffff',
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    fontWeight: 900,
+                                    fontSize: '9px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    textDecoration: 'none',
+                                    textAlign: 'center',
+                                    marginTop: '4px',
+                                    cursor: 'pointer',
+                                    WebkitPrintColorAdjust: 'exact',
+                                    printColorAdjust: 'exact',
+                                  }}
+                                  className="pdf-pay-btn hover:bg-[#158047] active:scale-[0.98] transition select-none shadow-xs"
                                   title={`Click to pay ₹${balanceAmt.toFixed(2)} with Google Pay`}
                                 >
-                                  <span>Pay with Google Pay</span>
-                                </button>
-                                <div 
-                                  onClick={() => setShowGooglePayModal(true)}
-                                  className="text-[8px] text-slate-500 font-mono mt-0.5 max-w-[135px] truncate text-center cursor-pointer hover:text-emerald-700 hover:underline print:no-underline select-all"
+                                  <span>PAY WITH GOOGLE PAY</span>
+                                </a>
+                                <a 
+                                  href={onlinePaymentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setShowGooglePayModal(true);
+                                  }}
+                                  className="text-[8px] text-slate-500 font-mono mt-0.5 max-w-[135px] truncate text-center cursor-pointer hover:text-emerald-700 hover:underline print:no-underline select-all block"
                                   title={`UPI ID: ${currentEffectiveUPIId} (Click for Google Pay & Bank details)`}
+                                  style={{ textDecoration: 'none' }}
                                 >
                                   {copiedUPI ? '✓ Copied UPI ID!' : currentEffectiveUPIId}
-                                </div>
+                                </a>
                                 
                                 {/* Quick config icon in preview (hidden in print) */}
                                 <button

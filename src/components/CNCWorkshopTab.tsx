@@ -118,7 +118,7 @@ const DEFAULT_MACHINES = [
 ];
 
 // Approved Stitch Form Options
-const FORM_JOB_TYPES: CNCJobType[] = ['Cutting', 'Carving', 'Turning', 'Pillar'];
+const FORM_JOB_TYPES: CNCJobType[] = ['Carving', 'Jali Cutting', 'Profile Cutting', 'Other'];
 const FORM_MACHINES = ['Machine 1', 'Machine 2'];
 const FORM_TOOLS = [
   'mm',
@@ -2418,19 +2418,19 @@ export default function CNCWorkshopTab({
               const jobType = job?.job_type || item.job_type;
               const machineName = job?.machine_name || item.machine_name;
               const toolName = job?.tool_name || item.tool_name;
-              const material = job?.material || order?.material || order?.wood_type || '';
+              const material = job?.material || order?.material || '';
               const amount = job?.amount ?? item.amount ?? 0;
               const operatorName = job?.operator_name || item.operator_name;
               const designTime = job?.design_time_minutes ?? item.design_time ?? 0;
               const completionTime = job?.completion_time_minutes ?? job?.run_time_minutes ?? item.completion_time ?? 0;
-              const programFile = job?.design_file || order?.cnc_file_url || order?.cad_file_url || '';
-              const description = job?.notes || order?.cnc_notes || order?.remarks || '';
+              const programFile = job?.design_file || '';
+              const description = job?.notes || order?.cnc_notes || order?.internal_notes || '';
               const status = job?.status || item.status;
 
               // Additional Firestore job-specific fields
               const customerName = job?.customer_name || (order?.customer_id ? customerMap.get(order.customer_id)?.name : '') || '';
               const productName = job?.product_name || order?.sub_category || order?.category || '';
-              const dimensions = job?.dimensions || order?.size_of_product || '';
+              const dimensions = job?.dimensions || order?.wood_schedule?.size_of_product || order?.size || '';
               const createdAt = job?.created_at || order?.created_at || '';
               const completedAt = job?.completed_at || '';
               const createdBy = job?.created_by || '';

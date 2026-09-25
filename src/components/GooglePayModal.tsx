@@ -39,6 +39,10 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
   const [copiedAcc, setCopiedAcc] = useState(false);
   const [copiedIfsc, setCopiedIfsc] = useState(false);
   const [copiedAllBank, setCopiedAllBank] = useState(false);
+  const [launchNotice, setLaunchNotice] = useState<{
+    type: 'idle' | 'opening' | 'desktop';
+    message: string;
+  }>({ type: 'idle', message: '' });
 
   if (!isOpen) return null;
 
@@ -52,7 +56,11 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
   const handleCopyUpi = () => {
     navigator.clipboard?.writeText(effectiveUPIId);
     setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
+    setLaunchNotice({
+      type: 'idle',
+      message: `✓ Copied UPI ID: ${effectiveUPIId}`,
+    });
+    setTimeout(() => setCopiedUpi(false), 2500);
   };
 
   const handleCopyAcc = () => {
@@ -68,19 +76,35 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
   };
 
   const handleCopyAllBank = () => {
-    const text = `Bank Transfer Details (Google Pay):\nAccount Number: ${UPI_CONFIG.accountNumber}\nIFSC Code: ${UPI_CONFIG.ifscCode}\nName: ${effectivePayeeName}\nBank: ${UPI_CONFIG.bankName}\nAmount: ₹${amount.toFixed(2)}`;
+    const text = `Bank Transfer Details (Google Pay):\nAccount Holder: ${effectivePayeeName}\nAccount Number: ${UPI_CONFIG.accountNumber}\nIFSC: ${UPI_CONFIG.ifscCode}\nBranch: ${UPI_CONFIG.branch}\nAccount Type: ${UPI_CONFIG.accountType}\nAmount: ₹${amount.toFixed(2)}`;
     navigator.clipboard?.writeText(text);
     setCopiedAllBank(true);
     setTimeout(() => setCopiedAllBank(false), 2000);
   };
 
   const handleOpenGPay = () => {
-    launchGooglePay({
+    const result = launchGooglePay({
       amount,
       invoiceRef,
       upiId: effectiveUPIId,
       payeeName: effectivePayeeName,
     });
+
+    if (result.isMobile) {
+      setLaunchNotice({
+        type: 'opening',
+        message: 'Opening Google Pay app... If the app does not launch automatically, scan the QR code or tap "Any UPI App" below.',
+      });
+    } else {
+      // Desktop environment: copy UPI ID and advise scanning
+      navigator.clipboard?.writeText(effectiveUPIId);
+      setCopiedUpi(true);
+      setTimeout(() => setCopiedUpi(false), 2500);
+      setLaunchNotice({
+        type: 'desktop',
+        message: `Desktop detected: Google Pay runs on mobile phones. Please scan the QR code with your Google Pay app or use the copied UPI ID (${effectiveUPIId}).`,
+      });
+    }
   };
 
   return (
@@ -176,16 +200,32 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
               </p>
             </div>
 
-            {/* Mobile Instant App Trigger */}
-            <div className="pt-1">
+            {/* Mobile Instant App Trigger & Status */}
+            <div className="pt-1 space-y-1.5">
               <button
                 type="button"
+                id="gpay-modal-launch-btn"
                 onClick={handleOpenGPay}
-                className="w-full bg-[#1b9a59] hover:bg-[#158047] active:scale-[0.98] text-white py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+                className="w-full bg-[#1b9a59] hover:bg-[#158047] active:scale-[0.98] text-white py-2.5 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
               >
-                <Smartphone size={14} />
+                <Smartphone size={15} />
                 <span>Open in Google Pay App</span>
               </button>
+              {/* Status Message / Desktop Guide */}
+              {launchNotice.message && (
+                <div className={`p-2 rounded-xl text-[11px] leading-tight flex items-start gap-1.5 transition ${
+                  launchNotice.type === 'desktop' 
+                    ? 'bg-blue-50 text-blue-900 border border-blue-200' 
+                    : launchNotice.type === 'opening'
+                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                    : 'bg-stone-100 text-stone-800 border border-stone-200'
+                }`}>
+                  <ShieldCheck size={14} className="shrink-0 mt-0.5 text-current" />
+                  <div className="flex-1">
+                    <span>{launchNotice.message}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -217,6 +257,8 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
                 type="button" 
                 onClick={handleCopyAcc} 
                 className="p-1 hover:bg-stone-200 rounded text-stone-500 cursor-pointer"
+                title="Copy Account Number"
+
               >
                 {copiedAcc ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
               </button>
@@ -231,6 +273,7 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
                 type="button" 
                 onClick={handleCopyIfsc} 
                 className="p-1 hover:bg-stone-200 rounded text-stone-500 cursor-pointer"
+                title="Copy IFSC Code"
               >
                 {copiedIfsc ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
               </button>
@@ -238,31 +281,37 @@ export const GooglePayModal: React.FC<GooglePayModalProps> = ({
           </div>
 
           <p className="text-[10px] text-stone-500">
-            In Google Pay, tap <strong>"Bank transfer"</strong> on the home screen, paste these details, and send payment directly to HDFC Bank, Malwan.
+            In Google Pay, tap <strong>"Bank transfer"</strong> on the home screen, paste these details, and send payment directly to {UPI_CONFIG.branch} branch ({UPI_CONFIG.ifscCode}).
           </p>
         </div>
 
-        {/* Alternative App Links (PhonePe / Paytm) */}
-        <div className="flex items-center justify-between text-[11px] pt-1">
+        {/* Alternative App Links (Tez / PhonePe / Paytm / Universal UPI) */}
+        <div className="flex items-center justify-between text-[11px] pt-1 flex-wrap gap-2">
           <span className="text-stone-400 font-medium">Other UPI Apps:</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <a
+              href={paymentLinks.googlePayTez}
+              className="text-stone-700 hover:text-emerald-700 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-emerald-50 transition text-[10px] flex items-center gap-1"
+            >
+              <span>GPay (Tez)</span>
+            </a>
             <a
               href={paymentLinks.phonepeAndroid}
-              className="text-stone-600 hover:text-purple-700 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-purple-50 transition text-[10px]"
+              className="text-stone-700 hover:text-purple-700 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-purple-50 transition text-[10px]"
             >
               PhonePe
             </a>
             <a
               href={paymentLinks.paytmAndroid}
-              className="text-stone-600 hover:text-sky-700 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-sky-50 transition text-[10px]"
+              className="text-stone-700 hover:text-sky-700 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-sky-50 transition text-[10px]"
             >
               Paytm
             </a>
             <a
               href={paymentLinks.upiUri}
-              className="text-stone-600 hover:text-emerald-700 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-emerald-50 transition text-[10px]"
+              className="text-stone-700 hover:text-emerald-800 font-bold px-2 py-1 rounded bg-stone-100 hover:bg-emerald-50 transition text-[10px] flex items-center gap-1"
             >
-              Any UPI App
+              <span>Any UPI App</span>
             </a>
           </div>
         </div>

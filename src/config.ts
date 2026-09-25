@@ -6,20 +6,26 @@ import QRCode from 'qrcode';
  * In India, direct bank account transfer via UPI uses the official NPCI VPA format:
  * <AccountNumber>@<IFSC>.ifsc.npci
  * 
- * For Hdfc Bank, Malwan:
- * Account: 50100705616156
- * IFSC: HDFC0009348
- * NPCI UPI VPA: 50100705616156@HDFC0009348.ifsc.npci
+ * Bank Details:
+ * Account Holder: MANDAR NANDKISHOR BHISE
+ * Account Number: 063400000000861
+ * IFSC: SIDC0001063
+ * Branch: SUKALWAD
+ * Account Type: SAVING
+ * NPCI UPI VPA: 063400000000861@SIDC0001063.ifsc.npci
  */
 export const UPI_CONFIG = {
   // Official NPCI Account+IFSC UPI VPA for direct bank clearance
-  upiId: '50100705616156@HDFC0009348.ifsc.npci',
-  payeeName: 'Aaradhya Mandar Bhise',
+  upiId: '063400000000861@SIDC0001063.ifsc.npci',
+  accountHolder: 'MANDAR NANDKISHOR BHISE',
+  payeeName: 'MANDAR NANDKISHOR BHISE',
   businessName: 'Bhisez Furniture',
   currency: 'INR',
-  bankName: 'Hdfc Bank, Malwan',
-  accountNumber: '50100705616156',
-  ifscCode: 'HDFC0009348',
+  bankName: 'SUKALWAD',
+  branch: 'SUKALWAD',
+  accountNumber: '063400000000861',
+  ifscCode: 'SIDC0001063',
+  accountType: 'SAVING',
 };
 
 /**
@@ -28,7 +34,7 @@ export const UPI_CONFIG = {
 export function getActiveUPIId(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('estimate_custom_upi_id');
-    if (custom && custom.trim().length > 0) {
+    if (custom && custom.trim().length > 0 && !custom.includes('50100705616156')) {
       return custom.trim();
     }
   }
@@ -41,7 +47,7 @@ export function getActiveUPIId(): string {
 export function getActivePayeeName(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('estimate_custom_payee_name');
-    if (custom && custom.trim().length > 0) {
+    if (custom && custom.trim().length > 0 && custom.trim() !== 'Aaradhya Mandar Bhise') {
       return custom.trim();
     }
   }
@@ -94,8 +100,8 @@ export function buildUPIPaymentString(options: {
 }
 
 /**
- * Builds direct application deep links for Google Pay, PhonePe, and Paytm.
- * Prevents browsers from falling back to web search or Wikipedia on desktop/mobile.
+ * Builds direct application deep links for Google Pay, PhonePe, Paytm, BHIM and generic UPI.
+ * Formats Android Intent URIs with explicit action=android.intent.action.VIEW as required by Android Chrome.
  */
 export function buildPaymentLinks(options: {
   amount?: number;
@@ -109,42 +115,69 @@ export function buildPaymentLinks(options: {
   
   return {
     upiUri,
-    // Google Pay Android Package Intent
-    googlePayAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`,
+    // Google Pay Android Package Intent (NPCI standard with explicit VIEW action)
+    googlePayAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;action=android.intent.action.VIEW;end`,
+    // Google Pay Tez scheme (supported by Google Pay on Android and iOS)
+    googlePayTez: `tez://upi/pay?${upiQuery}`,
     // Google Pay iOS Scheme
     googlePayIos: `gpay://upi/pay?${upiQuery}`,
     // PhonePe Android Package Intent
-    phonepeAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=com.phonepe.app;end`,
+    phonepeAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=com.phonepe.app;action=android.intent.action.VIEW;end`,
+    // PhonePe direct URI (iOS and Android)
+    phonepeUri: `phonepe://pay?${upiQuery}`,
     // Paytm Android Package Intent
-    paytmAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=net.one97.paytm;end`,
+    paytmAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=net.one97.paytm;action=android.intent.action.VIEW;end`,
+    // Paytm direct URI
+    paytmUri: `paytmmp://pay?${upiQuery}`,
+    // BHIM UPI Android Package Intent
+    bhimAndroid: `intent://pay?${upiQuery}#Intent;scheme=upi;package=in.org.npci.upiapp;action=android.intent.action.VIEW;end`,
   };
 }
 
 /**
  * Safely launches Google Pay without triggering a new tab search or Wikipedia redirect.
+ * Uses universal UPI protocol on Android to trigger Google Pay directly.
  */
 export function launchGooglePay(options: {
   amount?: number;
   invoiceRef: string;
   upiId?: string;
   payeeName?: string;
-}): void {
-  if (typeof window === 'undefined') return;
+}): { isMobile: boolean } {
+  if (typeof window === 'undefined') return { isMobile: false };
   const links = buildPaymentLinks(options);
   const userAgent = navigator.userAgent || '';
   const isAndroid = /android/i.test(userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+  const isMobile = isAndroid || isIOS;
 
   if (isAndroid) {
-    window.location.href = links.googlePayAndroid;
+    // Attempt Google Pay intent first; fall back to universal UPI URI
+    try {
+      window.location.href = links.googlePayAndroid;
+    } catch (e) {
+      window.location.href = links.upiUri;
+    }
+    // If not handled by explicit package within 800ms, dispatch universal UPI URI
+    setTimeout(() => {
+      try {
+        window.location.href = links.upiUri;
+      } catch (e) {}
+    }, 800);
   } else if (isIOS) {
     window.location.href = links.googlePayIos;
     setTimeout(() => {
-      window.location.href = links.upiUri;
-    }, 1200);
+      try {
+        window.location.href = links.upiUri;
+      } catch (e) {}
+    }, 800);
   } else {
-    window.location.href = links.upiUri;
+    try {
+      window.location.href = links.upiUri;
+    } catch (e) {}
   }
+
+  return { isMobile };
 }
 
 /**

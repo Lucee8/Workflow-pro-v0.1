@@ -6,7 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState, resequenceCRMCustomersInState, generateArticleNumber } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool, CRMQuotationPhoto } from './types';
 import {
   authenticateFirebase,
   seedFirestoreIfEmpty,
@@ -66,6 +66,7 @@ import MaterialRequirementPlanning from './components/MaterialRequirementPlannin
 import CRMTab from './components/CRMTab';
 import CNCWorkshopTab from './components/CNCWorkshopTab';
 import CloudSyncModal from './components/CloudSyncModal';
+import PaymentPortal from './components/PaymentPortal';
 import { Cloud, CloudUpload } from 'lucide-react';
 import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
@@ -90,6 +91,13 @@ export default function App() {
 
   // Active simulated user session (start as null to show login page by default)
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+
+  // Check if URL specifies public Customer Payment Portal (e.g. opened from downloaded PDF invoice)
+  const [isPaymentPortal, setIsPaymentPortal] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const sp = new URLSearchParams(window.location.search);
+    return sp.has('pay') || sp.has('payment') || window.location.pathname === '/pay';
+  });
 
   // Firebase connection and sync states
   const [firebaseConnected, setFirebaseConnected] = React.useState<boolean>(false);
@@ -645,11 +653,14 @@ export default function App() {
         ...item,
         id: item.id || `item_${quote.id}_${idx + 1}`,
         images: Array.isArray(item.images)
-          ? item.images.map((img: any) => {
-              if (typeof img === 'string') return { url: img, description: '' };
-              if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
-              return null;
-            }).filter(Boolean)
+          ? item.images.reduce<CRMQuotationPhoto[]>((images, img: any) => {
+              if (typeof img === 'string') {
+                images.push({ url: img, description: '' });
+              } else if (img && typeof img === 'object' && img.url) {
+                images.push({ url: img.url, description: img.description || '' });
+              }
+              return images;
+            }, [])
           : []
       })) : []
     };
@@ -1077,6 +1088,18 @@ export default function App() {
 
   // Production Flag to show/hide Sandbox Simulation controls
   const SHOW_DEBUG_HUD = false;
+
+  // If opened directly from downloaded PDF invoice or external payment link, render Customer Payment Portal
+  if (isPaymentPortal) {
+    return (
+      <PaymentPortal
+        onExit={() => {
+          setIsPaymentPortal(false);
+          window.history.replaceState({}, '', '/');
+        }}
+      />
+    );
+  }
 
   // If logged out entirely, render promotional Login Screen
   if (!currentUser) {

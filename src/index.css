@@ -79,6 +79,14 @@ input[type="number"] {
   }
 
   /* Page sizing and break constraints */
+    .pdf-pay-btn {
+    display: inline-flex !important;
+    background-color: #1b9a59 !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .print-page {
     page-break-after: always !important;
     break-after: page !important;
