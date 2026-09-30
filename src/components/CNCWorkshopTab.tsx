@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Order, 
   Customer, 
@@ -179,9 +179,25 @@ export default function CNCWorkshopTab({
   onDeleteTool,
   onUpdateOrder,
 }: CNCWorkshopTabProps) {
-  // Navigation Sub-tabs
-  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'queue' | 'inventory' | 'reports'>('dashboard');
+  // Role & Authorization checks
+  // CNC Workshop Manager should not have access to the financial dashboard or total workshop revenue
+  const isCNCWorkshopManager = currentUser?.role === 'cnc_workshop' || currentUser?.role === 'cnc_manager';
+  const canAccessDashboard = !isCNCWorkshopManager && currentUser?.role === 'admin';
+  const canViewTotalRevenue = !isCNCWorkshopManager && currentUser?.role === 'admin';
+
+  // Navigation Sub-tabs: Default to 'queue' for CNC Workshop Manager, or 'dashboard' for Admin
+  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'queue' | 'inventory' | 'reports'>(() => {
+    return canAccessDashboard ? 'dashboard' : 'queue';
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Enforce access control if role changes or if navigated to dashboard without permission
+  useEffect(() => {
+    if (!canAccessDashboard && activeSubTab === 'dashboard') {
+      setActiveSubTab('queue');
+    }
+  }, [canAccessDashboard, activeSubTab]);
+
 
   const subTabLabels: Record<'dashboard' | 'queue' | 'inventory' | 'reports', string> = {
     dashboard: 'Dashboard',
@@ -1109,6 +1125,7 @@ export default function CNCWorkshopTab({
 
         {/* Center Sub-tab Navigation */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
+          {canAccessDashboard && (
           <button
             onClick={() => setActiveSubTab('dashboard')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
@@ -1120,6 +1137,7 @@ export default function CNCWorkshopTab({
             <LayoutDashboard size={14} />
             <span>Dashboard</span>
           </button>
+          )}
 
           <button
             onClick={() => setActiveSubTab('queue')}
@@ -1238,6 +1256,7 @@ export default function CNCWorkshopTab({
         {/* Mobile Dropdown Menu: Dashboard, Job Queue, Tool Inventory, Monthly Report */}
         {isMobileMenuOpen && (
           <div className="border-t border-stone-100 bg-stone-50/70 p-2 space-y-1">
+            {canAccessDashboard && (
             <button
               type="button"
               onClick={() => {
@@ -1256,6 +1275,7 @@ export default function CNCWorkshopTab({
               </div>
               {activeSubTab === 'dashboard' && <Check size={14} />}
             </button>
+            )}
 
             <button
               type="button"
@@ -1332,7 +1352,7 @@ export default function CNCWorkshopTab({
       </div>
 
       {/* SUB-VIEW 1: REDESIGNED CNC DASHBOARD (GOOGLE STITCH DESKTOP + MOBILE) */}
-      {activeSubTab === 'dashboard' && (
+      {canAccessDashboard && activeSubTab === 'dashboard' && (
         <div className="space-y-6">
           {/* 4 Top KPI Cards (Desktop 4 cols, Mobile 2×2 grid) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
@@ -3122,11 +3142,13 @@ export default function CNCWorkshopTab({
           <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold text-stone-900 tracking-tight">
-                Monthly CNC Workshop Performance & Financial Report
+                Monthly CNC Workshop Performance {canViewTotalRevenue ? '& Financial Report' : 'Report'}
               </h2>
               <p className="text-xs text-stone-500">
-                Aggregated revenue, spindle utilization hours, and carving job throughput.
-              </p>
+                {canViewTotalRevenue
+                  ? 'Aggregated revenue, spindle utilization hours, and carving job throughput.'
+                  : 'Aggregated spindle utilization hours and carving job throughput.'}
+                            </p>
             </div>
 
             <div className="flex items-center gap-3">
@@ -3151,7 +3173,7 @@ export default function CNCWorkshopTab({
           </div>
 
           {/* Month Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 ${canViewTotalRevenue ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-4`}>
             <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
               <span className="text-xs text-stone-500 font-semibold block">Total Jobs Completed</span>
               <div className="text-3xl font-black text-stone-900 mt-2 font-display">
@@ -3160,6 +3182,7 @@ export default function CNCWorkshopTab({
               <span className="text-[11px] text-stone-400 mt-1 block">In month {selectedMonth}</span>
             </div>
 
+            {canViewTotalRevenue && (
             <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
               <span className="text-xs text-stone-500 font-semibold block">Total Workshop Revenue</span>
               <div className="text-3xl font-black text-emerald-700 mt-2 font-display">
@@ -3167,6 +3190,7 @@ export default function CNCWorkshopTab({
               </div>
               <span className="text-[11px] text-stone-400 mt-1 block">Separate CNC workshop financial balance</span>
             </div>
+            )}
 
             <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
               <span className="text-xs text-stone-500 font-semibold block">Total Machine Runtime</span>
@@ -3180,7 +3204,7 @@ export default function CNCWorkshopTab({
           {/* Jobs Detail for Selected Month */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
             <div className="p-4 bg-stone-50 border-b border-stone-200 font-bold text-xs text-stone-800 flex items-center justify-between">
-              <span>Itemized CNC Carving Billing Log for {selectedMonth}</span>
+              <span>{canViewTotalRevenue ? `Itemized CNC Carving Billing Log for ${selectedMonth}` : `Itemized CNC Carving Job Log for ${selectedMonth}`}</span>
               <span className="text-[11px] text-stone-500 font-normal">
                 {metrics.currentMonthJobsCount} entries
               </span>
@@ -3196,7 +3220,7 @@ export default function CNCWorkshopTab({
                     <th className="p-3">Job Type</th>
                     <th className="p-3">Machine</th>
                     <th className="p-3">Duration</th>
-                    <th className="p-3 text-right">Amount (₹)</th>
+                    {canViewTotalRevenue && <th className="p-3 text-right">Amount (₹)</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-200">
@@ -3218,15 +3242,17 @@ export default function CNCWorkshopTab({
                         <td className="p-3 text-stone-600">{j.job_type}</td>
                         <td className="p-3 text-stone-600">{j.machine_name}</td>
                         <td className="p-3 text-stone-600">{j.run_time_minutes} mins</td>
+                        {canViewTotalRevenue && (
                         <td className="p-3 text-right font-bold text-stone-900">
                           ₹{Number(j.amount || 0).toLocaleString('en-IN')}
                         </td>
+                        )}
                       </tr>
                     ))}
 
                   {metrics.currentMonthJobsCount === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-6 text-center text-stone-400">
+                      <td colSpan={canViewTotalRevenue ? 7 : 6} className="p-6 text-center text-stone-400">
                         No CNC machining jobs recorded for {selectedMonth}.
                       </td>
                     </tr>
@@ -3796,7 +3822,7 @@ export default function CNCWorkshopTab({
       )}
 
       {/* Workshop Cost Structure Configuration Modal (Admin Only) */}
-      {isCostModalOpen && (
+      {canAccessDashboard && isCostModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
