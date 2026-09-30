@@ -56,7 +56,6 @@ import {
   Box, 
   Activity,
   Play,
-  RotateCcw,
   Sparkles,
   ExternalLink,
   ChevronDown,
@@ -562,7 +561,6 @@ export default function CNCWorkshopTab({
 
   const [isCostModalOpen, setIsCostModalOpen] = useState(false);
   const [tempCostConfig, setTempCostConfig] = useState<WorkshopCostConfig>(costConfig);
-  const [calibrationFeedback, setCalibrationFeedback] = useState<string | null>(null);
 
   // Dynamic Financial Calculations (never hardcoded)
   const monthlyCostTarget = useMemo(() => {
@@ -670,13 +668,6 @@ export default function CNCWorkshopTab({
       localStorage.setItem('cnc_workshop_cost_config', JSON.stringify(tempCostConfig));
     } catch (err) {}
     setIsCostModalOpen(false);
-  };
-
-  const handleCalibrateSpindles = () => {
-    setCalibrationFeedback('Spindles Auto-Calibrated & Zero-Referenced (X:0, Y:0, Z:0) ✔');
-    setTimeout(() => {
-      setCalibrationFeedback(null);
-    }, 4500);
   };
 
   // Open modal to create a new job, optionally linked to an order
@@ -1977,182 +1968,6 @@ export default function CNCWorkshopTab({
                   <span>Fleet Efficiency: {((Math.max(1, metrics.inProgressJobs) / DEFAULT_MACHINES.length) * 100).toFixed(1)}% operational</span>
                   <span className="font-semibold text-emerald-700">All dust collectors active</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Machine Fleet Section (Full Width, 4 Machines) */}
-          <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Workshop CNC Machines Fleet
-                  </h2>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                    4 Units Online
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Live routing, spindle load and availability status
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCalibrateSpindles}
-                  className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-700 rounded-xl text-xs font-bold border border-stone-200 flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <RotateCcw size={13} className="text-[#115e59]" />
-                  <span>Calibrate Spindles</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveSubTab('queue')}
-                  className="px-3.5 py-1.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Plus size={13} />
-                  <span>+ Assign Queue</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Calibration Feedback Notice */}
-            {calibrationFeedback && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center gap-2 animate-in fade-in duration-200">
-                <CheckCircle2 size={15} className="text-emerald-600" />
-                <span>{calibrationFeedback}</span>
-              </div>
-            )}
-
-            {/* 4 Machine Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              {/* Machine 1: CNC Router #1 (8x4) */}
-              {(() => {
-                const activeJob = cncJobs.find(j => (j.machine_name?.includes('Router #1') || j.machine_name?.includes('8x4')) && j.status === 'In Progress');
-                return (
-                  <div className="p-4 rounded-xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-900">CNC Router #1 (8×4)</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                        Running
-                      </span>
-                    </div>
-
-                    <div className="space-y-1 text-xs">
-                      <div className="font-bold text-slate-900 truncate">
-                        {activeJob ? `${activeJob.article_no} — ${activeJob.product_name}` : 'Teak Door Panels (J-104)'}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Spindle: <span className="font-semibold text-slate-800">18,000 RPM</span>
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Tool Bit: <span className="font-semibold text-slate-800">{activeJob?.tool_name || '6mm Ballnose'}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500">
-                          {activeJob?.run_time_minutes ? `${activeJob.run_time_minutes} mins left` : '42 mins left'}
-                        </span>
-                        <span className="font-bold text-emerald-700">68% completed</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-600 rounded-full w-[68%]" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Machine 2: CNC Router #2 (4x4) */}
-              <div className="p-4 rounded-xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900">CNC Router #2 (4×4)</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Ready / Idle
-                  </span>
-                </div>
-
-                <div className="space-y-1 text-xs">
-                  <div className="font-bold text-slate-900">Precision Milling Unit</div>
-                  <p className="text-[11px] text-slate-500">
-                    Spindle calibrated • Bed vacuum table ready for next sheet.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => handleOpenNewJobModal()}
-                  className="w-full py-1.5 px-3 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 rounded-lg text-xs font-bold transition cursor-pointer text-center"
-                >
-                  Load G-Code File
-                </button>
-              </div>
-
-              {/* Machine 3: 4-Axis Rotary Carver */}
-              {(() => {
-                const activeJob = cncJobs.find(j => j.machine_name?.includes('4-Axis') && j.status === 'In Progress');
-                return (
-                  <div className="p-4 rounded-xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-900">4-Axis Rotary Carver</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                        Running
-                      </span>
-                    </div>
-
-                    <div className="space-y-1 text-xs">
-                      <div className="font-bold text-slate-900 truncate">
-                        {activeJob ? `${activeJob.article_no} — ${activeJob.product_name}` : 'Classical Chair Legs (J-108)'}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Spindle: <span className="font-semibold text-slate-800">14,000 RPM</span>
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Tool Bit: <span className="font-semibold text-slate-800">{activeJob?.tool_name || 'V-Carve 90° Engraver'}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500">
-                          {activeJob?.run_time_minutes ? `${activeJob.run_time_minutes} mins left` : '1h 15m left'}
-                        </span>
-                        <span className="font-bold text-emerald-700">35% completed</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-600 rounded-full w-[35%]" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Machine 4: Vertical Spindle Router */}
-              <div className="p-4 rounded-xl border bg-rose-50/40 border-rose-200/70 flex flex-col justify-between space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900">Vertical Spindle Router</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                    Tool Alert
-                  </span>
-                </div>
-
-                <div className="space-y-1 text-xs">
-                  <div className="font-bold text-rose-900">Bit wear threshold reached</div>
-                  <p className="text-[11px] text-slate-600">
-                    1/2" Surfacing bit requires replacement or sharpening before next run.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setActiveSubTab('inventory')}
-                  className="w-full py-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition cursor-pointer text-center shadow-xs"
-                >
-                  Clear & Replace Bit
-                </button>
               </div>
             </div>
           </div>

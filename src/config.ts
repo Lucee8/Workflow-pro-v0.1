@@ -143,8 +143,10 @@ export function launchGooglePay(options: {
   invoiceRef: string;
   upiId?: string;
   payeeName?: string;
-}): { isMobile: boolean } {
-  if (typeof window === 'undefined') return { isMobile: false };
+}): { isMobile: boolean; targetUrl: string } {
+  if (typeof window === 'undefined') {
+    return { isMobile: false, targetUrl: '' };
+  }
   const links = buildPaymentLinks(options);
   const userAgent = navigator.userAgent || '';
   const isAndroid = /android/i.test(userAgent);
@@ -177,7 +179,11 @@ export function launchGooglePay(options: {
     } catch (e) {}
   }
 
-  return { isMobile };
+
+  return {
+    isMobile,
+    targetUrl: isAndroid ? links.googlePayAndroid : isIOS ? links.googlePayIos : links.upiUri,
+  }
 }
 
 /**
