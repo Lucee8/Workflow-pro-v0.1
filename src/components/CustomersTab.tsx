@@ -177,12 +177,33 @@ export default function CustomersTab({
       return;
     }
 
+    const rawPhone = formData.phone.trim();
+    const normalizedDigits = rawPhone.replace(/\D/g, '').slice(-10);
+    const existingDuplicate = customers.find((c) => {
+      if (!c || !c.phone) return false;
+      const cDigits = String(c.phone).replace(/\D/g, '').slice(-10);
+      return (normalizedDigits.length >= 10 && cDigits === normalizedDigits) ||
+        c.phone.trim().toLowerCase() === rawPhone.toLowerCase();
+    });
+    if (existingDuplicate) {
+      alert(`Duplicate prevented: "${existingDuplicate.name}" (${existingDuplicate.id}) already uses phone ${rawPhone}. Opening existing profile instead.`);
+      setSelectedCustomerId(existingDuplicate.id);
+      setShowAddModal(false);
+      return;
+    }
+
     const d = new Date();
     const yy = d.getFullYear().toString().slice(-2);
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const prefix = `CRM-${yy}-${mm}-`;
-    const randSuffix = Math.floor(100 + Math.random() * 900).toString();
-    const custId = `${prefix}${randSuffix}`;
+    let maxSerial = 0;
+    customers
+      .filter((c) => c && c.id && c.id.startsWith(prefix))
+      .forEach((c) => {
+        const num = parseInt(c.id.substring(prefix.length), 10);
+        if (!isNaN(num) && num > maxSerial) maxSerial = num;
+      });
+    const custId = `${prefix}${String(maxSerial + 1).padStart(3, '0')}`;
 
     const fullAddress = [
       formData.address.trim(),

@@ -12,7 +12,13 @@ import {
   browserPopupRedirectResolver,
   getAuth 
 } from 'firebase/auth';
-import { initializeFirestore, getFirestore } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase (Singleton pattern to prevent re-initialization errors)
@@ -23,9 +29,22 @@ const rawDbId = (firebaseConfig as any).firestoreDatabaseId;
 const databaseId = rawDbId && rawDbId !== "(default)" ? rawDbId : undefined;
 
 function getOrInitFirestore() {
+  let cacheConfig: any = {};
+  try {
+    cacheConfig = {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    };
+  } catch (err) {
+    console.warn('Local cache initialization notice, falling back:', err);
+  }
+
   const settings = {
     experimentalForceLongPolling: true,
+    ...cacheConfig,
   };
+
   try {
     return databaseId 
       ? initializeFirestore(app, settings, databaseId) 
@@ -39,6 +58,16 @@ export const db = getOrInitFirestore();
 
 // Clean Auth initialization
 export const auth = getAuth(app);
+
+// Initialize Firebase Storage
+export const storage = getStorage(app);
+try {
+  // Prevent uploads from hanging indefinitely when network drops or bucket is unreachable
+  storage.maxUploadRetryTime = 12000; // 12 seconds instead of default 10 minutes (600,000ms)
+  storage.maxOperationRetryTime = 12000;
+} catch (err) {
+  console.warn('Could not set custom storage retry times:', err);
+}
 
 export enum OperationType {
   CREATE = 'create',

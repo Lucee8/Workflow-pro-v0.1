@@ -1,60 +1,489 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Production ERP Collections
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-    match /customers/{customerId} {
-      allow read, write: if true;
-    }
-    match /orders/{orderId} {
-      allow read, write: if true;
-    }
-    match /statusLogs/{logId} {
-      allow read, write: if true;
-    }
-    match /materials/{materialId} {
-      allow read, write: if true;
-    }
-    match /payments/{paymentId} {
-      allow read, write: if true;
-    }
-    match /crmCustomers/{customerId} {
-      allow read, write: if true;
-    }
-    match /crmQuotations/{quotationId} {
-      allow read, write: if true;
-    }
-    match /crmFollowUps/{followUpId} {
-      allow read, write: if true;
-    }
-    match /crmPayments/{paymentId} {
-      allow read, write: if true;
-    }
-    match /crmNotes/{noteId} {
-      allow read, write: if true;
-    }
-    match /crmAttachments/{attachmentId} {
-      allow read, write: if true;
-    }
-    match /crmTimelineEvents/{eventId} {
-      allow read, write: if true;
-    }
-    match /auditLogs/{logId} {
-      allow read, write: if true;
-    }
-    match /cncJobs/{jobId} {
-      allow read, write: if true;
-    }
-    match /cncTools/{toolId} {
-      allow read, write: if true;
-    }
+    // 1. Default Deny Catch-All
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // 2. Identity, RBAC & Validation Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isBootstrapAdmin() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'luceecode@gmail.com';
+    }
+
+    function hasAuthMap() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/userAuthMap/$(request.auth.uid));
+    }
+
+    function authMap() {
+      return get(/databases/$(database)/documents/userAuthMap/$(request.auth.uid)).data;
+    }
+
+    function isActiveMappedUser() {
+      return hasAuthMap()
+        && request.auth.token.email_verified == true
+        && authMap().status == 'ACTIVE';
+    }
+
+    function staffUserId() {
+      return hasAuthMap() ? authMap().userId : '';
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin()
+        || (isActiveMappedUser() && authMap().role in ['admin', 'super_admin']);
+    }
+
+    function isCNCManager() {
+      return isAdmin()
+        || (isActiveMappedUser() && authMap().role in ['cnc_workshop', 'cnc_manager']);
+    }
+
+    function isActiveOperator() {
+      return isActiveMappedUser() && authMap().role in ['cnc_operator', 'operator'];
+    }
+
+    function isVerifiedStaff() {
+      return isAdmin()
+        || (isActiveMappedUser() && authMap().role in [
+          'manager',
+          'wood_tab_manager',
+          'cnc_workshop',
+          'cnc_manager',
+          'carpenter',
+          'polish_person',
+          'qc_staff'
+        ]);
+    }
+
+    function isValidDateStr(d) {
+      return d is string && d.size() == 10 && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function isValid24hTime(t) {
+      return t is string && t.size() == 5 && t.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function isValidUserDoc(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'role', 'initials', 'status'])
+        && data.keys().hasOnly([
+          'id', 'auth_uid', 'name', 'email', 'role', 'initials', 'status', 'is_active',
+          'password_configured', 'activation_status', 'google_linked', 'last_seen',
+          'created_at', 'created_by', 'phone', 'hourly_rate', 'notes'
+        ])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 180
+        && data.role in [
+          'super_admin', 'admin', 'manager', 'wood_tab_manager',
+          'cnc_workshop', 'cnc_manager', 'cnc_operator',
+          'carpenter', 'polish_person', 'qc_staff'
+        ]
+        && data.initials is string && data.initials.size() >= 1 && data.initials.size() <= 6
+        && data.status in ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'LOCKED']
+        && (!data.keys().hasAny(['auth_uid']) || (data.auth_uid is string && data.auth_uid.size() <= 128))
+        && (!data.keys().hasAny(['phone']) || (data.phone is string && data.phone.size() <= 40))
+        && (!data.keys().hasAny(['is_active']) || data.is_active is bool)
+        && (!data.keys().hasAny(['password_configured']) || data.password_configured is bool)
+        && (!data.keys().hasAny(['google_linked']) || data.google_linked is bool)
+        && (!data.keys().hasAny(['activation_status']) || data.activation_status in ['PENDING_ACTIVATION', 'ACTIVE'])
+        && (!data.keys().hasAny(['last_seen']) || (data.last_seen is string && data.last_seen.size() <= 120))
+        && (!data.keys().hasAny(['created_at']) || (data.created_at is string && data.created_at.size() <= 64))
+        && (!data.keys().hasAny(['created_by']) || (data.created_by is string && data.created_by.size() <= 128));
+    }
+
+    function isValidUserAuthMap(data, authUid) {
+      return data.keys().hasAll(['auth_uid', 'userId', 'role', 'status'])
+        && data.keys().hasOnly(['auth_uid', 'userId', 'email', 'name', 'role', 'status', 'updated_at'])
+        && data.auth_uid == authUid
+        && isValidId(data.userId)
+        && data.role is string && data.role.size() >= 2 && data.role.size() <= 40
+        && data.status in ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'LOCKED']
+        && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 180))
+        && (!data.keys().hasAny(['name']) || (data.name is string && data.name.size() <= 120))
+        && (!data.keys().hasAny(['updated_at']) || (data.updated_at is string && data.updated_at.size() <= 64));
+    }
+
+    function isValidOperatorInvite(data) {
+      return data.keys().hasAll(['userId', 'role', 'status'])
+        && data.keys().hasOnly([
+          'userId', 'name', 'initials', 'role', 'status',
+          'password_configured', 'is_operator', 'updated_at'
+        ])
+        && isValidId(data.userId)
+        && data.role is string && data.role.size() >= 2 && data.role.size() <= 40
+        && data.status in ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'LOCKED']
+        && (!data.keys().hasAny(['name']) || (data.name is string && data.name.size() <= 120))
+        && (!data.keys().hasAny(['initials']) || (data.initials is string && data.initials.size() <= 6))
+        && (!data.keys().hasAny(['password_configured']) || data.password_configured is bool)
+        && (!data.keys().hasAny(['is_operator']) || data.is_operator is bool)
+        && (!data.keys().hasAny(['updated_at']) || (data.updated_at is string && data.updated_at.size() <= 64));
+    }
+
+    function isValidCncJob(data) {
+      return data.keys().hasAll(['id', 'job_date', 'job_type', 'status', 'created_at'])
+        && data.keys().hasOnly([
+          'id', 'order_id', 'article_no', 'customer_name', 'job_number', 'job_date',
+          'product_name', 'material', 'dimensions', 'job_type', 'machine_name',
+          'tool_id', 'tool_name', 'run_time_minutes', 'design_time_minutes',
+          'design_time_value', 'design_time_unit', 'completion_time_minutes',
+          'completion_time_value', 'completion_time_unit',
+          'start_time', 'stop_time', 'machine_running_time', 'is_overnight',
+          'operator_id', 'operator_name', 'amount', 'status', 'notes',
+          'design_file', 'fileName', 'fileUrl', 'storagePath', 'fileSize', 'uploadedAt',
+          'design_file_url', 'design_file_name', 'design_file_size', 'design_file_uploaded_at',
+          'program_files_count', 'image_url', 'completed_at', 'created_at', 'created_by', 'updated_at'
+        ])
+        && isValidId(data.id)
+        && isValidDateStr(data.job_date)
+        && data.job_type in [
+          'Cutting', 'Carving', 'Turning', 'Pillar',
+          'Jali Cutting', '3D Relief', 'Grooving', 'Engraving',
+          'Profile Cutting', 'Moulding', 'Surfacing', 'Other'
+        ]
+        && data.status in ['Pending', 'Queued', 'In Progress', 'Completed', 'Rework']
+        && data.created_at is string && data.created_at.size() <= 64
+        && (!data.keys().hasAny(['machine_name']) || (data.machine_name is string && data.machine_name.size() >= 1 && data.machine_name.size() <= 60))
+        && (!data.keys().hasAny(['operator_id']) || (data.operator_id is string && data.operator_id.size() <= 128))
+        && (!data.keys().hasAny(['operator_name']) || (data.operator_name is string && data.operator_name.size() <= 120))
+        && (!data.keys().hasAny(['start_time']) || data.start_time == '' || isValid24hTime(data.start_time))
+        && (!data.keys().hasAny(['stop_time']) || data.stop_time == '' || isValid24hTime(data.stop_time))
+        && (!data.keys().hasAny(['machine_running_time']) || (data.machine_running_time is string && data.machine_running_time.size() <= 16))
+        && (!data.keys().hasAny(['is_overnight']) || data.is_overnight is bool)
+        && (!data.keys().hasAny(['amount']) || (data.amount is number && data.amount >= 0 && data.amount <= 10000000))
+        && (!data.keys().hasAny(['run_time_minutes']) || (data.run_time_minutes is number && data.run_time_minutes >= 0 && data.run_time_minutes <= 100000))
+        && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 2000));
+    }
+
+    function isValidCncProgramFile(data) {
+      return data.keys().hasAll(['id', 'jobId', 'fileName', 'extension', 'storagePath', 'fileUrl', 'size', 'version', 'uploadedAt', 'uploadedBy', 'isActive'])
+        && data.keys().hasOnly([
+          'id', 'jobId', 'fileName', 'extension', 'storagePath', 'fileUrl',
+          'size', 'description', 'version', 'uploadedAt', 'uploadedBy',
+          'isActive', 'previousVersionId'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.jobId)
+        && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 255
+        && data.extension is string && data.extension.size() <= 16
+        && data.storagePath is string && data.storagePath.size() <= 512
+        && data.fileUrl is string && data.fileUrl.size() <= 2048
+        && data.size is number && data.size >= 0 && data.size <= 104857600
+        && data.version is number && data.version >= 1 && data.version <= 10000
+        && data.uploadedAt is string && data.uploadedAt.size() <= 64
+        && data.uploadedBy is string && data.uploadedBy.size() <= 128
+        && data.isActive is bool;
+    }
+
+    function isValidCncTool(data) {
+      return data.keys().hasAll(['id', 'name', 'tool_type', 'quantity_in_stock', 'condition'])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 160
+        && data.tool_type is string && data.tool_type.size() >= 1 && data.tool_type.size() <= 60
+        && data.quantity_in_stock is number && data.quantity_in_stock >= 0 && data.quantity_in_stock <= 100000
+        && data.condition is string && data.condition.size() <= 60;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'event_type', 'details', 'timestamp'])
+        && data.keys().hasOnly(['id', 'event_type', 'user_id', 'user_email', 'user_role', 'target_resource', 'details', 'timestamp'])
+        && isValidId(data.id)
+        && data.event_type is string && data.event_type.size() >= 2 && data.event_type.size() <= 64
+        && data.details is string && data.details.size() <= 1000
+        && data.timestamp is string && data.timestamp.size() <= 64;
+    }
+
+    // 3. Auth Mapping Directory (/userAuthMap/{authUid})
+    match /userAuthMap/{authUid} {
+      allow get: if isValidId(authUid) && (isAdmin() || (isSignedIn() && request.auth.uid == authUid));
+      allow list: if isAdmin();
+      allow create, update: if isValidId(authUid)
+        && isValidUserAuthMap(incoming(), authUid)
+        && (
+          isAdmin()
+          || (
+            isSignedIn()
+            && request.auth.uid == authUid
+            && request.auth.token.email != null
+            && request.auth.token.email_verified == true
+            && exists(/databases/$(database)/documents/users/$(incoming().userId))
+            && get(/databases/$(database)/documents/users/$(incoming().userId)).data.email == request.auth.token.email
+            && get(/databases/$(database)/documents/users/$(incoming().userId)).data.role == incoming().role
+            && get(/databases/$(database)/documents/users/$(incoming().userId)).data.status == incoming().status
+          )
+        );
+      allow delete: if isValidId(authUid) && isAdmin();
+    }
+
+    // 4. Non-PII Hashed Email Activation Invites (/operatorInvites/{inviteId})
+    match /operatorInvites/{inviteId} {
+      allow get: if isValidId(inviteId);
+      allow list: if isAdmin();
+      allow create: if isValidId(inviteId) && isAdmin() && isValidOperatorInvite(incoming());
+      allow update: if isValidId(inviteId)
+        && isValidOperatorInvite(incoming())
+        && (
+          isAdmin()
+          || (
+            isSignedIn()
+            && hasAuthMap()
+            && authMap().userId == existing().userId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['password_configured', 'updated_at'])
+          )
+        );
+      allow delete: if isValidId(inviteId) && isAdmin();
+    }
+
+    // 5. Staff Directory (/users/{userId}) - PII Protected
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (
+        isAdmin()
+        || isVerifiedStaff()
+        || (isSignedIn() && (existing().auth_uid == request.auth.uid || existing().email == request.auth.token.email))
+      );
+      allow list: if isAdmin() || isVerifiedStaff() || (isSignedIn() && resource.data.id == staffUserId());
+      allow create: if isValidId(userId) && isAdmin() && isValidUserDoc(incoming());
+      allow update: if isValidId(userId)
+        && isValidUserDoc(incoming())
+        && (
+          isAdmin()
+          || (
+            isSignedIn()
+            && (existing().auth_uid == request.auth.uid || existing().email == request.auth.token.email)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'auth_uid', 'google_linked', 'password_configured', 'activation_status', 'last_seen'
+            ])
+          )
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // 6. CNC Workshop Jobs (/cncJobs/{jobId}) & Program Files Subcollection
+    match /cncJobs/{jobId} {
+      allow get: if isValidId(jobId) && (
+        isCNCManager()
+        || (isActiveOperator() && existing().operator_id == staffUserId())
+      );
+      allow list: if isCNCManager()
+        || (isActiveOperator() && resource.data.operator_id == staffUserId());
+      allow create: if isValidId(jobId)
+        && isValidCncJob(incoming())
+        && (
+          isCNCManager()
+          || (
+            isActiveOperator()
+            && incoming().operator_id == staffUserId()
+            && (!incoming().keys().hasAny(['amount']) || incoming().amount == 0)
+          )
+        );
+      allow update: if isValidId(jobId)
+        && isValidCncJob(incoming())
+        && incoming().id == existing().id
+        && incoming().created_at == existing().created_at
+        && (
+          isCNCManager()
+          || (
+            isActiveOperator()
+            && existing().operator_id == staffUserId()
+            && incoming().operator_id == staffUserId()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'job_date', 'article_no', 'job_number', 'job_type', 'machine_name',
+              'tool_id', 'tool_name', 'material',
+              'design_time_minutes', 'design_time_value', 'design_time_unit',
+              'completion_time_minutes', 'completion_time_value', 'completion_time_unit',
+              'run_time_minutes', 'start_time', 'stop_time', 'machine_running_time', 'is_overnight',
+              'status', 'notes', 'fileName', 'fileUrl', 'storagePath', 'fileSize', 'uploadedAt',
+              'program_files_count', 'design_file', 'design_file_url', 'design_file_name',
+              'design_file_size', 'design_file_uploaded_at', 'completed_at', 'updated_at'
+            ])
+          )
+        );
+      allow delete: if isValidId(jobId) && isCNCManager();
+
+      match /programFiles/{fileId} {
+        allow get: if isValidId(jobId) && isValidId(fileId) && (
+          isCNCManager()
+          || (
+            isActiveOperator()
+            && exists(/databases/$(database)/documents/cncJobs/$(jobId))
+            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+          )
+        );
+        allow list: if isCNCManager()
+          || (
+            isActiveOperator()
+            && exists(/databases/$(database)/documents/cncJobs/$(jobId))
+            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+          );
+        allow create, update: if isValidId(jobId) && isValidId(fileId)
+          && isValidCncProgramFile(incoming())
+          && incoming().jobId == jobId
+          && (
+            isCNCManager()
+            || (
+              isActiveOperator()
+              && exists(/databases/$(database)/documents/cncJobs/$(jobId))
+              && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+            )
+          );
+        allow delete: if isValidId(jobId) && isValidId(fileId) && (
+          isCNCManager()
+          || (
+            isActiveOperator()
+            && exists(/databases/$(database)/documents/cncJobs/$(jobId))
+            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+          )
+        );
+      }
+    }
+
+    // 7. CNC Tools Inventory (/cncTools/{toolId})
+    match /cncTools/{toolId} {
+      allow get: if isValidId(toolId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(toolId) && isCNCManager() && isValidCncTool(incoming());
+      allow delete: if isValidId(toolId) && isCNCManager();
+    }
+
+    // 8. Immutable Security Audit Logs (/auditLogs/{logId})
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId) && isSignedIn() && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+
+    // 9. Core Production, CRM, & Inventory ERP Collections (Strictly excluded from CNC Operators)
+    match /customers/{customerId} {
+      allow get: if isValidId(customerId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(customerId) && isVerifiedStaff() && incoming().id == customerId;
+      allow delete: if isValidId(customerId) && isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(orderId) && isVerifiedStaff() && incoming().id == orderId;
+      allow delete: if isValidId(orderId) && isAdmin();
+    }
+
+    match /statusLogs/{logId} {
+      allow get: if isValidId(logId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create: if isValidId(logId) && isVerifiedStaff() && incoming().id == logId;
+      allow update, delete: if isValidId(logId) && isAdmin();
+    }
+
+    match /materials/{materialId} {
+      allow get: if isValidId(materialId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(materialId) && isVerifiedStaff() && incoming().id == materialId;
+      allow delete: if isValidId(materialId) && isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isValidId(paymentId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(paymentId) && isVerifiedStaff() && incoming().id == paymentId;
+      allow delete: if isValidId(paymentId) && isAdmin();
+    }
+
+    match /mrp_hardware/{itemId} {
+      allow get: if isValidId(itemId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(itemId) && isVerifiedStaff();
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    match /mrp_wood/{itemId} {
+      allow get: if isValidId(itemId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(itemId) && isVerifiedStaff();
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    match /mrp_consumption_logs/{logId} {
+      allow get: if isValidId(logId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(logId) && isVerifiedStaff();
+      allow delete: if isValidId(logId) && isAdmin();
+    }
+
+    match /mrp_project_boms/{projectId} {
+      allow get: if isValidId(projectId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(projectId) && isVerifiedStaff();
+      allow delete: if isValidId(projectId) && isAdmin();
+    }
+
+    match /crmCustomers/{customerId} {
+      allow get: if isValidId(customerId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(customerId) && isVerifiedStaff() && incoming().id == customerId;
+      allow delete: if isValidId(customerId) && isAdmin();
+    }
+
+    match /crmQuotations/{quotationId} {
+      allow get: if isValidId(quotationId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(quotationId) && isVerifiedStaff() && incoming().id == quotationId;
+      allow delete: if isValidId(quotationId) && isAdmin();
+    }
+
+    match /crmFollowUps/{followUpId} {
+      allow get: if isValidId(followUpId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(followUpId) && isVerifiedStaff() && incoming().id == followUpId;
+      allow delete: if isValidId(followUpId) && isAdmin();
+    }
+
+    match /crmPayments/{paymentId} {
+      allow get: if isValidId(paymentId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(paymentId) && isVerifiedStaff() && incoming().id == paymentId;
+      allow delete: if isValidId(paymentId) && isAdmin();
+    }
+
+    match /crmNotes/{noteId} {
+      allow get: if isValidId(noteId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(noteId) && isVerifiedStaff() && incoming().id == noteId;
+      allow delete: if isValidId(noteId) && isAdmin();
+    }
+
+    match /crmAttachments/{attachmentId} {
+      allow get: if isValidId(attachmentId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(attachmentId) && isVerifiedStaff() && incoming().id == attachmentId;
+      allow delete: if isValidId(attachmentId) && isAdmin();
+    }
+
+    match /crmTimelineEvents/{eventId} {
+      allow get: if isValidId(eventId) && isVerifiedStaff();
+      allow list: if isVerifiedStaff();
+      allow create, update: if isValidId(eventId) && isVerifiedStaff() && incoming().id == eventId;
+      allow delete: if isValidId(eventId) && isAdmin();
     }
   }
 }
-
-
-

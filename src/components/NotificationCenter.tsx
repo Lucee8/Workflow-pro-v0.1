@@ -35,10 +35,13 @@ const STAGES: OrderStage[] = [
   'Designing',
   'Wood Procurement',
   'Making Started',
+  'CNC Wood Carving',
+  'Assembly',
   'QC 1',
   'Making Completed',
   'Polish',
   'QC 2',
+  'Delivery',
   'Ready to Dispatch',
   'Dispatched',
 ];

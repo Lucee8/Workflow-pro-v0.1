@@ -1,17 +1,55 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../db/firebase';
 import { 
   Order, 
   Customer, 
   User, 
+  UserStatus,
   CNCJob, 
   CNCTool, 
-  StatusLog,
+  StatusLog,  
   CNCJobType,
   CNCJobStatus,
   CNCToolType,
   CNCToolCondition,
-  CNCDurationUnit
+  CNCDurationUnit,
+  CNCProgramFile
 } from '../types';
+import {
+  saveCNCProgramFileMetadata,
+  updateCNCJobFilesCount,
+} from '../db/firebaseService';
+import { 
+  uploadCNCProgramFile, 
+  downloadCNCProgramFile, 
+  openCNCProgramFile,
+  validateCNCProgramFile,
+  deleteCNCProgramFileFromStorage,
+  UploadProgressInfo
+} from '../db/firebaseStorage';
+import type { UploadTask } from 'firebase/storage';
+import { CNCProgramFiles } from './CNCProgramFiles';
+import {
+  CNC_MACHINES,
+  getLocalDateYYYYMMDD,
+  getLocalTimeHHMM,
+  formatDateDDMMYYYY,
+  normalize24HourTimeInput,
+  calculateMachineRunningTime,
+  isAdminRole,
+  isOperatorRole,
+  isCNCManagerRole,
+  isUserActiveStatus,
+  getAllCNCOperators,
+  getActiveCNCOperators,
+  filterJobsForUser,
+  getJobRunningMinutes,
+  getJobRunningTimeDisplay,
+  computeOperatorJobStats,
+  formatMinutesToHHMM,
+  jobBelongsToOperator,
+} from './cncHelpers';
 
 // Duration conversion and display helpers for CNC Jobs
 const convertDurationToMinutes = (val: number, unit: CNCDurationUnit = 'Minutes'): number => {
@@ -44,6 +82,7 @@ import {
   CheckCircle, 
   CheckCircle2,
   AlertTriangle, 
+  AlertCircle,
   Plus, 
   Search, 
   Filter, 
@@ -70,7 +109,19 @@ import {
   TrendingDown,
   Gauge,
   Pencil,
-  Menu
+  Menu,
+  Upload,
+  Download,
+  RefreshCw,
+  RotateCcw,
+  Loader2,
+  Users as UsersIcon,
+  UserPlus,
+  UserCheck,
+  UserX,
+  KeyRound,
+  Eye,
+  Moon
 } from 'lucide-react';
 import { generateUUID } from '../db/store';
 import { formatToDDMMYYYY } from '../utils';
@@ -88,6 +139,9 @@ interface CNCWorkshopTabProps {
   onSaveTool: (tool: CNCTool) => Promise<void> | void;
   onDeleteTool: (toolId: string) => Promise<void> | void;
   onUpdateOrder: (order: Order, newLog?: StatusLog) => Promise<void> | void;
+  onAddUser?: (user: User) => void;
+  onUpdateUser?: (user: User) => void;
+  onDeleteUser?: (userId: string) => void;
 }
 
 export interface WorkshopCostConfig {
@@ -108,17 +162,11 @@ const DEFAULT_COST_CONFIG: WorkshopCostConfig = {
   workingDays: 26,
 };
 
-const DEFAULT_MACHINES = [
-  'CNC Router #1 (Heavy 8x4)',
-  'CNC Router #2 (Precision 4x4)',
-  '4-Axis Rotary Carver',
-  'Vertical Spindle Router',
-  'Manual Assist Carver',
-];
+const DEFAULT_MACHINES = [...CNC_MACHINES];
 
-// Approved Stitch Form Options
-const FORM_JOB_TYPES: CNCJobType[] = ['Carving', 'Jali Cutting', 'Profile Cutting', 'Other'];
-const FORM_MACHINES = ['Machine 1', 'Machine 2'];
+// Approved CNC Job Form Options
+const FORM_JOB_TYPES: CNCJobType[] = ['Cutting', 'Carving', 'Turning', 'Pillar'];
+const FORM_MACHINES = [...CNC_MACHINES];
 const FORM_TOOLS = [
   'mm',
   '1.5mm',
@@ -178,32 +226,69 @@ export default function CNCWorkshopTab({
   onSaveTool,
   onDeleteTool,
   onUpdateOrder,
+  onAddUser,
+  onUpdateUser,
+  onDeleteUser,
 }: CNCWorkshopTabProps) {
   // Role & Authorization checks
-  // CNC Workshop Manager should not have access to the financial dashboard or total workshop revenue
-  const isCNCWorkshopManager = currentUser?.role === 'cnc_workshop' || currentUser?.role === 'cnc_manager';
-  const canAccessDashboard = !isCNCWorkshopManager && currentUser?.role === 'admin';
-  const canViewTotalRevenue = !isCNCWorkshopManager && currentUser?.role === 'admin';
+  const isAdmin = isAdminRole(currentUser?.role);
+  const isOperator = isOperatorRole(currentUser?.role);
+  const isCNCWorkshopManager = isCNCManagerRole(currentUser?.role);
 
-  // Navigation Sub-tabs: Default to 'queue' for CNC Workshop Manager, or 'dashboard' for Admin
-  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'queue' | 'inventory' | 'reports'>(() => {
-    return canAccessDashboard ? 'dashboard' : 'queue';
+  const canAccessDashboard = isAdmin;
+  const canAccessOperatorDashboard = isOperator;
+  const canViewTotalRevenue = isAdmin;
+  const canManageOperators = isAdmin;
+  const canAccessInventoryAndReports = isAdmin || isCNCWorkshopManager;
+  const canDeleteJobs = isAdmin || isCNCWorkshopManager;
+
+  // Dynamic Operator Lists from central Users directory
+  const allOperators = useMemo(() => getAllCNCOperators(users), [users]);
+  const activeOperators = useMemo(() => getActiveCNCOperators(users), [users]);
+
+  // Jobs strictly scoped by role (Operators only see jobs assigned to them)
+  const scopedCncJobs = useMemo(
+    () => filterJobsForUser(cncJobs, currentUser),
+    [cncJobs, currentUser]
+  );
+
+  // Navigation Sub-tabs
+  const [activeSubTab, setActiveSubTab] = useState<
+    'dashboard' | 'operator_dashboard' | 'queue' | 'inventory' | 'reports' | 'operators'
+  >(() => {
+    if (isAdmin) return 'dashboard';
+    if (isOperator) return 'operator_dashboard';
+    return 'queue';
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Enforce access control if role changes or if navigated to dashboard without permission
+  // Enforce access control if role changes or sub-tab is unauthorized
   useEffect(() => {
-    if (!canAccessDashboard && activeSubTab === 'dashboard') {
-      setActiveSubTab('queue');
+    if (isOperator) {
+      if (activeSubTab !== 'operator_dashboard' && activeSubTab !== 'queue') {
+        setActiveSubTab('operator_dashboard');
+      }
+      return;
     }
-  }, [canAccessDashboard, activeSubTab]);
+    if (!isAdmin && (activeSubTab === 'dashboard' || activeSubTab === 'operators' || activeSubTab === 'operator_dashboard')) {
+      setActiveSubTab('queue');
+      return;
+    }
+    if (isAdmin && activeSubTab === 'operator_dashboard') {
+      setActiveSubTab('dashboard');
+    }
+  }, [isAdmin, isOperator, activeSubTab]);
 
-
-  const subTabLabels: Record<'dashboard' | 'queue' | 'inventory' | 'reports', string> = {
+  const subTabLabels: Record<
+    'dashboard' | 'operator_dashboard' | 'queue' | 'inventory' | 'reports' | 'operators',
+    string
+  > = {
     dashboard: 'Dashboard',
-    queue: 'Job Queue',
+    operator_dashboard: 'My Dashboard',
+    queue: isOperator ? 'My Job Queue' : 'Job Queue',
     inventory: 'Tool Inventory',
     reports: 'Monthly Report',
+    operators: 'Operators',
   };
 
   // Search & Filter States
@@ -213,12 +298,40 @@ export default function CNCWorkshopTab({
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [reportOperatorFilter, setReportOperatorFilter] = useState<string>('all');
+  const [reportDateFilter, setReportDateFilter] = useState<string>('');
 
   // Modals / Form Drawers
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [isToolModalOpen, setIsToolModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<CNCJob | null>(null);
   const [editingTool, setEditingTool] = useState<CNCTool | null>(null);
+  const [jobFormError, setJobFormError] = useState<string | null>(null);
+
+  // Admin Operator Management States
+  const [operatorSearchTerm, setOperatorSearchTerm] = useState('');
+  const [operatorStatusFilter, setOperatorStatusFilter] = useState<'all' | 'ACTIVE' | 'INACTIVE'>('all');
+  const [selectedOperatorForInspect, setSelectedOperatorForInspect] = useState<User | null>(null);
+  const [isOperatorModalOpen, setIsOperatorModalOpen] = useState(false);
+  const [editingOperator, setEditingOperator] = useState<User | null>(null);
+  const [operatorForm, setOperatorForm] = useState<{
+    name: string;
+    email: string;
+    phone: string;
+    initials: string;
+    status: UserStatus;
+  }>({
+    name: '',
+    email: '',
+    phone: '',
+    initials: '',
+    status: 'ACTIVE',
+  });
+  const [operatorFormError, setOperatorFormError] = useState<string | null>(null);
+  const [operatorActionBanner, setOperatorActionBanner] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Quick Action on Order Queue
   const [selectedOrderForJob, setSelectedOrderForJob] = useState<Order | null>(null);
@@ -226,25 +339,50 @@ export default function CNCWorkshopTab({
   // Form State for CNC Job Record
   const [jobFormData, setJobFormData] = useState<Partial<CNCJob>>({
     job_number: '',
-    job_date: new Date().toISOString().split('T')[0],
+    job_date: getLocalDateYYYYMMDD(),
     job_type: 'Carving',
-    machine_name: 'Machine 1',
+    machine_name: 'Small',
     tool_name: '2mm Taper',
-    run_time_minutes: 90,
+    run_time_minutes: 0,
     design_time_minutes: 45,
     design_time_value: 45,
     design_time_unit: 'Minutes',
-    completion_time_minutes: 90,
-    completion_time_value: 90,
+    completion_time_minutes: 0,
+    completion_time_value: 0,
     completion_time_unit: 'Minutes',
     amount: 1850,
     status: 'In Progress',
-    operator_name: currentUser.name || 'Lucee Admin',
+    operator_id: isOperator ? currentUser.id : (activeOperators[0]?.id || ''),
+    operator_name: isOperator ? currentUser.name : (activeOperators[0]?.name || currentUser.name || 'Swapnil'),
+    start_time: '',
+    stop_time: '',
+    machine_running_time: '',
+    is_overnight: false,
     material: 'Teak Wood',
     dimensions: '',
-    design_file: 'mandir_panel_relief_v2.nc',
+    design_file: '',
     notes: '3D relief floral mandir jaali carving on 1.25" seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit.',
   });
+
+  // CNC Program File (.dxf / .nc) Upload States
+  const [stagedProgramFiles, setStagedProgramFiles] = useState<CNCProgramFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+  const [fileSuccessMsg, setFileSuccessMsg] = useState<string | null>(null);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const currentUploadTaskRef = useRef<UploadTask | null>(null);
+  const replacingPreviousFileRef = useRef<{
+    fileName?: string;
+    fileUrl?: string;
+    storagePath?: string;
+    fileSize?: number;
+    uploadedAt?: string;
+  } | null>(null);
+
+  // Quick Files modal state for viewing/uploading files directly from Job Queue
+  const [quickFilesModalJob, setQuickFilesModalJob] = useState<CNCJob | null>(null);
 
   // Mobile expandable card state for Job Queue
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
@@ -333,7 +471,7 @@ export default function CNCWorkshopTab({
     condition: 'Good',
     total_run_hours: 0,
     unit_cost: 650,
-    last_replaced_date: new Date().toISOString().split('T')[0],
+    last_replaced_date: getLocalDateYYYYMMDD(),
     status: 'In stock',
     notes: '',
   });
@@ -345,14 +483,14 @@ export default function CNCWorkshopTab({
     return map;
   }, [customers]);
 
-  // Only orders with requires_cnc === true and currently at CNC Wood Carving appear in the CNC queue
+  // Only orders with requires_cnc === true and currently at CNC Wood Carving appear in the pending queue (hidden from operators until assigned)
   const pendingQueueOrders = useMemo(() => {
+    if (isOperator) return [];
     return orders.filter(o => o.requires_cnc === true && o.current_status === 'CNC Wood Carving');
-  }, [orders]);
+  }, [orders, isOperator]);
 
-  // Unified Job Queue list (combines recorded CNC jobs and pending orders for CNC)
+  // Unified Job Queue list (combines role-scoped CNC jobs and pending orders for CNC)
   const queueItems = useMemo(() => {
-    // 1. All recorded CNC jobs
     const items: Array<{
       id: string;
       article_no: string;
@@ -366,18 +504,23 @@ export default function CNCWorkshopTab({
       completion_time: number;
       completion_time_value?: number;
       completion_time_unit?: CNCDurationUnit;
+      start_time?: string;
+      stop_time?: string;
+      machine_running_time?: string;
+      is_overnight?: boolean;
       amount: number;
+      operator_id?: string;
       operator_name: string;
       status: CNCJobStatus;
       isOrderPendingOnly?: boolean;
       rawJob?: CNCJob;
       rawOrder?: Order;
-    }> = cncJobs.map(job => ({
+    }> = scopedCncJobs.map(job => ({
       id: job.id,
       article_no: job.article_no || job.job_number || 'CNC-JOB',
       job_date: job.job_date || '',
       job_type: job.job_type || 'Carving',
-      machine_name: job.machine_name || 'Machine 1',
+      machine_name: job.machine_name || 'Small',
       tool_name: job.tool_name || '2mm Taper',
       design_time: job.design_time_minutes ?? 0,
       design_time_value: job.design_time_value,
@@ -385,24 +528,29 @@ export default function CNCWorkshopTab({
       completion_time: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
       completion_time_value: job.completion_time_value,
       completion_time_unit: job.completion_time_unit,
+      start_time: job.start_time,
+      stop_time: job.stop_time,
+      machine_running_time: job.machine_running_time,
+      is_overnight: job.is_overnight,
       amount: job.amount || 0,
-      operator_name: job.operator_name || 'Lucee Admin',
+      operator_id: job.operator_id,
+      operator_name: job.operator_name || 'Unassigned',
       status: job.status || 'Queued',
       isOrderPendingOnly: false,
       rawJob: job,
       rawOrder: orders.find(o => o.id === job.order_id),
     }));
 
-    // 2. Add pending queue orders that do not have a CNC job record yet
+    // Add pending queue orders that do not have a CNC job record yet (Admins / CNC Managers only)
     pendingQueueOrders.forEach(ord => {
       const alreadyHasJob = cncJobs.some(j => j.order_id === ord.id);
       if (!alreadyHasJob) {
         items.push({
           id: `pending_ord_${ord.id}`,
           article_no: ord.article_no || 'ORD-CNC',
-          job_date: ord.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+          job_date: ord.created_at ? getLocalDateYYYYMMDD(new Date(ord.created_at)) : getLocalDateYYYYMMDD(),
           job_type: (ord.cnc_job_type as any) || 'Carving',
-          machine_name: 'Machine 1',
+          machine_name: 'Small',
           tool_name: ord.cnc_tool_used || '2mm Taper',
           design_time: 0,
           design_time_value: undefined,
@@ -420,7 +568,7 @@ export default function CNCWorkshopTab({
     });
 
     return items;
-  }, [cncJobs, pendingQueueOrders, orders]);
+  }, [scopedCncJobs, cncJobs, pendingQueueOrders, orders]);
 
   // Filtered queue items based on search and statusFilter
   const filteredQueueItems = useMemo(() => {
@@ -597,12 +745,70 @@ export default function CNCWorkshopTab({
     return dailyBreakEven * 1.20;
   }, [dailyBreakEven]);
 
-  // Today's Live Date & Real Job Metrics
+  // Today's Live Date & Real Job Metrics (strictly local calendar date, zero UTC drift)
   const todayDateObj = useMemo(() => new Date(), []);
-  const todayStr = useMemo(() => todayDateObj.toISOString().split('T')[0], [todayDateObj]);
+  const todayStr = useMemo(() => getLocalDateYYYYMMDD(todayDateObj), [todayDateObj]);
   const formattedToday = useMemo(() => {
     return `${todayDateObj.getDate()} ${todayDateObj.toLocaleString('default', { month: 'short' })}`;
   }, [todayDateObj]);
+
+  // Live 24-hour Machine Running Time calculation for Record/Edit modal
+  const liveRunningTimeResult = useMemo(
+    () =>
+      calculateMachineRunningTime(
+        jobFormData.start_time,
+        jobFormData.stop_time,
+        Boolean(jobFormData.is_overnight)
+      ),
+    [jobFormData.start_time, jobFormData.stop_time, jobFormData.is_overnight]
+  );
+
+  // Operator-only Personal Dashboard Metrics
+  const operatorMetrics = useMemo(
+    () => computeOperatorJobStats(currentUser, scopedCncJobs),
+    [currentUser, scopedCncJobs]
+  );
+
+  // Filtered jobs for Monthly / Operator / Date Report
+  const reportFilteredJobs = useMemo(() => {
+    const selectedOpUser =
+      reportOperatorFilter !== 'all'
+        ? allOperators.find((o) => o.id === reportOperatorFilter)
+        : undefined;
+
+    return scopedCncJobs
+      .filter((j) => {
+        if (!j.job_date) return false;
+        if (reportDateFilter) {
+          if (j.job_date !== reportDateFilter) return false;
+        } else {
+          const [y, m] = j.job_date.split('-');
+          const [selY, selM] = selectedMonth.split('-');
+          if (y !== selY || m !== selM) return false;
+        }
+        if (reportOperatorFilter !== 'all') {
+          if (selectedOpUser) {
+            return jobBelongsToOperator(j, selectedOpUser);
+          }
+          return (
+            j.operator_id === reportOperatorFilter ||
+            j.operator_name?.toLowerCase() === reportOperatorFilter.toLowerCase()
+          );
+        }
+        return true;
+      })
+      .sort((a, b) => (b.job_date || '').localeCompare(a.job_date || ''));
+  }, [scopedCncJobs, selectedMonth, reportDateFilter, reportOperatorFilter, allOperators]);
+
+  const reportTotalMinutes = useMemo(
+    () => reportFilteredJobs.reduce((sum, j) => sum + getJobRunningMinutes(j), 0),
+    [reportFilteredJobs]
+  );
+
+  const reportTotalRevenue = useMemo(
+    () => reportFilteredJobs.reduce((sum, j) => sum + (Number(j.amount) || 0), 0),
+    [reportFilteredJobs]
+  );
 
   const todayJobs = useMemo(() => {
     return cncJobs.filter(j => j.job_date === todayStr);
@@ -672,11 +878,10 @@ export default function CNCWorkshopTab({
 
   const projectedProfit = projectedMonthRevenue - monthlyCostTarget;
 
-  // Admin & CNC Workshop Cost Structure Handler
+  // Admin-only Cost Structure Handler
   const handleSaveCostConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser.role !== 'admin' && currentUser.role !== 'cnc_workshop' && currentUser.role !== 'cnc_manager') {
-      alert('Security Policy: Only Workshop Admin or CNC Workshop role can edit operational cost parameters.');
+    if (!isAdmin) {
       return;
     }
     setCostConfig(tempCostConfig);
@@ -686,62 +891,106 @@ export default function CNCWorkshopTab({
     setIsCostModalOpen(false);
   };
 
+  // Resolve default operator selection based on logged-in role
+  const resolveDefaultOperatorForForm = (): { id: string; name: string } => {
+    if (isOperator) {
+      return { id: currentUser.id, name: currentUser.name };
+    }
+    const firstActive = activeOperators[0];
+    if (firstActive) {
+      return { id: firstActive.id, name: firstActive.name };
+    }
+    return { id: currentUser.id, name: currentUser.name || 'Admin' };
+  };
+
   // Open modal to create a new job, optionally linked to an order
   const handleOpenNewJobModal = (order?: Order) => {
     const nextJobNo = `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+    const newJobId = `cnc_job_${generateUUID().split('-')[0]}`;
+    const defaultOp = resolveDefaultOperatorForForm();
+    const localToday = getLocalDateYYYYMMDD();
+    setJobFormError(null);
+    setStagedProgramFiles([]);
 
     if (order) {
       const cust = customerMap.get(order.customer_id);
       setSelectedOrderForJob(order);
       setEditingJob(null);
       setJobFormData({
+        id: newJobId,
         job_number: nextJobNo,
         order_id: order.id,
         article_no: order.article_no || nextJobNo,
         customer_name: cust?.name || 'Walk-in Client',
         product_name: order.sub_category || order.category || 'Furniture Item',
         job_type: 'Carving',
-        machine_name: 'Machine 1',
+        machine_name: 'Small',
         tool_name: '2mm Taper',
-        run_time_minutes: order.cnc_duration_minutes || 90,
+        run_time_minutes: order.cnc_duration_minutes || 0,
         design_time_minutes: 45,
         design_time_value: 45,
         design_time_unit: 'Minutes',
-        completion_time_minutes: order.cnc_duration_minutes || 90,
-        completion_time_value: order.cnc_duration_minutes || 90,
+        completion_time_minutes: order.cnc_duration_minutes || 0,
+        completion_time_value: order.cnc_duration_minutes || 0,
         completion_time_unit: 'Minutes',
-        amount: order.cnc_amount || 1850,
+        amount: isOperator ? 0 : (order.cnc_amount || 1850),
         status: 'In Progress',
-        operator_name: currentUser.name || 'Lucee Admin',
-        job_date: new Date().toISOString().split('T')[0],
+        operator_id: defaultOp.id,
+        operator_name: defaultOp.name,
+        start_time: '',
+        stop_time: '',
+        machine_running_time: '',
+        is_overnight: false,
+        job_date: localToday,
         material: order.material || 'Teak Wood',
         dimensions: '',
-        design_file: 'mandir_panel_relief_v2.nc',
+        design_file: '',
         notes: order.cnc_notes || '3D relief floral mandir jaali carving on 1.25" seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit.',
       });
     } else {
       setSelectedOrderForJob(null);
       setEditingJob(null);
+      setFileUploadError(null);
+      setFileSuccessMsg(null);
+      setIsUploadingFile(false);
+      setUploadProgress(0);
+      setSelectedUploadFile(null);
+      currentUploadTaskRef.current = null;
+      replacingPreviousFileRef.current = null;
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setJobFormData({
+        id: newJobId,
         job_number: nextJobNo,
         article_no: nextJobNo,
-        job_date: new Date().toISOString().split('T')[0],
+        job_date: localToday,
         job_type: 'Carving',
-        machine_name: 'Machine 1',
+        machine_name: 'Small',
         tool_name: '2mm Taper',
-        run_time_minutes: 90,
+        run_time_minutes: 0,
         design_time_minutes: 45,
         design_time_value: 45,
         design_time_unit: 'Minutes',
-        completion_time_minutes: 90,
-        completion_time_value: 90,
+        completion_time_minutes: 0,
+        completion_time_value: 0,
         completion_time_unit: 'Minutes',
-        amount: 1850,
+        amount: isOperator ? 0 : 1850,
         status: 'In Progress',
-        operator_name: currentUser.name || 'Lucee Admin',
+        operator_id: defaultOp.id,
+        operator_name: defaultOp.name,
+        start_time: '',
+        stop_time: '',
+        machine_running_time: '',
+        is_overnight: false,
         material: 'Teak Wood',
         dimensions: '',
-        design_file: 'mandir_panel_relief_v2.nc',
+        fileName: '',
+        fileUrl: '',
+        storagePath: '',
+        fileSize: undefined,
+        uploadedAt: undefined,
+        design_file: '',
+        design_file_name: '',
+        design_file_url: '',
         notes: '3D relief floral mandir jaali carving on 1.25" seasoned Teak wood. Feed rate 2800 mm/min, spindle 18000 RPM with 2mm taper bit.',
       });
     }
@@ -751,8 +1000,18 @@ export default function CNCWorkshopTab({
   // Edit existing CNC job
   const handleOpenEditJobModal = (job: CNCJob) => {
     setEditingJob(job);
+    setJobFormError(null);
+    setStagedProgramFiles([]);
     const linkedOrder = orders.find(o => o.id === job.order_id);
     setSelectedOrderForJob(linkedOrder || null);
+    setFileUploadError(null);
+    setFileSuccessMsg(null);
+    setIsUploadingFile(false);
+    setUploadProgress(0);
+    setSelectedUploadFile(null);
+    currentUploadTaskRef.current = null;
+    replacingPreviousFileRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
     // Safely extract design time with backward compatibility
     let desVal: number | undefined = undefined;
@@ -779,12 +1038,33 @@ export default function CNCWorkshopTab({
       }
     }
 
+    // Resolve matched operator from central directory
+    const matchedOp =
+      allOperators.find((op) => op.id === job.operator_id) ||
+      allOperators.find(
+        (op) => op.name.trim().toLowerCase() === (job.operator_name || '').trim().toLowerCase()
+      );
+
+    const resolvedOperatorId = isOperator
+      ? currentUser.id
+      : matchedOp?.id || job.operator_id || activeOperators[0]?.id || '';
+    const resolvedOperatorName = isOperator
+      ? currentUser.name
+      : matchedOp?.name || job.operator_name || activeOperators[0]?.name || '';
+
+    const resolvedFileName = job.fileName || job.design_file_name || job.design_file || '';
+    const resolvedFileUrl = job.fileUrl || job.design_file_url || '';
+    const resolvedFileSize = job.fileSize ?? job.design_file_size;
+    const resolvedUploadedAt = job.uploadedAt || job.design_file_uploaded_at;
+    const resolvedStoragePath = job.storagePath || '';
+
     setJobFormData({
       ...job,
       job_number: job.job_number || job.article_no || '',
       article_no: job.article_no || job.job_number || '',
+      job_date: job.job_date || getLocalDateYYYYMMDD(),
       job_type: (job.job_type as CNCJobType) || 'Carving',
-      machine_name: job.machine_name || 'Machine 1',
+      machine_name: job.machine_name || 'Small',
       tool_name: job.tool_name || '2mm Taper',
       design_time_minutes: job.design_time_minutes ?? (desVal !== undefined ? convertDurationToMinutes(desVal, desUnit) : 0),
       design_time_value: desVal,
@@ -794,11 +1074,199 @@ export default function CNCWorkshopTab({
       completion_time_unit: compUnit,
       material: job.material || 'Teak Wood',
       amount: job.amount || 0,
-      operator_name: job.operator_name || currentUser.name || 'Lucee Admin',
-      design_file: job.design_file || '',
+      operator_id: resolvedOperatorId,
+      operator_name: resolvedOperatorName,
+      start_time: job.start_time || '',
+      stop_time: job.stop_time || '',
+      machine_running_time: job.machine_running_time || '',
+      is_overnight: Boolean(job.is_overnight),
+      fileName: resolvedFileName,
+      fileUrl: resolvedFileUrl,
+      storagePath: resolvedStoragePath,
+      fileSize: resolvedFileSize,
+      uploadedAt: resolvedUploadedAt,
+      design_file: resolvedFileName,
+      design_file_name: resolvedFileName,
+      design_file_url: resolvedFileUrl,
+      design_file_size: resolvedFileSize,
+      design_file_uploaded_at: resolvedUploadedAt,
       notes: job.notes || '',
     });
     setIsJobModalOpen(true);
+  };
+
+  // CNC Program File (.dxf / .nc) Handlers - Direct uploadBytesResumable with Cancel, Retry, Open, Download & Replace
+  const executeFileUpload = async (file: File) => {
+    if (isUploadingFile) return; // Prevent duplicate concurrent upload requests
+
+    // If an existing file is present, cache it so we can delete old cloud storage ONLY after new upload succeeds
+    const existingUrl = jobFormData.fileUrl || jobFormData.design_file_url;
+    const existingPath = jobFormData.storagePath;
+    const existingName = jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file;
+    if (existingUrl || existingPath) {
+      replacingPreviousFileRef.current = {
+        fileName: existingName,
+        fileUrl: existingUrl,
+        storagePath: existingPath,
+        fileSize: jobFormData.fileSize ?? jobFormData.design_file_size,
+        uploadedAt: jobFormData.uploadedAt || jobFormData.design_file_uploaded_at,
+      };
+    }
+
+    setIsUploadingFile(true);
+    setUploadProgress(0);
+    setFileUploadError(null);
+    setFileSuccessMsg(null);
+    setSelectedUploadFile(file);
+
+    try {
+      const targetJobId = editingJob?.id || jobFormData.id || `cnc_${Date.now()}`;
+      const result = await uploadCNCProgramFile(file, targetJobId, {
+        onProgress: (p: UploadProgressInfo) => {
+          setUploadProgress(p.percent);
+        },
+        onTaskCreated: (task) => {
+          currentUploadTaskRef.current = task;
+        },
+      });
+
+      // Successful upload: If replacing a previous file, cleanly delete the old file from Firebase Storage
+      if (replacingPreviousFileRef.current?.storagePath || replacingPreviousFileRef.current?.fileUrl) {
+        const oldTarget = replacingPreviousFileRef.current.storagePath || replacingPreviousFileRef.current.fileUrl;
+        if (oldTarget) {
+          deleteCNCProgramFileFromStorage(oldTarget).catch((delErr) => {
+            console.warn('Note: Non-critical old file cleanup response:', delErr);
+          });
+        }
+      }
+      replacingPreviousFileRef.current = null;
+
+      // Update form state with new verified upload metadata
+      setJobFormData(prev => ({
+        ...prev,
+        fileName: result.fileName,
+        fileUrl: result.fileUrl,
+        storagePath: result.storagePath,
+        fileSize: result.fileSize,
+        uploadedAt: result.uploadedAt,
+        design_file: result.fileName,
+        design_file_name: result.fileName,
+        design_file_url: result.fileUrl,
+        design_file_size: result.fileSize,
+        design_file_uploaded_at: result.uploadedAt,
+      }));
+
+      setFileSuccessMsg(`Uploaded: ${result.fileName}`);
+      setSelectedUploadFile(null);
+      setTimeout(() => setFileSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('CNC Program file upload error:', err);
+      // If replacing and upload fails, retain the previous file metadata!
+      if (replacingPreviousFileRef.current) {
+        const prev = replacingPreviousFileRef.current;
+        setJobFormData(current => ({
+          ...current,
+          fileName: prev.fileName,
+          fileUrl: prev.fileUrl,
+          storagePath: prev.storagePath,
+          fileSize: prev.fileSize,
+          uploadedAt: prev.uploadedAt,
+          design_file: prev.fileName,
+          design_file_name: prev.fileName,
+          design_file_url: prev.fileUrl,
+          design_file_size: prev.fileSize,
+          design_file_uploaded_at: prev.uploadedAt,
+        }));
+      }
+      setFileUploadError(err.message || 'Failed to upload file. Please check connection and retry.');
+    } finally {
+      setIsUploadingFile(false);
+      currentUploadTaskRef.current = null;
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file extensions (.dxf / .nc) and max file size (50MB) immediately
+    const validation = validateCNCProgramFile(file);
+    if (!validation.isValid) {
+      setFileUploadError(validation.error || 'Unsupported file format. Please upload only .dxf or .nc files.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Start uploading immediately after file selection
+    executeFileUpload(file);
+  };
+
+  const handleCancelUpload = () => {
+    if (currentUploadTaskRef.current) {
+      try {
+        currentUploadTaskRef.current.cancel();
+      } catch (e) {
+        console.warn('Cancel exception:', e);
+      }
+    }
+    setIsUploadingFile(false);
+    setUploadProgress(0);
+    setFileUploadError('Upload was canceled.');
+    currentUploadTaskRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRetryUpload = () => {
+    if (selectedUploadFile) {
+      executeFileUpload(selectedUploadFile);
+    } else if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleOpenFile = () => {
+    const url = jobFormData.fileUrl || jobFormData.design_file_url;
+    if (url) {
+      openCNCProgramFile(url);
+    }
+  };
+
+  const handleDownloadProgramFile = () => {
+    const url = jobFormData.fileUrl || jobFormData.design_file_url;
+    const name = jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file || 'cnc_program.nc';
+    if (url) {
+      downloadCNCProgramFile(url, name);
+    } else {
+      alert(`No downloadable binary file attached for "${name}". Click "Upload File" to upload your .dxf or .nc file.`);
+    }
+  };
+
+  const handleRemoveProgramFile = () => {
+    const oldTarget = jobFormData.storagePath || jobFormData.fileUrl || jobFormData.design_file_url;
+    if (oldTarget) {
+      deleteCNCProgramFileFromStorage(oldTarget).catch((e) =>
+        console.warn('Remove file storage cleanup note:', e)
+      );
+    }
+    setJobFormData(prev => ({
+      ...prev,
+      fileName: '',
+      fileUrl: '',
+      storagePath: '',
+      fileSize: undefined,
+      uploadedAt: undefined,
+      design_file: '',
+      design_file_name: '',
+      design_file_url: '',
+      design_file_size: undefined,
+      design_file_uploaded_at: undefined,
+    }));
+    setFileUploadError(null);
+    setFileSuccessMsg(null);
+    setSelectedUploadFile(null);
+    replacingPreviousFileRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Start job in queue
@@ -819,35 +1287,106 @@ export default function CNCWorkshopTab({
   // Submit CNC Job Form
   const handleSubmitJobForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const jobId = editingJob ? editingJob.id : `cnc_job_${generateUUID().split('-')[0]}`;
-    const autoJobNo = jobFormData.article_no || jobFormData.job_number || `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+    setJobFormError(null);
 
-    // Safely calculate minutes and preserve values/units
-    const desVal = jobFormData.design_time_value !== undefined && jobFormData.design_time_value !== null && String(jobFormData.design_time_value) !== ''
-      ? Number(jobFormData.design_time_value)
-      : undefined;
+    if (!jobFormData.machine_name?.trim()) {
+      setJobFormError('Please select Machine Assigned (Small or Big).');
+      return;
+    }
+
+    // Resolve Operator ID and Name strictly
+    let resolvedOperatorId = jobFormData.operator_id || '';
+    let resolvedOperatorName = jobFormData.operator_name || '';
+
+    if (isOperator) {
+      resolvedOperatorId = currentUser.id;
+      resolvedOperatorName = currentUser.name;
+    } else {
+      const selectedOp =
+        allOperators.find((op) => op.id === resolvedOperatorId) ||
+        allOperators.find(
+          (op) => op.name.trim().toLowerCase() === resolvedOperatorName.trim().toLowerCase()
+        );
+      if (selectedOp) {
+        resolvedOperatorId = selectedOp.id;
+        resolvedOperatorName = selectedOp.name;
+      } else if (!resolvedOperatorName.trim()) {
+        setJobFormError('Please assign an active CNC Operator.');
+        return;
+      }
+    }
+
+    // Validate Start Time / Stop Time (24-hour HH:MM) and Machine Running Time
+    const hasStart = Boolean(jobFormData.start_time?.trim());
+    const hasStop = Boolean(jobFormData.stop_time?.trim());
+    const isLegacyNoTimeEdit =
+      Boolean(editingJob) &&
+      !editingJob?.start_time &&
+      !editingJob?.stop_time &&
+      !hasStart &&
+      !hasStop;
+
+    let finalStartTime: string | undefined = undefined;
+    let finalStopTime: string | undefined = undefined;
+    let finalRunningTimeFormatted: string | undefined = editingJob?.machine_running_time;
+    let finalIsOvernight = Boolean(jobFormData.is_overnight);
+    let compMinutes = 0;
+
+    if (!isLegacyNoTimeEdit) {
+      const timeCalc = calculateMachineRunningTime(
+        jobFormData.start_time,
+        jobFormData.stop_time,
+        Boolean(jobFormData.is_overnight)
+      );
+      if (!timeCalc.isValid) {
+        setJobFormError(timeCalc.error || 'Please enter valid 24-hour Start Time and Stop Time.');
+        return;
+      }
+      finalStartTime = normalize24HourTimeInput(jobFormData.start_time || '');
+      finalStopTime = normalize24HourTimeInput(jobFormData.stop_time || '');
+      finalRunningTimeFormatted = timeCalc.formatted;
+      finalIsOvernight = timeCalc.isOvernight;
+      compMinutes = timeCalc.minutes;
+    } else {
+      compMinutes = Number(
+        editingJob?.completion_time_minutes ?? editingJob?.run_time_minutes ?? 0
+      );
+      if (compMinutes > 0 && !finalRunningTimeFormatted) {
+        finalRunningTimeFormatted = formatMinutesToHHMM(compMinutes);
+      }
+    }
+
+    const jobId = editingJob?.id || jobFormData.id || `cnc_job_${generateUUID().split('-')[0]}`;
+    const autoJobNo =
+      jobFormData.article_no ||
+      jobFormData.job_number ||
+      `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+
+    const desVal =
+      jobFormData.design_time_value !== undefined &&
+      jobFormData.design_time_value !== null &&
+      String(jobFormData.design_time_value) !== ''
+        ? Number(jobFormData.design_time_value)
+        : undefined;
     const desUnit: CNCDurationUnit = (jobFormData.design_time_unit as CNCDurationUnit) || 'Minutes';
-    const desMinutes = desVal !== undefined && !isNaN(desVal)
-      ? convertDurationToMinutes(desVal, desUnit)
-      : (Number(jobFormData.design_time_minutes) || 0);
+    const desMinutes =
+      desVal !== undefined && !isNaN(desVal)
+        ? convertDurationToMinutes(desVal, desUnit)
+        : Number(jobFormData.design_time_minutes) || 0;
 
-    const compVal = jobFormData.completion_time_value !== undefined && jobFormData.completion_time_value !== null && String(jobFormData.completion_time_value) !== ''
-      ? Number(jobFormData.completion_time_value)
-      : undefined;
-    const compUnit: CNCDurationUnit = (jobFormData.completion_time_unit as CNCDurationUnit) || 'Minutes';
-    const compMinutes = compVal !== undefined && !isNaN(compVal)
-      ? convertDurationToMinutes(compVal, compUnit)
-      : (Number(jobFormData.completion_time_minutes) || Number(jobFormData.run_time_minutes) || 0);
+    const finalAmount = isOperator
+      ? Number(editingJob?.amount || 0)
+      : Number(jobFormData.amount) || 0;
 
     const jobToSave: CNCJob = {
       id: jobId,
       job_number: autoJobNo,
       order_id: jobFormData.order_id || selectedOrderForJob?.id || undefined,
       article_no: autoJobNo,
-      customer_name: editingJob?.customer_name || 'Walk-in Client',
-      product_name: editingJob?.product_name || 'CNC Component',
+      customer_name: editingJob?.customer_name || jobFormData.customer_name || 'Walk-in Client',
+      product_name: editingJob?.product_name || jobFormData.product_name || 'CNC Component',
       job_type: (jobFormData.job_type as CNCJobType) || 'Carving',
-      machine_name: jobFormData.machine_name || 'Machine 1',
+      machine_name: jobFormData.machine_name || 'Small',
       tool_name: jobFormData.tool_name || '2mm Taper',
       tool_id: jobFormData.tool_id,
       run_time_minutes: compMinutes,
@@ -855,25 +1394,72 @@ export default function CNCWorkshopTab({
       design_time_value: desVal,
       design_time_unit: desUnit,
       completion_time_minutes: compMinutes,
-      completion_time_value: compVal,
-      completion_time_unit: compUnit,
-      amount: Number(jobFormData.amount) || 0,
-      status: (editingJob?.status) || (jobFormData.status as CNCJobStatus) || 'In Progress',
-      operator_name: jobFormData.operator_name || currentUser.name || 'Lucee Admin',
-      job_date: jobFormData.job_date || new Date().toISOString().split('T')[0],
+      completion_time_value: compMinutes,
+      completion_time_unit: 'Minutes',
+      start_time: finalStartTime,
+      stop_time: finalStopTime,
+      machine_running_time: finalRunningTimeFormatted,
+      is_overnight: finalIsOvernight,
+      amount: finalAmount,
+      status: editingJob?.status || (jobFormData.status as CNCJobStatus) || 'In Progress',
+      operator_id: resolvedOperatorId || undefined,
+      operator_name: resolvedOperatorName,
+      job_date: jobFormData.job_date || getLocalDateYYYYMMDD(),
       material: jobFormData.material || 'Teak Wood',
       dimensions: editingJob?.dimensions || '',
-      design_file: jobFormData.design_file || '',
+      fileName: jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file || undefined,
+      fileUrl: jobFormData.fileUrl || jobFormData.design_file_url || undefined,
+      storagePath: jobFormData.storagePath || undefined,
+      fileSize: jobFormData.fileSize ?? jobFormData.design_file_size,
+      uploadedAt: jobFormData.uploadedAt || jobFormData.design_file_uploaded_at,
+      program_files_count:
+        !editingJob && stagedProgramFiles.length > 0
+          ? stagedProgramFiles.filter((f) => f.isActive !== false).length
+          : jobFormData.program_files_count !== undefined
+          ? jobFormData.program_files_count
+          : jobFormData.fileUrl
+          ? 1
+          : 0,
+      design_file: jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file || '',
+      design_file_url: jobFormData.fileUrl || jobFormData.design_file_url || undefined,
+      design_file_name: jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file || undefined,
+      design_file_size: jobFormData.fileSize ?? jobFormData.design_file_size,
+      design_file_uploaded_at: jobFormData.uploadedAt || jobFormData.design_file_uploaded_at,
       notes: jobFormData.notes || '',
       created_at: editingJob?.created_at || new Date().toISOString(),
       created_by: editingJob?.created_by || currentUser.id,
-      completed_at: editingJob?.status === 'Completed' ? (editingJob?.completed_at || new Date().toISOString()) : undefined,
+      updated_at: new Date().toISOString(),
+      completed_at:
+        editingJob?.status === 'Completed'
+          ? editingJob?.completed_at || new Date().toISOString()
+          : undefined,
     };
 
-    await onSaveJob(jobToSave);
+    try {
+      await onSaveJob(jobToSave);
 
-    // Synchronize back to linked order if present
-    if (jobToSave.order_id) {
+      // Persist staged program files subcollection metadata only after the parent CNC job exists in Firestore
+      if (!editingJob && stagedProgramFiles.length > 0) {
+        const activeStaged = stagedProgramFiles.filter((f) => f.isActive !== false);
+        for (const stagedFile of stagedProgramFiles) {
+          await saveCNCProgramFileMetadata(jobToSave.id, {
+            ...stagedFile,
+            jobId: jobToSave.id,
+          });
+        }
+        await updateCNCJobFilesCount(jobToSave.id, activeStaged.length).catch(() => {});
+        setStagedProgramFiles([]);
+      }
+    } catch (saveErr: any) {
+      console.error('Failed saving CNC job or program file metadata:', saveErr);
+      setJobFormError(
+        saveErr?.message || 'Unable to save CNC job or program file metadata. Please check your permissions and retry.'
+      );
+      return;
+    }
+
+    // Synchronize back to linked order if present (Admin / CNC Manager only)
+    if (!isOperator && jobToSave.order_id) {
       const targetOrder = orders.find(o => o.id === jobToSave.order_id);
       if (targetOrder) {
         let updatedOrder: Order = {
@@ -885,6 +1471,7 @@ export default function CNCWorkshopTab({
           cnc_amount: jobToSave.amount,
           cnc_duration_minutes: jobToSave.run_time_minutes,
           cnc_notes: jobToSave.notes,
+          ...(jobToSave.design_file_url ? { cnc_file_url: jobToSave.design_file_url } : {}),
         };
 
         if (jobToSave.status === 'Completed') {
@@ -903,7 +1490,7 @@ export default function CNCWorkshopTab({
           changed_by_name: currentUser.name || 'CNC Workshop Manager',
           changed_by_role: currentUser.role,
           timestamp: new Date().toISOString(),
-          note: `CNC Workshop log recorded: [${jobToSave.job_type}] on ${jobToSave.machine_name}. Status: ${jobToSave.status}. Operator: ${jobToSave.operator_name}. Amount: ₹${jobToSave.amount}.`,
+          note: `CNC Workshop log recorded: [${jobToSave.job_type}] on ${jobToSave.machine_name}. Status: ${jobToSave.status}. Operator: ${jobToSave.operator_name}. Running Time: ${jobToSave.machine_running_time || '—'}.`,
         };
 
         await onUpdateOrder(updatedOrder, log);
@@ -918,6 +1505,7 @@ export default function CNCWorkshopTab({
     let existingJob = cncJobs.find(j => j.order_id === ord.id);
     if (!existingJob) {
       const autoJobNo = `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+      const defaultOp = resolveDefaultOperatorForForm();
       const newJob: CNCJob = {
         id: `cnc_job_${generateUUID().split('-')[0]}`,
         job_number: autoJobNo,
@@ -926,19 +1514,21 @@ export default function CNCWorkshopTab({
         customer_name: customerMap.get(ord.customer_id)?.name || 'Client',
         product_name: `${ord.category} - ${ord.sub_category || ord.design_type || ''}`,
         job_type: ord.cnc_job_type || '3D Relief',
-        machine_name: 'CNC Router #1 (Heavy 8x4)',
+        machine_name: 'Small',
         tool_name: ord.cnc_tool_used || (cncTools[0]?.name || '6mm Ball Nose Bit'),
         run_time_minutes: ord.cnc_duration_minutes || 60,
         amount: ord.cnc_amount || 1200,
         status: 'In Progress',
-        operator_name: currentUser.name || 'CNC Supervisor',
-        job_date: new Date().toISOString().split('T')[0],
+        operator_id: defaultOp.id,
+        operator_name: defaultOp.name,
+        job_date: getLocalDateYYYYMMDD(),
         material: ord.material || 'Teak Wood',
         dimensions: ord.size === 'Custom' ? (ord.custom_size || 'Custom Size') : (ord.size || 'Standard'),
         design_file: '',
         notes: ord.cnc_notes || ord.special_notes || '',
         created_at: new Date().toISOString(),
         created_by: currentUser.id,
+        updated_at: new Date().toISOString(),
       };
       await onSaveJob(newJob);
       existingJob = newJob;
@@ -946,6 +1536,7 @@ export default function CNCWorkshopTab({
       await onSaveJob({
         ...existingJob,
         status: 'In Progress',
+        updated_at: new Date().toISOString(),
       });
     }
 
@@ -972,9 +1563,9 @@ export default function CNCWorkshopTab({
     await onUpdateOrder(updatedOrder, log);
   };
 
-  // Complete CNC and hand off to QC 1
-  const handleCompleteOrderAndMoveToQC1 = async (ord: Order) => {
-    if (!window.confirm(`Mark CNC carving complete for "${ord.article_no}" and advance order to QC 1?`)) {
+  // Complete CNC and hand off to Assembly
+  const handleCompleteOrderAndMoveToAssembly = async (ord: Order) => {
+    if (!window.confirm(`Mark CNC carving complete for "${ord.article_no}" and advance order to Assembly?`)) {
       return;
     }
 
@@ -991,25 +1582,27 @@ export default function CNCWorkshopTab({
       ...ord,
       requires_cnc: true,
       cnc_status: 'completed',
-      current_status: 'QC 1',
-      carpenter_sub_status: 'qc_check_1',
-      qc_1_status: 'pending_admin_approval',
+      current_status: 'Assembly',
+      stage: 'Assembly',
+      carpenter_sub_status: 'under_carpentry',
       updated_at: new Date().toISOString(),
     };
 
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: ord.id,
-      stage: 'QC 1',
+      stage: 'Assembly',
       changed_by: currentUser.id,
       changed_by_name: currentUser.name || 'CNC Supervisor',
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: `CNC Wood Carving completed by ${currentUser.name}. Order successfully forwarded to QC 1 verification.`,
+      note: `CNC Wood Carving completed by ${currentUser.name}. Order successfully forwarded to Assembly stage.`,
     };
 
     await onUpdateOrder(updatedOrder, log);
   };
+
+  const handleCompleteOrderAndMoveToQC1 = handleCompleteOrderAndMoveToAssembly;
 
   // Tool Inventory Handlers
   const handleOpenNewToolModal = () => {
@@ -1024,7 +1617,7 @@ export default function CNCWorkshopTab({
       condition: 'Good',
       total_run_hours: 0,
       unit_cost: 650,
-      last_replaced_date: new Date().toISOString().split('T')[0],
+      last_replaced_date: getLocalDateYYYYMMDD(),
       status: 'In stock',
       notes: '',
       tool_code: nextCode,
@@ -1075,7 +1668,6 @@ export default function CNCWorkshopTab({
     const stockQty = Number(toolFormData.quantity_in_stock) ?? 0;
     const minStock = Number(toolFormData.min_stock_level) ?? 1;
 
-    // Status logic: Stock Qty = 0 -> Out of Stock, Stock Qty <= Min. Stock -> Low Stock
     let finalStatus: 'In stock' | 'Low stock' | 'Out of stock' = toolFormData.status || 'In stock';
     if (stockQty === 0) {
       finalStatus = 'Out of stock';
@@ -1097,7 +1689,7 @@ export default function CNCWorkshopTab({
       condition: (toolFormData.condition as CNCToolCondition) || 'Good',
       total_run_hours: Number(toolFormData.total_run_hours) || 0,
       unit_cost: Number(toolFormData.unit_cost) || 0,
-      last_replaced_date: toolFormData.last_replaced_date || new Date().toISOString().split('T')[0],
+      last_replaced_date: toolFormData.last_replaced_date || getLocalDateYYYYMMDD(),
       status: finalStatus,
       notes: toolFormData.notes?.trim() || '',
       updated_at: new Date().toISOString(),
@@ -1105,6 +1697,143 @@ export default function CNCWorkshopTab({
 
     await onSaveTool(toolToSave);
     setIsToolModalOpen(false);
+  };
+
+  // Admin Operator Management Handlers
+  const handleOpenAddOperatorModal = () => {
+    setEditingOperator(null);
+    setOperatorFormError(null);
+    setOperatorForm({
+      name: '',
+      email: '',
+      phone: '',
+      initials: '',
+      status: 'ACTIVE',
+    });
+    setIsOperatorModalOpen(true);
+  };
+
+  const handleOpenEditOperatorModal = (op: User) => {
+    setEditingOperator(op);
+    setOperatorFormError(null);
+    setOperatorForm({
+      name: op.name || '',
+      email: op.email || '',
+      phone: op.phone || '',
+      initials: op.initials || '',
+      status: isUserActiveStatus(op) ? 'ACTIVE' : 'INACTIVE',
+    });
+    setIsOperatorModalOpen(true);
+  };
+
+  const handleSubmitOperatorForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canManageOperators) return;
+    setOperatorFormError(null);
+
+    const cleanName = operatorForm.name.trim();
+    const cleanEmail = operatorForm.email.trim().toLowerCase();
+    if (!cleanName) {
+      setOperatorFormError('Operator name is required.');
+      return;
+    }
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setOperatorFormError('Please enter a valid operator email address.');
+      return;
+    }
+
+    const duplicate = users.find(
+      (u) =>
+        u.email.trim().toLowerCase() === cleanEmail &&
+        u.id !== editingOperator?.id
+    );
+    if (duplicate) {
+      setOperatorFormError(`Email "${cleanEmail}" is already assigned to ${duplicate.name}.`);
+      return;
+    }
+
+    const computedInitials =
+      operatorForm.initials.trim().toUpperCase().slice(0, 2) ||
+      cleanName
+        .split(/\s+/)
+        .map((w) => w[0] || '')
+        .join('')
+        .toUpperCase()
+        .slice(0, 2) ||
+      'OP';
+
+    if (editingOperator) {
+      const updatedOp: User = {
+        ...editingOperator,
+        name: cleanName,
+        email: cleanEmail,
+        phone: operatorForm.phone.trim(),
+        initials: computedInitials,
+        role: 'cnc_operator',
+        status: operatorForm.status,
+        is_active: operatorForm.status === 'ACTIVE',
+      };
+      onUpdateUser?.(updatedOp);
+      setOperatorActionBanner({
+        type: 'success',
+        message: `Updated operator ${updatedOp.name} (${updatedOp.email}).`,
+      });
+    } else {
+      const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      const newOp: User = {
+        id: `user_cnc_op_${slug || generateUUID().split('-')[0]}_${generateUUID().slice(0, 4)}`,
+        name: cleanName,
+        email: cleanEmail,
+        phone: operatorForm.phone.trim(),
+        initials: computedInitials,
+        role: 'cnc_operator',
+        status: operatorForm.status,
+        is_active: operatorForm.status === 'ACTIVE',
+        password_configured: false,
+        activation_status: 'PENDING_ACTIVATION',
+        created_at: new Date().toISOString(),
+        created_by: currentUser.id,
+      };
+      onAddUser?.(newOp);
+      setOperatorActionBanner({
+        type: 'success',
+        message: `Added operator ${newOp.name}. They can activate their account on the login screen using ${newOp.email}.`,
+      });
+    }
+
+    setIsOperatorModalOpen(false);
+  };
+
+  const handleToggleOperatorStatus = (op: User) => {
+    if (!canManageOperators) return;
+    const nextStatus: UserStatus = isUserActiveStatus(op) ? 'INACTIVE' : 'ACTIVE';
+    onUpdateUser?.({
+      ...op,
+      status: nextStatus,
+      is_active: nextStatus === 'ACTIVE',
+    });
+    setOperatorActionBanner({
+      type: 'success',
+      message: `${op.name} marked as ${nextStatus}.`,
+    });
+  };
+
+  const handleSendOperatorPasswordReset = async (op: User) => {
+    if (!canManageOperators || !op.email) return;
+    try {
+      await sendPasswordResetEmail(auth, op.email.trim().toLowerCase());
+      setOperatorActionBanner({
+        type: 'success',
+        message: `Password reset email sent to ${op.email}.`,
+      });
+    } catch (err: any) {
+      setOperatorActionBanner({
+        type: 'error',
+        message:
+          err?.message ||
+          `Could not send reset email to ${op.email}. Ensure Email/Password sign-in is enabled and the operator has activated their account.`,
+      });
+    }
   };
 
   return (
@@ -1126,17 +1855,31 @@ export default function CNCWorkshopTab({
         {/* Center Sub-tab Navigation */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
           {canAccessDashboard && (
-          <button
-            onClick={() => setActiveSubTab('dashboard')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeSubTab === 'dashboard'
-                ? 'bg-[#115e59] text-white shadow-xs'
-                : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
-            }`}
-          >
-            <LayoutDashboard size={14} />
-            <span>Dashboard</span>
-          </button>
+            <button
+              onClick={() => setActiveSubTab('dashboard')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'dashboard'
+                  ? 'bg-[#115e59] text-white shadow-xs'
+                  : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
+              }`}
+            >
+              <LayoutDashboard size={14} />
+              <span>Dashboard</span>
+            </button>
+          )}
+
+          {canAccessOperatorDashboard && (
+            <button
+              onClick={() => setActiveSubTab('operator_dashboard')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'operator_dashboard'
+                  ? 'bg-[#115e59] text-white shadow-xs'
+                  : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
+              }`}
+            >
+              <LayoutDashboard size={14} />
+              <span>My Dashboard</span>
+            </button>
           )}
 
           <button
@@ -1148,7 +1891,7 @@ export default function CNCWorkshopTab({
             }`}
           >
             <Layers size={14} />
-            <span>Job Queue</span>
+            <span>{isOperator ? 'My Job Queue' : 'Job Queue'}</span>
             {pendingQueueOrders.length > 0 && (
               <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-white text-[10px] font-extrabold rounded-full">
                 {pendingQueueOrders.length}
@@ -1156,34 +1899,55 @@ export default function CNCWorkshopTab({
             )}
           </button>
 
-          <button
-            onClick={() => setActiveSubTab('inventory')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer relative ${
-              activeSubTab === 'inventory'
-                ? 'bg-[#115e59] text-white shadow-xs'
-                : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
-            }`}
-          >
-            <Wrench size={14} />
-            <span>Tool Inventory</span>
-            {metrics.toolsNeedingAttentionCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full">
-                {metrics.toolsNeedingAttentionCount}
-              </span>
-            )}
-          </button>
+          {canAccessInventoryAndReports && (
+            <button
+              onClick={() => setActiveSubTab('inventory')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer relative ${
+                activeSubTab === 'inventory'
+                  ? 'bg-[#115e59] text-white shadow-xs'
+                  : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
+              }`}
+            >
+              <Wrench size={14} />
+              <span>Tool Inventory</span>
+              {metrics.toolsNeedingAttentionCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full">
+                  {metrics.toolsNeedingAttentionCount}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveSubTab('reports')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeSubTab === 'reports'
-                ? 'bg-[#115e59] text-white shadow-xs'
-                : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
-            }`}
-          >
-            <TrendingUp size={14} />
-            <span>Monthly Report</span>
-          </button>
+          {canAccessInventoryAndReports && (
+            <button
+              onClick={() => setActiveSubTab('reports')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'reports'
+                  ? 'bg-[#115e59] text-white shadow-xs'
+                  : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
+              }`}
+            >
+              <TrendingUp size={14} />
+              <span>Monthly Report</span>
+            </button>
+          )}
+
+          {canManageOperators && (
+            <button
+              onClick={() => setActiveSubTab('operators')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeSubTab === 'operators'
+                  ? 'bg-[#115e59] text-white shadow-xs'
+                  : 'bg-stone-100 hover:bg-stone-200/70 text-stone-700'
+              }`}
+            >
+              <UsersIcon size={14} />
+              <span>Operators</span>
+              <span className="ml-0.5 px-1.5 py-0.2 bg-teal-900/15 text-[10px] font-extrabold rounded-full">
+                {activeOperators.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Right Primary Action */}
@@ -1253,28 +2017,49 @@ export default function CNCWorkshopTab({
           </div>
         </div>
 
-        {/* Mobile Dropdown Menu: Dashboard, Job Queue, Tool Inventory, Monthly Report */}
+        {/* Mobile Dropdown Menu */}
         {isMobileMenuOpen && (
           <div className="border-t border-stone-100 bg-stone-50/70 p-2 space-y-1">
             {canAccessDashboard && (
-            <button
-              type="button"
-              onClick={() => {
-                setActiveSubTab('dashboard');
-                setIsMobileMenuOpen(false);
-              }}
-              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                activeSubTab === 'dashboard'
-                  ? 'bg-[#115e59] text-white shadow-2xs'
-                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <LayoutDashboard size={14} />
-                <span>Dashboard</span>
-              </div>
-              {activeSubTab === 'dashboard' && <Check size={14} />}
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab('dashboard');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'dashboard'
+                    ? 'bg-[#115e59] text-white shadow-2xs'
+                    : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <LayoutDashboard size={14} />
+                  <span>Dashboard</span>
+                </div>
+                {activeSubTab === 'dashboard' && <Check size={14} />}
+              </button>
+            )}
+
+            {canAccessOperatorDashboard && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab('operator_dashboard');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'operator_dashboard'
+                    ? 'bg-[#115e59] text-white shadow-2xs'
+                    : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <LayoutDashboard size={14} />
+                  <span>My Dashboard</span>
+                </div>
+                {activeSubTab === 'operator_dashboard' && <Check size={14} />}
+              </button>
             )}
 
             <button
@@ -1291,7 +2076,7 @@ export default function CNCWorkshopTab({
             >
               <div className="flex items-center gap-2">
                 <Layers size={14} />
-                <span>Job Queue</span>
+                <span>{isOperator ? 'My Job Queue' : 'Job Queue'}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 {pendingQueueOrders.length > 0 && (
@@ -1303,53 +2088,227 @@ export default function CNCWorkshopTab({
               </div>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setActiveSubTab('inventory');
-                setIsMobileMenuOpen(false);
-              }}
-              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                activeSubTab === 'inventory'
-                  ? 'bg-[#115e59] text-white shadow-2xs'
-                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Wrench size={14} />
-                <span>Tool Inventory</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {metrics.toolsNeedingAttentionCount > 0 && (
-                  <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full">
-                    {metrics.toolsNeedingAttentionCount}
-                  </span>
-                )}
-                {activeSubTab === 'inventory' && <Check size={14} />}
-              </div>
-            </button>
+            {canAccessInventoryAndReports && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab('inventory');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'inventory'
+                    ? 'bg-[#115e59] text-white shadow-2xs'
+                    : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Wrench size={14} />
+                  <span>Tool Inventory</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {metrics.toolsNeedingAttentionCount > 0 && (
+                    <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[10px] font-extrabold rounded-full">
+                      {metrics.toolsNeedingAttentionCount}
+                    </span>
+                  )}
+                  {activeSubTab === 'inventory' && <Check size={14} />}
+                </div>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setActiveSubTab('reports');
-                setIsMobileMenuOpen(false);
-              }}
-              className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                activeSubTab === 'reports'
-                  ? 'bg-[#115e59] text-white shadow-2xs'
-                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <TrendingUp size={14} />
-                <span>Monthly Report</span>
-              </div>
-              {activeSubTab === 'reports' && <Check size={14} />}
-            </button>
+            {canAccessInventoryAndReports && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab('reports');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'reports'
+                    ? 'bg-[#115e59] text-white shadow-2xs'
+                    : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={14} />
+                  <span>Monthly Report</span>
+                </div>
+                {activeSubTab === 'reports' && <Check size={14} />}
+              </button>
+            )}
+
+            {canManageOperators && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab('operators');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'operators'
+                    ? 'bg-[#115e59] text-white shadow-2xs'
+                    : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <UsersIcon size={14} />
+                  <span>Operators ({activeOperators.length})</span>
+                </div>
+                {activeSubTab === 'operators' && <Check size={14} />}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* OPERATOR PERSONAL DASHBOARD (Strictly non-financial, scoped to logged-in Operator) */}
+      {canAccessOperatorDashboard && activeSubTab === 'operator_dashboard' && (
+        <div className="space-y-5">
+          <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-teal-50 text-[#115e59] border border-teal-200 text-[11px] font-bold mb-1.5">
+                <Cpu size={12} />
+                <span>My CNC Operator Workspace</span>
+              </div>
+              <h2 className="text-lg font-black text-slate-900 font-display">
+                Welcome, {currentUser.name}
+              </h2>
+              <p className="text-xs text-slate-500">
+                Today: {formatDateDDMMYYYY(todayStr)} • Track and log your assigned CNC jobs and 24-hour machine running times.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleOpenNewJobModal()}
+              className="px-4 py-2.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+            >
+              <Plus size={14} />
+              <span>Record My CNC Job</span>
+            </button>
+          </div>
+
+          {/* 4 Operator Non-Financial KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Assigned Jobs</span>
+              <div className="text-3xl font-black text-slate-900 mt-2 font-display">{operatorMetrics.assignedCount}</div>
+              <span className="text-[11px] text-slate-500">{operatorMetrics.queuedCount} queued</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">In Progress</span>
+              <div className="text-3xl font-black text-[#115e59] mt-2 font-display">{operatorMetrics.inProgressCount}</div>
+              <span className="text-[11px] text-teal-700 font-medium">Currently running</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Completed</span>
+              <div className="text-3xl font-black text-emerald-700 mt-2 font-display">{operatorMetrics.completedCount}</div>
+              <span className="text-[11px] text-slate-500">Finished floor runs</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Total Running Time</span>
+              <div className="text-3xl font-black text-slate-900 mt-2 font-display font-mono">{operatorMetrics.totalRunningHHMM}</div>
+              <span className="text-[11px] text-slate-500">HH:MM logged runtime</span>
+            </div>
+          </div>
+
+          {/* Assigned Jobs Summary List */}
+          <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+            <div className="px-5 py-3.5 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                My Assigned & Recent CNC Jobs ({operatorMetrics.assignedCount})
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('queue')}
+                className="text-xs font-bold text-[#115e59] hover:text-[#0f4c4a] inline-flex items-center gap-1 cursor-pointer"
+              >
+                <span>Open Full Queue</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+            <div className="divide-y divide-stone-100">
+              {operatorMetrics.assignedJobs.slice(0, 8).map((job) => (
+                <div key={job.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50/70">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-xs text-slate-900">
+                        {job.article_no || job.job_number}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 text-[10px] font-bold">
+                        {job.machine_name || 'Small'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        job.status === 'Completed'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : job.status === 'In Progress'
+                          ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}>
+                        {job.status}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
+                      <span>{formatDateDDMMYYYY(job.job_date)}</span>
+                      <span>•</span>
+                      <span className="font-semibold text-slate-700">{job.job_type}</span>
+                      <span>•</span>
+                      <span>
+                        {job.start_time && job.stop_time
+                          ? `${job.start_time} – ${job.stop_time} (${getJobRunningTimeDisplay(job)})`
+                          : `Runtime: ${getJobRunningTimeDisplay(job)}`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {job.status !== 'In Progress' && job.status !== 'Completed' && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartJob(job)}
+                        className="px-3 py-1.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Play size={12} />
+                        <span>Start</span>
+                      </button>
+                    )}
+                    {job.status === 'In Progress' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onSaveJob({
+                            ...job,
+                            status: 'Completed',
+                            completed_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString(),
+                          })
+                        }
+                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <CheckCircle2 size={12} />
+                        <span>Complete</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditJobModal(job)}
+                      className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-bold cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {operatorMetrics.assignedJobs.length === 0 && (
+                <div className="p-8 text-center text-xs text-stone-400">
+                  No CNC jobs assigned to your account yet. Click &ldquo;Record My CNC Job&rdquo; to log a floor job.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SUB-VIEW 1: REDESIGNED CNC DASHBOARD (GOOGLE STITCH DESKTOP + MOBILE) */}
       {canAccessDashboard && activeSubTab === 'dashboard' && (
@@ -1656,7 +2615,7 @@ export default function CNCWorkshopTab({
                     </p>
                   </div>
 
-                  {currentUser?.role === 'admin' || currentUser?.role === 'cnc_workshop' || currentUser?.role === 'cnc_manager' ? (
+                  {isAdmin ? (
                     <button
                       onClick={() => {
                         setTempCostConfig(costConfig);
@@ -1680,7 +2639,7 @@ export default function CNCWorkshopTab({
                   <p className="text-xs text-slate-500 font-medium leading-tight">
                     Fixed administrative operational parameters
                   </p>
-                  {currentUser?.role === 'admin' || currentUser?.role === 'cnc_workshop' || currentUser?.role === 'cnc_manager' ? (
+                  {isAdmin ? (
                     <button
                       onClick={() => {
                         setTempCostConfig(costConfig);
@@ -2106,8 +3065,8 @@ export default function CNCWorkshopTab({
                     <th className="py-3 px-3">Machine</th>
                     <th className="py-3 px-3">Tool Used</th>
                     <th className="py-3 px-3">Design Time</th>
-                    <th className="py-3 px-3">Completion Time</th>
-                    <th className="py-3 px-3 text-right">Amount (₹)</th>
+                    <th className="py-3 px-3">Running Time</th>
+                    {!isOperator && <th className="py-3 px-3 text-right">Amount (₹)</th>}
                     <th className="py-3 px-3">Operator</th>
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3.5 text-right">Actions</th>
@@ -2117,10 +3076,27 @@ export default function CNCWorkshopTab({
                   {filteredQueueItems.map(item => (
                     <tr key={item.id} className="hover:bg-stone-50/70 transition">
                       <td className="py-3 px-3.5 font-bold text-stone-900 font-mono">
-                        {item.article_no}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{item.article_no}</span>
+                          {item.rawJob && (
+                            <button
+                              type="button"
+                              onClick={() => setQuickFilesModalJob(item.rawJob || null)}
+                              className="px-1.5 py-0.5 rounded-md text-[10px] font-sans font-bold bg-teal-50 text-teal-800 hover:bg-teal-100 hover:text-teal-900 border border-teal-200/80 inline-flex items-center gap-1 transition cursor-pointer"
+                              title="Click to view and manage CNC program files (.dxf / .nc)"
+                            >
+                              <FileCode size={11} className="text-teal-700" />
+                              <span>
+                                {item.rawJob.program_files_count !== undefined
+                                  ? `${item.rawJob.program_files_count} ${item.rawJob.program_files_count === 1 ? 'file' : 'files'}`
+                                  : (item.rawJob.fileName || item.rawJob.design_file ? '1 file' : '0 files')}
+                              </span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-stone-600 whitespace-nowrap">
-                        {formatToDDMMYYYY(item.job_date)}
+                        {formatDateDDMMYYYY(item.job_date)}
                       </td>
                       <td className="py-3 px-3">
                         <span className="font-semibold text-stone-800">
@@ -2128,7 +3104,9 @@ export default function CNCWorkshopTab({
                         </span>
                       </td>
                       <td className="py-3 px-3 text-stone-600">
-                        {item.machine_name}
+                        <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 font-semibold text-[11px]">
+                          {item.machine_name}
+                        </span>
                       </td>
                       <td className="py-3 px-3 text-stone-600 font-mono text-[11px]">
                         {item.tool_name}
@@ -2136,13 +3114,24 @@ export default function CNCWorkshopTab({
                       <td className="py-3 px-3 text-stone-600">
                         {formatJobDurationDisplay(item.design_time_value ?? item.rawJob?.design_time_value, item.design_time_unit ?? item.rawJob?.design_time_unit, item.design_time)}
                       </td>
-                      <td className="py-3 px-3 text-stone-600">
-                        {formatJobDurationDisplay(item.completion_time_value ?? item.rawJob?.completion_time_value, item.completion_time_unit ?? item.rawJob?.completion_time_unit, item.completion_time)}
+                      <td className="py-3 px-3 text-stone-700 whitespace-nowrap">
+                        <div className="font-mono font-bold text-stone-900">
+                          {item.rawJob
+                            ? getJobRunningTimeDisplay(item.rawJob)
+                            : formatJobDurationDisplay(item.completion_time_value, item.completion_time_unit, item.completion_time)}
+                        </div>
+                        {item.start_time && item.stop_time && (
+                          <div className="text-[10px] font-mono text-stone-400">
+                            {item.start_time} – {item.stop_time}{item.is_overnight ? ' (+1d)' : ''}
+                          </div>
+                        )}
                       </td>
-                      <td className="py-3 px-3 text-right font-bold text-stone-900">
-                        ₹{Number(item.amount || 0).toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-3 px-3 text-stone-600">
+                      {!isOperator && (
+                        <td className="py-3 px-3 text-right font-bold text-stone-900">
+                          ₹{Number(item.amount || 0).toLocaleString('en-IN')}
+                        </td>
+                      )}
+                      <td className="py-3 px-3 text-stone-700 font-medium">
                         {item.operator_name}
                       </td>
                       <td className="py-3 px-3">
@@ -2186,6 +3175,7 @@ export default function CNCWorkshopTab({
                                   ...item.rawJob,
                                   status: 'Completed',
                                   completed_at: new Date().toISOString(),
+                                  updated_at: new Date().toISOString(),
                                 });
                               }
                             }}
@@ -2203,19 +3193,21 @@ export default function CNCWorkshopTab({
                             >
                               Edit
                             </button>
-                            <button
-                              onClick={async () => {
-                                const jobTitle = item.article_no || item.rawJob?.job_number || 'this CNC job';
-                                if (window.confirm(`Are you sure you want to delete CNC job "${jobTitle}"?`)) {
-                                  await onDeleteJob(item.rawJob!.id);
-                                }
-                              }}
-                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer"
-                              title="Delete CNC Job"
-                            >
-                              <Trash2 size={12} />
-                              <span>Delete</span>
-                            </button>
+                            {canDeleteJobs && (
+                              <button
+                                onClick={async () => {
+                                  const jobTitle = item.article_no || item.rawJob?.job_number || 'this CNC job';
+                                  if (window.confirm(`Are you sure you want to delete CNC job "${jobTitle}"?`)) {
+                                    await onDeleteJob(item.rawJob!.id);
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                                title="Delete CNC Job"
+                              >
+                                <Trash2 size={12} />
+                                <span>Delete</span>
+                              </button>
+                            )}
                           </>
                         ) : item.rawOrder ? (
                           <button
@@ -2231,7 +3223,7 @@ export default function CNCWorkshopTab({
 
                   {filteredQueueItems.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="py-8 text-center text-stone-400">
+                      <td colSpan={isOperator ? 10 : 11} className="py-8 text-center text-stone-400">
                         No CNC jobs match the filter criteria.
                       </td>
                     </tr>
@@ -2253,19 +3245,19 @@ export default function CNCWorkshopTab({
               const jobType = job?.job_type || item.job_type;
               const machineName = job?.machine_name || item.machine_name;
               const toolName = job?.tool_name || item.tool_name;
-              const material = job?.material || order?.material || '';
+              const material = job?.material || order?.material || order?.wood_type || '';
               const amount = job?.amount ?? item.amount ?? 0;
               const operatorName = job?.operator_name || item.operator_name;
               const designTime = job?.design_time_minutes ?? item.design_time ?? 0;
               const completionTime = job?.completion_time_minutes ?? job?.run_time_minutes ?? item.completion_time ?? 0;
-              const programFile = job?.design_file || '';
-              const description = job?.notes || order?.cnc_notes || order?.internal_notes || '';
+              const programFile = job?.design_file || order?.cnc_file_url || order?.cad_file_url || '';
+              const description = job?.notes || order?.cnc_notes || order?.remarks || '';
               const status = job?.status || item.status;
 
               // Additional Firestore job-specific fields
               const customerName = job?.customer_name || (order?.customer_id ? customerMap.get(order.customer_id)?.name : '') || '';
               const productName = job?.product_name || order?.sub_category || order?.category || '';
-              const dimensions = job?.dimensions || order?.wood_schedule?.size_of_product || order?.size || '';
+              const dimensions = job?.dimensions || order?.size_of_product || '';
               const createdAt = job?.created_at || order?.created_at || '';
               const completedAt = job?.completed_at || '';
               const createdBy = job?.created_by || '';
@@ -2301,9 +3293,11 @@ export default function CNCWorkshopTab({
                           {status}
                         </span>
 
-                        <span className="font-black text-xs text-stone-900 font-display">
-                          ₹{Number(amount || 0).toLocaleString('en-IN')}
-                        </span>
+                        {!isOperator && (
+                          <span className="font-black text-xs text-stone-900 font-display">
+                            ₹{Number(amount || 0).toLocaleString('en-IN')}
+                          </span>
+                        )}
 
                         {/* Clear Expand / Collapse Control Button */}
                         <button
@@ -2378,7 +3372,7 @@ export default function CNCWorkshopTab({
                           </div>
 
                           <div>
-                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Operator / CNC Manager</span>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Operator</span>
                             <span className="font-medium text-stone-800 truncate block">{operatorName || '—'}</span>
                           </div>
 
@@ -2389,10 +3383,10 @@ export default function CNCWorkshopTab({
                         </div>
                       </div>
 
-                      {/* Section 2: Time & Billing */}
+                      {/* Section 2: Time & Running Log */}
                       <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-2">
                         <div className="text-[10px] font-extrabold text-teal-800 uppercase tracking-wider border-b border-stone-100 pb-1">
-                          Time & Billing
+                          {isOperator ? 'Time & Machine Log' : 'Time & Billing'}
                         </div>
 
                         <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
@@ -2404,29 +3398,82 @@ export default function CNCWorkshopTab({
                           </div>
 
                           <div>
-                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Job Completion Time</span>
-                            <span className="font-medium text-stone-800 block">
-                              {formatJobDurationDisplay(job?.completion_time_value, job?.completion_time_unit, completionTime)}
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Machine Running Time</span>
+                            <span className="font-mono font-bold text-stone-900 block">
+                              {job ? getJobRunningTimeDisplay(job) : formatJobDurationDisplay(item.completion_time_value, item.completion_time_unit, completionTime)}
                             </span>
+                            {job?.start_time && job?.stop_time && (
+                              <span className="text-[10px] font-mono text-stone-400 block">
+                                {job.start_time} – {job.stop_time}{job.is_overnight ? ' (+1d)' : ''}
+                              </span>
+                            )}
                           </div>
 
-                          <div className="col-span-2 pt-1 border-t border-stone-100 flex items-center justify-between">
-                            <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Amount / Billing</span>
-                            <span className="font-black text-xs text-teal-900 font-display">
-                              ₹{Number(amount || 0).toLocaleString('en-IN')}
-                            </span>
-                          </div>
+                          {!isOperator && (
+                            <div className="col-span-2 pt-1 border-t border-stone-100 flex items-center justify-between">
+                              <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">Amount / Billing</span>
+                              <span className="font-black text-xs text-teal-900 font-display">
+                                ₹{Number(amount || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {/* Section 3: Program File Ref (.dxf / .nc) */}
-                      <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-1">
-                        <div className="flex items-center gap-1 text-[10px] font-extrabold text-teal-800 uppercase tracking-wider">
-                          <FileCode size={12} className="text-teal-700" />
-                          <span>Program File Ref (.dxf / .nc)</span>
+                      {/* Section 3: Program Files (.dxf / .nc) with File Count & Quick Modal Access */}
+                      <div className="bg-white p-2.5 rounded-lg border border-stone-200/80 space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-extrabold text-teal-800 uppercase tracking-wider">
+                          <div className="flex items-center gap-1.5">
+                            <FileCode size={12} className="text-teal-700" />
+                            <span>Program Files (.dxf / .nc)</span>
+                            <button
+                              type="button"
+                              onClick={() => setQuickFilesModalJob(job)}
+                              className="px-1.5 py-0.2 bg-teal-100 hover:bg-teal-200 text-teal-900 rounded-full font-mono text-[9px] font-extrabold border border-teal-200 transition cursor-pointer"
+                              title="Click to view file list and version history"
+                            >
+                              {job?.program_files_count !== undefined
+                                ? `${job.program_files_count} ${job.program_files_count === 1 ? 'file' : 'files'}`
+                                : (job?.fileName || programFile ? '1 file' : '0 files')}
+                            </button>
+                          </div>
+                          {(job?.fileUrl || job?.design_file_url || order?.cnc_file_url || (job?.program_files_count && job.program_files_count > 0)) && (
+                            <span className="text-[9px] text-teal-700 font-semibold bg-teal-50 px-1.5 py-0.2 rounded border border-teal-200">
+                              Cloud Stored
+                            </span>
+                          )}
                         </div>
-                        <div className="p-1.5 bg-stone-50 rounded border border-stone-200/60 font-mono text-[11px] text-stone-800 break-all">
-                          {programFile || <span className="text-stone-400 italic">None recorded</span>}
+                        <div className="p-1.5 bg-stone-50 rounded border border-stone-200/60 font-mono text-[11px] text-stone-800 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setQuickFilesModalJob(job)}
+                            className="truncate font-semibold text-left text-teal-900 hover:text-teal-700 transition cursor-pointer hover:underline"
+                            title="Click to open CNC Program Files manager"
+                          >
+                            {job?.fileName || job?.design_file_name || programFile || <span className="text-stone-400 italic">No files attached</span>}
+                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setQuickFilesModalJob(job)}
+                              className="px-2 py-0.5 bg-teal-700 hover:bg-teal-800 text-white rounded text-[10px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                              title="View & manage CNC program files"
+                            >
+                              <FileCode size={10} />
+                              <span>Files ({job?.program_files_count !== undefined ? job.program_files_count : (job?.fileName || programFile ? 1 : 0)})</span>
+                            </button>
+                            {(job?.fileUrl || job?.design_file_url || order?.cnc_file_url) && (
+                              <button
+                                type="button"
+                                onClick={() => downloadCNCProgramFile(job?.fileUrl || job?.design_file_url || order?.cnc_file_url || '', job?.fileName || job?.design_file_name || programFile)}
+                                className="px-2 py-0.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded text-[10px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                                title="Download .dxf / .nc program file"
+                              >
+                                <Download size={10} />
+                                <span>Download</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -2582,21 +3629,23 @@ export default function CNCWorkshopTab({
                               <Pencil size={12} />
                               <span>Edit</span>
                             </button>
-                            <button
-                              type="button"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const jobTitle = item.article_no || item.rawJob?.job_number || 'this CNC job';
-                                if (window.confirm(`Are you sure you want to delete CNC job "${jobTitle}"?`)) {
-                                  await onDeleteJob(item.rawJob!.id);
-                                }
-                              }}
-                              className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer min-w-[70px]"
-                              title="Delete CNC Job"
-                            >
-                              <Trash2 size={12} />
-                              <span>Delete</span>
-                            </button>
+                            {canDeleteJobs && (
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const jobTitle = item.article_no || item.rawJob?.job_number || 'this CNC job';
+                                  if (window.confirm(`Are you sure you want to delete CNC job "${jobTitle}"?`)) {
+                                    await onDeleteJob(item.rawJob!.id);
+                                  }
+                                }}
+                                className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition cursor-pointer min-w-[70px]"
+                                title="Delete CNC Job"
+                              >
+                                <Trash2 size={12} />
+                                <span>Delete</span>
+                              </button>
+                            )}
                           </>
                         ) : item.rawOrder ? (
                           <button
@@ -2627,7 +3676,7 @@ export default function CNCWorkshopTab({
       )}
 
       {/* SUB-VIEW 4: TOOL INVENTORY & BIT MANAGEMENT */}
-      {activeSubTab === 'inventory' && (
+      {canAccessInventoryAndReports && activeSubTab === 'inventory' && (
         <div className="space-y-4">
           {/* Header & Controls Bar */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -3137,32 +4186,80 @@ export default function CNCWorkshopTab({
       )}
 
       {/* SUB-VIEW 5: MONTHLY REPORT */}
-      {activeSubTab === 'reports' && (
+      {canAccessInventoryAndReports && activeSubTab === 'reports' && (
         <div className="space-y-6">
-          <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold text-stone-900 tracking-tight">
                 Monthly CNC Workshop Performance {canViewTotalRevenue ? '& Financial Report' : 'Report'}
               </h2>
               <p className="text-xs text-stone-500">
                 {canViewTotalRevenue
-                  ? 'Aggregated revenue, spindle utilization hours, and carving job throughput.'
-                  : 'Aggregated spindle utilization hours and carving job throughput.'}
-                            </p>
+                  ? 'Filter by month, specific date (DD/MM/YYYY), and CNC operator for itemized revenue & HH:MM runtime logs.'
+                  : 'Filter by month, specific date (DD/MM/YYYY), and CNC operator for itemized job throughput & HH:MM runtime logs.'}
+              </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-1.5">
                 <span className="text-xs font-bold text-stone-700">Month:</span>
                 <input
                   type="month"
                   value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedMonth(e.target.value);
+                    setReportDateFilter('');
+                  }}
                   className="px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-800 focus:bg-white focus:outline-none"
                 />
               </div>
 
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-stone-700">Operator:</span>
+                <select
+                  value={reportOperatorFilter}
+                  onChange={(e) => setReportOperatorFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-800 focus:bg-white focus:outline-none"
+                >
+                  <option value="all">All Operators</option>
+                  {allOperators.map((op) => (
+                    <option key={op.id} value={op.id}>
+                      {op.name}{!isUserActiveStatus(op) ? ' (Inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-stone-700">Date:</span>
+                <input
+                  type="date"
+                  value={reportDateFilter}
+                  onChange={(e) => setReportDateFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-800 focus:bg-white focus:outline-none"
+                />
+                {reportDateFilter && (
+                  <span className="text-[11px] font-mono font-semibold text-teal-800 bg-teal-50 px-2 py-1 rounded-lg border border-teal-200">
+                    {formatDateDDMMYYYY(reportDateFilter)}
+                  </span>
+                )}
+              </div>
+
+              {(reportOperatorFilter !== 'all' || reportDateFilter) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportOperatorFilter('all');
+                    setReportDateFilter('');
+                  }}
+                  className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Clear Filters
+                </button>
+              )}
+
               <button
+                type="button"
                 onClick={() => window.print()}
                 className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
@@ -3172,41 +4269,49 @@ export default function CNCWorkshopTab({
             </div>
           </div>
 
-          {/* Month Summary Cards */}
+          {/* Month / Filtered Summary Cards */}
           <div className={`grid grid-cols-1 ${canViewTotalRevenue ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-4`}>
             <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
-              <span className="text-xs text-stone-500 font-semibold block">Total Jobs Completed</span>
+              <span className="text-xs text-stone-500 font-semibold block">Total Filtered Jobs</span>
               <div className="text-3xl font-black text-stone-900 mt-2 font-display">
-                {metrics.currentMonthJobsCount}
+                {reportFilteredJobs.length}
               </div>
-              <span className="text-[11px] text-stone-400 mt-1 block">In month {selectedMonth}</span>
+              <span className="text-[11px] text-stone-400 mt-1 block">
+                {reportDateFilter ? `On ${formatDateDDMMYYYY(reportDateFilter)}` : `In month ${selectedMonth}`}
+              </span>
             </div>
 
             {canViewTotalRevenue && (
-            <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
-              <span className="text-xs text-stone-500 font-semibold block">Total Workshop Revenue</span>
-              <div className="text-3xl font-black text-emerald-700 mt-2 font-display">
-                ₹{metrics.monthRevenue.toLocaleString('en-IN')}
+              <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+                <span className="text-xs text-stone-500 font-semibold block">Total Workshop Revenue</span>
+                <div className="text-3xl font-black text-emerald-700 mt-2 font-display">
+                  ₹{reportTotalRevenue.toLocaleString('en-IN')}
+                </div>
+                <span className="text-[11px] text-stone-400 mt-1 block">Separate CNC workshop financial balance</span>
               </div>
-              <span className="text-[11px] text-stone-400 mt-1 block">Separate CNC workshop financial balance</span>
-            </div>
             )}
 
             <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
-              <span className="text-xs text-stone-500 font-semibold block">Total Machine Runtime</span>
-              <div className="text-3xl font-black text-cyan-800 mt-2 font-display">
-                {metrics.monthMachiningHours} <span className="text-sm font-normal text-stone-500">hours</span>
+              <span className="text-xs text-stone-500 font-semibold block">Total Machine Running Time</span>
+              <div className="text-3xl font-black text-cyan-800 mt-2 font-display font-mono">
+                {formatMinutesToHHMM(reportTotalMinutes)}
               </div>
-              <span className="text-[11px] text-stone-400 mt-1 block">Spindle operational runtime</span>
+              <span className="text-[11px] text-stone-400 mt-1 block">
+                {(reportTotalMinutes / 60).toFixed(1)} hours cumulative spindle runtime
+              </span>
             </div>
           </div>
 
-          {/* Jobs Detail for Selected Month */}
+          {/* Jobs Detail for Selected Month / Filters */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
             <div className="p-4 bg-stone-50 border-b border-stone-200 font-bold text-xs text-stone-800 flex items-center justify-between">
-              <span>{canViewTotalRevenue ? `Itemized CNC Carving Billing Log for ${selectedMonth}` : `Itemized CNC Carving Job Log for ${selectedMonth}`}</span>
+              <span>
+                {canViewTotalRevenue
+                  ? `Itemized CNC Carving Billing Log (${reportDateFilter ? formatDateDDMMYYYY(reportDateFilter) : selectedMonth})`
+                  : `Itemized CNC Carving Job Log (${reportDateFilter ? formatDateDDMMYYYY(reportDateFilter) : selectedMonth})`}
+              </span>
               <span className="text-[11px] text-stone-500 font-normal">
-                {metrics.currentMonthJobsCount} entries
+                {reportFilteredJobs.length} entries
               </span>
             </div>
 
@@ -3216,44 +4321,45 @@ export default function CNCWorkshopTab({
                   <tr>
                     <th className="p-3">Date</th>
                     <th className="p-3">Article No</th>
+                    <th className="p-3">Operator</th>
                     <th className="p-3">Client & Furniture</th>
                     <th className="p-3">Job Type</th>
                     <th className="p-3">Machine</th>
-                    <th className="p-3">Duration</th>
+                    <th className="p-3">Start</th>
+                    <th className="p-3">Stop</th>
+                    <th className="p-3">Running Time</th>
                     {canViewTotalRevenue && <th className="p-3 text-right">Amount (₹)</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-200">
-                  {cncJobs
-                    .filter(j => {
-                      if (!j.job_date) return false;
-                      const [y, m] = j.job_date.split('-');
-                      const [selY, selM] = selectedMonth.split('-');
-                      return y === selY && m === selM;
-                    })
-                    .map(j => (
-                      <tr key={j.id} className="hover:bg-stone-50">
-                        <td className="p-3 font-semibold text-stone-700">{formatToDDMMYYYY(j.job_date)}</td>
-                        <td className="p-3 font-bold text-cyan-900">{j.article_no || j.job_number}</td>
-                        <td className="p-3">
-                          <div className="font-semibold text-stone-800">{j.product_name}</div>
-                          <div className="text-[10px] text-stone-400">{j.customer_name}</div>
-                        </td>
-                        <td className="p-3 text-stone-600">{j.job_type}</td>
-                        <td className="p-3 text-stone-600">{j.machine_name}</td>
-                        <td className="p-3 text-stone-600">{j.run_time_minutes} mins</td>
-                        {canViewTotalRevenue && (
+                  {reportFilteredJobs.map(j => (
+                    <tr key={j.id} className="hover:bg-stone-50">
+                      <td className="p-3 font-semibold text-stone-700 whitespace-nowrap">{formatDateDDMMYYYY(j.job_date)}</td>
+                      <td className="p-3 font-bold text-cyan-900 font-mono">{j.article_no || j.job_number}</td>
+                      <td className="p-3 font-semibold text-stone-700">{j.operator_name || 'Unassigned'}</td>
+                      <td className="p-3">
+                        <div className="font-semibold text-stone-800">{j.product_name}</div>
+                        <div className="text-[10px] text-stone-400">{j.customer_name}</div>
+                      </td>
+                      <td className="p-3 text-stone-600">{j.job_type}</td>
+                      <td className="p-3 text-stone-600">{j.machine_name}</td>
+                      <td className="p-3 font-mono text-stone-700">{j.start_time || '—'}</td>
+                      <td className="p-3 font-mono text-stone-700">
+                        {j.stop_time || '—'}{j.is_overnight && j.stop_time ? ' (+1d)' : ''}
+                      </td>
+                      <td className="p-3 font-mono font-bold text-stone-900">{getJobRunningTimeDisplay(j)}</td>
+                      {canViewTotalRevenue && (
                         <td className="p-3 text-right font-bold text-stone-900">
                           ₹{Number(j.amount || 0).toLocaleString('en-IN')}
                         </td>
-                        )}
-                      </tr>
-                    ))}
+                      )}
+                    </tr>
+                  ))}
 
-                  {metrics.currentMonthJobsCount === 0 && (
+                  {reportFilteredJobs.length === 0 && (
                     <tr>
-                      <td colSpan={canViewTotalRevenue ? 7 : 6} className="p-6 text-center text-stone-400">
-                        No CNC machining jobs recorded for {selectedMonth}.
+                      <td colSpan={canViewTotalRevenue ? 10 : 9} className="p-6 text-center text-stone-400">
+                        No CNC machining jobs match the selected report filters.
                       </td>
                     </tr>
                   )}
@@ -3263,6 +4369,408 @@ export default function CNCWorkshopTab({
           </div>
         </div>
       )}
+
+      {/* SUB-VIEW 6: ADMIN OPERATOR MANAGEMENT */}
+      {canManageOperators && activeSubTab === 'operators' && (
+        <div className="space-y-5">
+          {/* Header & CTA */}
+          <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  CNC Operators & Access Management
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-teal-50 text-[#115e59] border border-teal-200">
+                  {activeOperators.length} Active / {allOperators.length} Total
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Add CNC operators, control active status, trigger Firebase password reset emails, and inspect operator job output.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenAddOperatorModal}
+              className="px-4 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl text-xs font-bold transition inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+            >
+              <UserPlus size={14} />
+              <span>Add CNC Operator</span>
+            </button>
+          </div>
+
+          {operatorActionBanner && (
+            <div
+              className={`px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 ${
+                operatorActionBanner.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+            >
+              <span>{operatorActionBanner.message}</span>
+              <button
+                type="button"
+                onClick={() => setOperatorActionBanner(null)}
+                className="p-0.5 hover:opacity-75 cursor-pointer"
+                aria-label="Dismiss notice"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Filter Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={operatorSearchTerm}
+                onChange={(e) => setOperatorSearchTerm(e.target.value)}
+                placeholder="Search operator name, email, phone..."
+                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#115e59]"
+              />
+            </div>
+            <select
+              value={operatorStatusFilter}
+              onChange={(e) => setOperatorStatusFilter(e.target.value as 'all' | 'ACTIVE' | 'INACTIVE')}
+              className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none"
+            >
+              <option value="all">All Statuses</option>
+              <option value="ACTIVE">Active Operators</option>
+              <option value="INACTIVE">Inactive Operators</option>
+            </select>
+          </div>
+
+          {/* Operators Table */}
+          <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-[#115e59]/5 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Operator</th>
+                    <th className="py-3 px-3">Email & Phone</th>
+                    <th className="py-3 px-3">Account Status</th>
+                    <th className="py-3 px-3">Auth Setup</th>
+                    <th className="py-3 px-3 text-center">Assigned / Done</th>
+                    <th className="py-3 px-3">Total Runtime</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {allOperators
+                    .filter((op) => {
+                      const q = operatorSearchTerm.trim().toLowerCase();
+                      const matchSearch =
+                        !q ||
+                        op.name.toLowerCase().includes(q) ||
+                        op.email.toLowerCase().includes(q) ||
+                        (op.phone || '').toLowerCase().includes(q);
+                      const active = isUserActiveStatus(op);
+                      const matchStatus =
+                        operatorStatusFilter === 'all' ||
+                        (operatorStatusFilter === 'ACTIVE' && active) ||
+                        (operatorStatusFilter === 'INACTIVE' && !active);
+                      return matchSearch && matchStatus;
+                    })
+                    .map((op) => {
+                      const opStats = computeOperatorJobStats(op, cncJobs);
+                      const isActive = isUserActiveStatus(op);
+                      return (
+                        <tr key={op.id} className="hover:bg-stone-50/70 transition">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-[#115e59] text-white text-xs font-extrabold flex items-center justify-center shrink-0">
+                                {op.initials || op.name.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-900">{op.name}</div>
+                                <div className="text-[10px] font-mono text-stone-400">{op.id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-medium text-slate-800">{op.email}</div>
+                            <div className="text-[11px] text-stone-500">{op.phone || '—'}</div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                                isActive
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-stone-100 text-stone-600 border border-stone-200'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-stone-400'}`} />
+                              {isActive ? 'ACTIVE' : (op.status || 'INACTIVE')}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            {op.password_configured || op.auth_uid ? (
+                              <span className="px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
+                                Activated
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
+                                Pending Activation
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-center font-bold text-slate-800">
+                            {opStats.assignedCount} / <span className="text-emerald-700">{opStats.completedCount}</span>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                            {opStats.totalRunningHHMM}
+                          </td>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOperatorForInspect(op)}
+                                className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                title="View assigned jobs"
+                              >
+                                <Eye size={12} />
+                                <span>Jobs ({opStats.assignedCount})</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditOperatorModal(op)}
+                                className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Pencil size={12} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOperatorStatus(op)}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer border ${
+                                  isActive
+                                    ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                                }`}
+                                title={isActive ? 'Deactivate operator' : 'Activate operator'}
+                              >
+                                {isActive ? <UserX size={12} /> : <UserCheck size={12} />}
+                                <span>{isActive ? 'Deactivate' : 'Activate'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendOperatorPasswordReset(op)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                title="Send Firebase password reset email"
+                              >
+                                <KeyRound size={12} />
+                                <span>Reset</span>
+                              </button>
+                              {onDeleteUser && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm(`Remove operator "${op.name}" from authorized users?`)) {
+                                      onDeleteUser(op.id);
+                                      setOperatorActionBanner({
+                                        type: 'success',
+                                        message: `Removed operator ${op.name}.`,
+                                      });
+                                    }
+                                  }}
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg cursor-pointer"
+                                  title="Delete operator"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                  {allOperators.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-stone-400">
+                        No CNC operators registered yet. Click &ldquo;Add CNC Operator&rdquo; to create one.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD / EDIT CNC OPERATOR (ADMIN ONLY) */}
+      {canManageOperators && isOperatorModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-stone-200 overflow-hidden">
+            <div className="px-5 py-4 bg-[#115e59] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <UserPlus size={18} />
+                <div>
+                  <h3 className="font-bold text-sm text-white">
+                    {editingOperator ? `Edit Operator: ${editingOperator.name}` : 'Add New CNC Operator'}
+                  </h3>
+                  <p className="text-[11px] text-teal-100/80">
+                    Operator activates their own password on first login
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsOperatorModalOpen(false)}
+                className="p-1 text-teal-200 hover:text-white rounded-lg cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitOperatorForm} className="p-5 space-y-4 text-xs">
+              {operatorFormError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl font-semibold">
+                  {operatorFormError}
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-semibold text-stone-700 block mb-1">
+                  Operator Full Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={operatorForm.name}
+                  onChange={(e) => setOperatorForm({ ...operatorForm, name: e.target.value })}
+                  placeholder="e.g. Swapnil"
+                  className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-stone-700 block mb-1">
+                  Operator Email <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={operatorForm.email}
+                  onChange={(e) => setOperatorForm({ ...operatorForm, email: e.target.value })}
+                  placeholder="operator@workshop.com"
+                  className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    value={operatorForm.phone}
+                    onChange={(e) => setOperatorForm({ ...operatorForm, phone: e.target.value })}
+                    placeholder="+91 98..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={operatorForm.status}
+                    onChange={(e) => setOperatorForm({ ...operatorForm, status: e.target.value as UserStatus })}
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-3 bg-teal-50/70 border border-teal-200/80 rounded-xl text-[11px] text-teal-900">
+                No default password is stored. Once saved, the operator uses <strong>Activate Account</strong> on the login screen with their assigned email to set their private Firebase Auth password.
+              </div>
+
+              <div className="pt-2 border-t border-stone-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsOperatorModalOpen(false)}
+                  className="px-4 py-2 border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#115e59] hover:bg-[#0f4c4a] text-white rounded-xl font-bold cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Save size={13} />
+                  <span>{editingOperator ? 'Save Operator' : 'Create Operator'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: INSPECT OPERATOR ASSIGNED JOBS (ADMIN ONLY) */}
+      {canManageOperators && selectedOperatorForInspect && (() => {
+        const inspectStats = computeOperatorJobStats(selectedOperatorForInspect, cncJobs);
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-stone-200 overflow-hidden flex flex-col max-h-[88vh]">
+              <div className="px-5 py-4 bg-[#115e59] text-white flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="font-bold text-sm text-white">
+                    {selectedOperatorForInspect.name} — Assigned CNC Jobs ({inspectStats.assignedCount})
+                  </h3>
+                  <p className="text-[11px] text-teal-100/80">
+                    {selectedOperatorForInspect.email} • Total Runtime: {inspectStats.totalRunningHHMM}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOperatorForInspect(null)}
+                  className="p-1 text-teal-200 hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-y-auto flex-1 divide-y divide-stone-100 text-xs">
+                {inspectStats.assignedJobs.map((j) => (
+                  <div key={j.id} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-slate-900">{j.article_no || j.job_number}</span>
+                        <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-semibold text-[10px]">
+                          {j.machine_name || 'Small'}
+                        </span>
+                        <span className="text-stone-500">{formatDateDDMMYYYY(j.job_date)}</span>
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        {j.job_type} • {j.start_time && j.stop_time ? `${j.start_time} – ${j.stop_time}` : 'Legacy time'} • Runtime:{' '}
+                        <strong className="font-mono text-slate-800">{getJobRunningTimeDisplay(j)}</strong>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-slate-900">₹{Number(j.amount || 0).toLocaleString('en-IN')}</div>
+                      <span className="text-[10px] font-bold text-teal-800">{j.status}</span>
+                    </div>
+                  </div>
+                ))}
+                {inspectStats.assignedJobs.length === 0 && (
+                  <div className="py-10 text-center text-stone-400">
+                    No CNC jobs recorded for {selectedOperatorForInspect.name} yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODAL: CNC JOB RECORD / EDIT */}
       {isJobModalOpen && (
@@ -3294,16 +4802,28 @@ export default function CNCWorkshopTab({
 
             {/* Modal Form */}
             <form onSubmit={handleSubmitJobForm} className="p-4 md:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+              {jobFormError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0 text-rose-600" />
+                  <span>{jobFormError}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 md:gap-4">
                 {/* Field 1: Date */}
                 <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    <span className="md:hidden font-bold">1. </span>Date <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-stone-700">
+                      <span className="md:hidden font-bold">1. </span>Date <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] font-mono font-semibold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200/70">
+                      {formatDateDDMMYYYY(jobFormData.job_date || getLocalDateYYYYMMDD())}
+                    </span>
+                  </div>
                   <input
                     type="date"
                     required
-                    value={jobFormData.job_date || new Date().toISOString().split('T')[0]}
+                    value={jobFormData.job_date || getLocalDateYYYYMMDD()}
                     onChange={(e) => setJobFormData({ ...jobFormData, job_date: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                   />
@@ -3343,20 +4863,24 @@ export default function CNCWorkshopTab({
                   </div>
                 </div>
 
-                {/* Field 4: Machine Assigned */}
+                {/* Field 4: Machine Assigned (Small / Big) */}
                 <div>
                   <label className="text-xs font-semibold text-stone-700 block mb-1">
                     <span className="md:hidden font-bold">4. </span>Machine Assigned <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <select
-                      value={jobFormData.machine_name}
+                      required
+                      value={jobFormData.machine_name || 'Small'}
                       onChange={(e) => setJobFormData({ ...jobFormData, machine_name: e.target.value })}
                       className="w-full appearance-none px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8"
                     >
                       {FORM_MACHINES.map(m => (
                         <option key={m} value={m}>{m}</option>
                       ))}
+                      {jobFormData.machine_name && !FORM_MACHINES.includes(jobFormData.machine_name as any) && (
+                        <option value={jobFormData.machine_name}>{jobFormData.machine_name} (Legacy)</option>
+                      )}
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                   </div>
@@ -3395,36 +4919,79 @@ export default function CNCWorkshopTab({
                   />
                 </div>
 
-                {/* Field 7: Amount / Billing (₹) */}
-                <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    <span className="md:hidden font-bold">7. </span>Amount / Billing (₹)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 font-bold text-xs">₹</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={jobFormData.amount ?? ''}
-                      onChange={(e) => setJobFormData({ ...jobFormData, amount: Number(e.target.value) })}
-                      placeholder="0"
-                      className="w-full pl-8 pr-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                    />
+                {/* Field 7: Amount / Billing (₹) - Restricted from CNC Operators */}
+                {!isOperator && (
+                  <div>
+                    <label className="text-xs font-semibold text-stone-700 block mb-1">
+                      <span className="md:hidden font-bold">7. </span>Amount / Billing (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 font-bold text-xs">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={jobFormData.amount ?? ''}
+                        onChange={(e) => setJobFormData({ ...jobFormData, amount: Number(e.target.value) })}
+                        placeholder="0"
+                        className="w-full pl-8 pr-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Field 8: Operator / CNC Manager */}
+                {/* Field 8: Operator (Required dynamic dropdown, locked for Operator login) */}
                 <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    <span className="md:hidden font-bold">8. </span>Operator / CNC Manager
-                  </label>
-                  <input
-                    type="text"
-                    value={jobFormData.operator_name || ''}
-                    onChange={(e) => setJobFormData({ ...jobFormData, operator_name: e.target.value })}
-                    placeholder="e.g. Lucee Admin"
-                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-stone-700">
+                      <span className="md:hidden font-bold">8. </span>Operator <span className="text-rose-500">*</span>
+                    </label>
+                    {isOperator && (
+                      <span className="text-[10px] font-bold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                        Auto-assigned
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <select
+                      required
+                      disabled={isOperator}
+                      value={jobFormData.operator_id || ''}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const found = allOperators.find((op) => op.id === selectedId);
+                        setJobFormData({
+                          ...jobFormData,
+                          operator_id: selectedId,
+                          operator_name: found?.name || jobFormData.operator_name || '',
+                        });
+                      }}
+                      className={`w-full appearance-none px-3.5 py-2.5 border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8 ${
+                        isOperator
+                          ? 'bg-stone-100 text-stone-600 cursor-not-allowed'
+                          : 'bg-white text-stone-800'
+                      }`}
+                    >
+                      {activeOperators.length === 0 && !isOperator && (
+                        <option value="">No active operators</option>
+                      )}
+                      {activeOperators.map((op) => (
+                        <option key={op.id} value={op.id}>
+                          {op.name}
+                        </option>
+                      ))}
+                      {isOperator && !activeOperators.some((op) => op.id === currentUser.id) && (
+                        <option value={currentUser.id}>{currentUser.name}</option>
+                      )}
+                      {jobFormData.operator_id &&
+                        !activeOperators.some((op) => op.id === jobFormData.operator_id) &&
+                        !(isOperator && jobFormData.operator_id === currentUser.id) && (
+                          <option value={jobFormData.operator_id}>
+                            {jobFormData.operator_name || jobFormData.operator_id} (Historical)
+                          </option>
+                        )}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  </div>
                 </div>
 
                 {/* Field 9: Time For Designing */}
@@ -3448,7 +5015,7 @@ export default function CNCWorkshopTab({
                           design_time_minutes: numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, unit) : 0,
                         });
                       }}
-                      placeholder="e.g. 1.5"
+                      placeholder="e.g. 45"
                       className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                     />
                     <select
@@ -3471,79 +5038,164 @@ export default function CNCWorkshopTab({
                   </div>
                 </div>
 
-                {/* Field 10: Job Completion Time */}
+                {/* Field 10: 24-Hour Start Time, Stop Time & Auto-Calculated Machine Running Time */}
                 <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    Job Completion Time
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      value={jobFormData.completion_time_value ?? ''}
-                      onChange={(e) => {
-                        const valStr = e.target.value;
-                        const numVal = valStr === '' ? undefined : Number(valStr);
-                        const unit = (jobFormData.completion_time_unit as CNCDurationUnit) || 'Minutes';
-                        const minutes = numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, unit) : 0;
-                        setJobFormData({
-                          ...jobFormData,
-                          completion_time_value: numVal,
-                          completion_time_minutes: minutes,
-                          run_time_minutes: minutes,
-                        });
-                      }}
-                      placeholder="e.g. 1.5"
-                      className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                    />
-                    <select
-                      value={jobFormData.completion_time_unit || 'Minutes'}
-                      onChange={(e) => {
-                        const newUnit = e.target.value as CNCDurationUnit;
-                        const numVal = jobFormData.completion_time_value !== undefined ? Number(jobFormData.completion_time_value) : undefined;
-                        const minutes = numVal !== undefined && !isNaN(numVal) ? convertDurationToMinutes(numVal, newUnit) : 0;
-                        setJobFormData({
-                          ...jobFormData,
-                          completion_time_unit: newUnit,
-                          completion_time_minutes: minutes,
-                          run_time_minutes: minutes,
-                        });
-                      }}
-                      className="w-28 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      <option value="Minutes">Minutes</option>
-                      <option value="Hours">Hours</option>
-                      <option value="Days">Days</option>
-                    </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-stone-700">
+                      Machine Running Time (24h) <span className="text-rose-500">*</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(jobFormData.is_overnight)}
+                        onChange={(e) =>
+                          setJobFormData({ ...jobFormData, is_overnight: e.target.checked })
+                        }
+                        className="rounded border-stone-300 text-[#115e59] focus:ring-teal-700"
+                      />
+                      <Moon size={11} className="text-stone-500" />
+                      <span>Overnight shift</span>
+                    </label>
                   </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
+                        <span>Start Time</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setJobFormData({ ...jobFormData, start_time: getLocalTimeHHMM() })
+                          }
+                          className="text-teal-700 hover:underline font-bold cursor-pointer"
+                        >
+                          Now
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={5}
+                        placeholder="09:30"
+                        value={jobFormData.start_time || ''}
+                        onChange={(e) =>
+                          setJobFormData({ ...jobFormData, start_time: e.target.value })
+                        }
+                        onBlur={(e) => {
+                          const norm = normalize24HourTimeInput(e.target.value);
+                          if (norm !== e.target.value) {
+                            setJobFormData((prev) => ({ ...prev, start_time: norm }));
+                          }
+                        }}
+                        className="w-full px-2.5 py-2 bg-white border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
+                        <span>Stop Time</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setJobFormData({ ...jobFormData, stop_time: getLocalTimeHHMM() })
+                          }
+                          className="text-teal-700 hover:underline font-bold cursor-pointer"
+                        >
+                          Now
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={5}
+                        placeholder="13:45"
+                        value={jobFormData.stop_time || ''}
+                        onChange={(e) =>
+                          setJobFormData({ ...jobFormData, stop_time: e.target.value })
+                        }
+                        onBlur={(e) => {
+                          const norm = normalize24HourTimeInput(e.target.value);
+                          if (norm !== e.target.value) {
+                            setJobFormData((prev) => ({ ...prev, stop_time: norm }));
+                          }
+                        }}
+                        className="w-full px-2.5 py-2 bg-white border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] text-stone-500 font-semibold mb-0.5">
+                        Running Time
+                      </div>
+                      <div
+                        className={`w-full px-2.5 py-2 rounded-xl border text-xs font-mono font-black flex items-center justify-center ${
+                          liveRunningTimeResult.isValid
+                            ? 'bg-teal-50 border-teal-200 text-[#115e59]'
+                            : jobFormData.start_time || jobFormData.stop_time
+                            ? 'bg-rose-50 border-rose-200 text-rose-700'
+                            : 'bg-stone-50 border-stone-200 text-stone-500'
+                        }`}
+                      >
+                        {liveRunningTimeResult.isValid
+                          ? liveRunningTimeResult.formatted
+                          : editingJob && !jobFormData.start_time && !jobFormData.stop_time
+                          ? getJobRunningTimeDisplay(editingJob)
+                          : '00:00'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!liveRunningTimeResult.isValid &&
+                    (jobFormData.start_time || jobFormData.stop_time) && (
+                      <p className="text-[10px] text-rose-600 font-semibold mt-1">
+                        {liveRunningTimeResult.error}
+                      </p>
+                    )}
                 </div>
 
-                {/* Field 11: Program File Ref (.dxf / .nc) */}
-                <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    Program File Ref (.dxf / .nc)
-                  </label>
-                  <div className="relative">
-                    <FileCode size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="text"
-                      value={jobFormData.design_file || ''}
-                      onChange={(e) => setJobFormData({ ...jobFormData, design_file: e.target.value })}
-                      placeholder="e.g. mandir_panel_relief_v2.nc"
-                      className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-mono text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                    />
-                  </div>
+                {/* Field 11: Multi-file CNC Program Files (.dxf / .nc) with Version History */}
+                <div className="col-span-1 md:col-span-2 bg-stone-50/70 p-3.5 rounded-2xl border border-stone-200">
+                  <CNCProgramFiles
+                    jobId={editingJob?.id || jobFormData.id || ''}
+                    jobArticleNo={jobFormData.article_no || jobFormData.job_number}
+                    currentUser={currentUser}
+                    isUnsavedJob={!editingJob}
+                    onStagedFilesChange={setStagedProgramFiles}
+                    onFilesCountChange={(count, latestFile) => {
+                      setJobFormData(prev => ({
+                        ...prev,
+                        program_files_count: count,
+                        ...(latestFile ? {
+                          fileName: latestFile.fileName,
+                          fileUrl: latestFile.fileUrl,
+                          storagePath: latestFile.storagePath,
+                          fileSize: latestFile.size,
+                          uploadedAt: latestFile.uploadedAt,
+                          design_file: latestFile.fileName,
+                          design_file_name: latestFile.fileName,
+                          design_file_url: latestFile.fileUrl,
+                          design_file_size: latestFile.size,
+                          design_file_uploaded_at: latestFile.uploadedAt,
+                        } : {}),
+                      }));
+                    }}
+                    legacyFile={{
+                      name: jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file,
+                      url: jobFormData.fileUrl || jobFormData.design_file_url,
+                      size: jobFormData.fileSize ?? jobFormData.design_file_size,
+                      uploadedAt: jobFormData.uploadedAt || jobFormData.design_file_uploaded_at,
+                    }}
+                  />
                 </div>
 
                 {/* Telemetry status badge */}
-                <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs self-end h-[42px]">
+                <div className="col-span-1 md:col-span-2 flex items-center justify-between px-3.5 py-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs h-[42px]">
                   <div className="flex items-center gap-1.5 font-bold text-emerald-800">
                     <CheckCircle2 size={14} className="text-emerald-600" />
                     <span>Ready for Spindle</span>
                   </div>
                   <span className="text-[11px] font-mono text-stone-500 bg-white/80 px-2 py-0.5 rounded border border-emerald-100">
-                    Post-P: Syntec G-Code
+                    Post-P: Syntec G-Code • Multi-file Program Library Active
                   </span>
                 </div>
 
@@ -3959,6 +5611,76 @@ export default function CNCWorkshopTab({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick CNC Program Files Manager Modal */}
+      {quickFilesModalJob && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-stone-200">
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 bg-gradient-to-r from-teal-900 to-[#115e59] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-teal-200">
+                  <FileCode size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm leading-tight">
+                      CNC Program Files (.dxf / .nc)
+                    </h3>
+                    <span className="px-2 py-0.5 rounded bg-teal-800/80 text-teal-200 text-[11px] font-mono font-bold border border-teal-700">
+                      {quickFilesModalJob.article_no || quickFilesModalJob.job_number}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-teal-200/90 mt-0.5">
+                    {quickFilesModalJob.product_name ? `${quickFilesModalJob.product_name} • ` : ''}
+                    {quickFilesModalJob.job_type || 'Carving'} • {quickFilesModalJob.machine_name || 'Small'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickFilesModalJob(null)}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1 bg-stone-50/50">
+              <CNCProgramFiles
+                jobId={quickFilesModalJob.id}
+                jobArticleNo={quickFilesModalJob.article_no || quickFilesModalJob.job_number}
+                currentUser={currentUser}
+                onFilesCountChange={(count) => {
+                  setQuickFilesModalJob(prev => prev ? { ...prev, program_files_count: count } : null);
+                }}
+                legacyFile={{
+                  name: quickFilesModalJob.fileName || quickFilesModalJob.design_file_name || quickFilesModalJob.design_file,
+                  url: quickFilesModalJob.fileUrl || quickFilesModalJob.design_file_url,
+                  size: quickFilesModalJob.fileSize ?? quickFilesModalJob.design_file_size,
+                  uploadedAt: quickFilesModalJob.uploadedAt || quickFilesModalJob.design_file_uploaded_at,
+                }}
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 bg-stone-100 border-t border-stone-200 flex items-center justify-between shrink-0">
+              <div className="text-[11px] text-stone-500 font-mono">
+                Job ID: {quickFilesModalJob.id}
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickFilesModalJob(null)}
+                className="px-4 py-1.5 bg-[#115e59] hover:bg-[#0f4c4a] text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

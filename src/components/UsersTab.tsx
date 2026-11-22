@@ -177,16 +177,25 @@ export default function UsersTab({
       return;
     }
 
+    const emailClean = userEmail.trim().toLowerCase();
+    const duplicate = users.find(
+      (u) => u.id !== editingUser.id && u.email.trim().toLowerCase() === emailClean
+    );
+    if (duplicate) {
+      alert(`Error: Another user (${duplicate.name}) is already registered with "${emailClean}".`);
+      return;
+    }
+
     const updated: User = {
       ...editingUser,
       name: fullName.trim(),
-      email: userEmail.trim().toLowerCase(),
+      email: emailClean,
       role: userRole,
       initials: initials.trim().toUpperCase(),
       status: userStatus,
       is_active: userStatus === 'ACTIVE',
       phone: userPhone.trim() || undefined,
-      google_linked: isGoogleLinked || userEmail.trim().toLowerCase().endsWith('@gmail.com'),
+      google_linked: isGoogleLinked || emailClean.endsWith('@gmail.com'),
     };
 
     onUpdateUser(updated);
@@ -348,10 +357,12 @@ export default function UsersTab({
                 className="px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-700 focus:outline-none focus:border-[#593622] transition shrink-0 min-w-[140px]"
               >
                 <option value="All Roles">All Roles</option>
+                <option value="super_admin">Super Admin</option>
                 <option value="admin">Administrator</option>
                 <option value="manager">Manager</option>
                 <option value="wood_tab_manager">Wood Tab Manager</option>
                 <option value="cnc_workshop">CNC Workshop</option>
+                <option value="cnc_operator">CNC Operator</option>
                 <option value="carpenter">Carpenter</option>
                 <option value="polish_person">Polish Person</option>
                 <option value="qc_staff">QC Staff</option>
@@ -407,6 +418,11 @@ export default function UsersTab({
                                   <ShieldCheck size={10} className="text-blue-500" /> Google SSO Linked
                                 </span>
                               )}
+                              {user.role === 'cnc_operator' && (
+                                <span className={`text-[10px] font-medium flex items-center gap-1 ${user.password_configured ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                  <KeyRound size={10} /> {user.password_configured ? 'Password Configured' : 'Pending First-Time Activation'}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -414,13 +430,13 @@ export default function UsersTab({
                         <td className="py-3.5 px-4">
                           <span
                             className={`px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wider ${
-                              user.role === 'admin'
+                              user.role === 'admin' || user.role === 'super_admin'
                                 ? 'bg-rose-50 text-rose-700 border-rose-200'
                                 : user.role === 'manager'
                                 ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                                 : user.role === 'wood_tab_manager'
                                 ? 'bg-orange-50 text-orange-800 border-orange-200'
-                                : user.role === 'cnc_workshop' || user.role === 'cnc_manager'
+                                : user.role === 'cnc_workshop' || user.role === 'cnc_manager' || user.role === 'cnc_operator'
                                 ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
                                 : user.role === 'carpenter'
                                 ? 'bg-amber-50 text-amber-800 border-amber-250'
@@ -429,7 +445,10 @@ export default function UsersTab({
                           >
                             {user.role === 'cnc_workshop' || user.role === 'cnc_manager'
                               ? 'CNC WORKSHOP'
-                              : user.role.replace(/_/g, ' ')}                          </span>
+                              : user.role === 'cnc_operator'
+                              ? 'CNC OPERATOR'
+                              : user.role.replace(/_/g, ' ')}
+                          </span>
                         </td>
                         <td className="py-3.5 px-4 font-mono font-bold text-stone-800 text-center">{user.initials}</td>
                         <td className="py-3.5 px-4">
@@ -641,10 +660,12 @@ export default function UsersTab({
                     onChange={(e) => setUserRole(e.target.value as any)}
                     className="w-full p-2 bg-stone-50 border border-stone-250 focus:outline-none rounded-xl font-bold text-stone-700"
                   >
+                    <option value="super_admin">Super Admin (Full Access)</option>
                     <option value="admin">Administrator (Full Access)</option>
                     <option value="manager">Manager (CRM &amp; Orders)</option>
                     <option value="wood_tab_manager">Wood Tab Manager (Wood Only)</option>
                     <option value="cnc_workshop">CNC Workshop</option>
+                    <option value="cnc_operator">CNC Operator (CNC Floor Access)</option>
                     <option value="carpenter">Carpenter</option>
                     <option value="polish_person">Polish Person</option>
                     <option value="qc_staff">QC Staff</option>

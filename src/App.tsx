@@ -6,9 +6,10 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { loadState, saveState, AppState, resequenceCRMCustomersInState, generateArticleNumber } from './db/store';
-import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool, CRMQuotationPhoto } from './types';
+import { User, Customer, Order, StatusLog, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool } from './types';
 import {
   authenticateFirebase,
+  isDatabasePopulated,
   seedFirestoreIfEmpty,
   syncFirestore,
   pushAllLocalDataToFirestore,
@@ -25,6 +26,7 @@ import {
   savePaymentToFirebase,
   deletePaymentFromFirebase,
   saveUserToFirebase,
+  updateUserLoginMetadataInFirebase,
   deleteUserFromFirebase,
   saveAuditLogToFirebase,
   saveCRMCustomerToFirebase,
@@ -44,8 +46,14 @@ import {
   saveCNCJobToFirebase,
   deleteCNCJobFromFirebase,
   saveCNCToolToFirebase,
-  deleteCNCToolFromFirebase
+  deleteCNCToolFromFirebase,
+  syncUserAuthMapToFirebase,
+  syncOperatorInviteToFirebase,
+  deleteOperatorInviteFromFirebase,
 } from './db/firebaseService';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from './db/firebase';
+import { isAdminRole, isOperatorRole } from './components/cncHelpers';
 
 // Component imports
 import SimulationHUD from './components/SimulationHUD';
@@ -72,21 +80,32 @@ import CarpenterReportsTab from './components/CarpenterReportsTab';
 import WoodManagementTab from './components/WoodManagementTab';
 import CarpenterProfileDashboard from './components/CarpenterProfileDashboard';
 import { hasPermission, getDefaultTabForRole, getRoleDisplayName } from './permissions';
-// import { usePreventNumberInputScroll } from './hooks/usePreventNumberInputScroll';
+import { usePreventNumberInputScroll } from './hooks/usePreventNumberInputScroll';
 
 // Utility icons
 import { HardHat, SlidersHorizontal, Settings as SettingsIcon, ShieldCheck, RefreshCw, Check, Loader2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   // Prevent mouse wheel scrolling from modifying focused number inputs
-  // usePreventNumberInputScroll();
+  usePreventNumberInputScroll();
 
   // Database store loader state (with local cache load)
   const [db, setDb] = React.useState<AppState>(() => loadState());
-  const [currentTab, setCurrentTab] = React.useState<string>('dashboard');
+  const latestDbRef = React.useRef<AppState>(db);
+  latestDbRef.current = db;
+  const [currentTab, setCurrentTab] = React.useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get('tab');
+      if (t) return t;
+    }
+    return 'dashboard';
+  });
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
   const [preselectedQuotationId, setPreselectedQuotationId] = React.useState<string | null>(null);
-  const [crmAction, setCrmAction] = React.useState<'add-customer' | 'new-quotation' | null>(null);
+  const [crmAction, setCrmAction] = React.useState<
+    'add-customer' | 'new-quotation' | 'invoiced-all' | 'invoiced-received' | 'invoiced-due' | null
+  >(null);
   const [workOrderDraft, setWorkOrderDraft] = React.useState<any>(null);
 
   // Active simulated user session (start as null to show login page by default)
@@ -105,95 +124,102 @@ export default function App() {
   const [isCloudSyncOpen, setIsCloudSyncOpen] = React.useState<boolean>(false);
   const [isDeletingOrderId, setIsDeletingOrderId] = React.useState<string | null>(null);
 
-  // Sync with Firestore asynchronously on user authentication lifecycle
+  // Sync with Firestore asynchronously on user authentication lifecycle & role scope
   React.useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
+    let unsubscribeFirestore: (() => void) | null = null;
+    let isCancelled = false;
 
-    async function initializeSync() {
+    const detachFirestore = () => {
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+        unsubscribeFirestore = null;
+      }
+    };
+
+    const startSyncForAuthenticatedUser = async (firebaseUser: any) => {
+      detachFirestore();
+      if (!currentUser) {
+        setFirebaseConnected(Boolean(firebaseUser));
+        return;
+      }
       const authenticated = await authenticateFirebase();
-      if (authenticated) {
-        setFirebaseConnected(true);
+      if (!authenticated || isCancelled || !firebaseUser) return;
+      setFirebaseConnected(true);
 
+      if (isAdminRole(currentUser.role)) {
         try {
-          // 1. Check if Firestore already has documents
-          const remoteState = await fetchFullFirestoreState();
-          const hasRemoteData = (remoteState.orders && remoteState.orders.length > 0) ||
-                                (remoteState.customers && remoteState.customers.length > 0) ||
-                                (remoteState.crmQuotations && remoteState.crmQuotations.length > 0) ||
-                                (remoteState.crmCustomers && remoteState.crmCustomers.length > 0);
-
-          if (hasRemoteData) {
-            // Apply remote data into state immediately
-            setDb((currentDb) => {
-              const nextDb = {
-                ...currentDb,
-                ...remoteState,
-                users: remoteState.users && remoteState.users.length > 0 ? remoteState.users : currentDb.users,
-              };
-              const reconciled = reconcileQuotationsAndCustomers(nextDb as AppState);
-              saveState(reconciled);
-              return reconciled;
-            });
-          } else {
-            // If remote is empty, check if local state has records to upload
+          const hasRemoteData = await isDatabasePopulated();
+          if (!hasRemoteData && !isCancelled) {
             const currentLocal = loadState();
-            const hasLocalData = (currentLocal.orders && currentLocal.orders.length > 0) ||
-                                 (currentLocal.customers && currentLocal.customers.length > 0) ||
-                                 (currentLocal.crmQuotations && currentLocal.crmQuotations.length > 0) ||
-                                 (currentLocal.crmCustomers && currentLocal.crmCustomers.length > 0);
+            const hasLocalData =
+              (currentLocal.orders && currentLocal.orders.length > 0) ||
+              (currentLocal.customers && currentLocal.customers.length > 0) ||
+              (currentLocal.crmQuotations && currentLocal.crmQuotations.length > 0) ||
+              (currentLocal.crmCustomers && currentLocal.crmCustomers.length > 0);
 
             if (hasLocalData) {
               setFirebaseSeeding(true);
               await pushAllLocalDataToFirestore(currentLocal);
               setFirebaseSeeding(false);
             } else {
-              // Ensure baseline users are present in cloud
               await seedFirestoreIfEmpty(currentLocal);
             }
           }
         } catch (err) {
-          console.warn("Initial remote sync fetch notice:", err);
+          console.warn("Initial sync check notice:", err);
         }
-
-        // 2. Subscribes to snapshotted real-time database updates
-        unsubscribe = syncFirestore(
-          (updatedState) => {
-            setDb((currentDb) => {
-              const nextDb = { ...currentDb };
-              // Merge non-destructively
-              for (const [key, val] of Object.entries(updatedState)) {
-                if (Array.isArray(val) && val.length === 0) {
-                  const currentArr = (currentDb as any)[key];
-                  if (!currentArr || currentArr.length === 0) {
-                    (nextDb as any)[key] = [];
-                  }
-                } else if (val !== undefined) {
-                  (nextDb as any)[key] = val;
-                }
-              }
-
-              const reconciled = reconcileQuotationsAndCustomers(nextDb);
-              saveState(reconciled);
-              return reconciled;
-            });
-          },
-          (error) => {
-            if (currentUser) {
-              console.warn("Firestore sync subscription warning:", error);
-            }
-          }
-        );
       }
+
+      if (isCancelled) return;
+
+      unsubscribeFirestore = syncFirestore(
+        (updatedState) => {
+          setDb((currentDb) => {
+            const nextDb = { ...currentDb };
+            const preserveIfEmptyKeys = new Set(['users', 'cncTools']);
+            for (const [key, val] of Object.entries(updatedState)) {
+              if (val === undefined) continue;
+              if (Array.isArray(val) && val.length === 0 && preserveIfEmptyKeys.has(key)) {
+                const currentArr = (currentDb as any)[key];
+                if (!currentArr || currentArr.length === 0) {
+                  (nextDb as any)[key] = [];
+                }
+              } else {
+                (nextDb as any)[key] = val;
+              }
+            }
+
+            const reconciled = reconcileQuotationsAndCustomers(nextDb);
+            saveState(reconciled);
+            return reconciled;
+          });
+        },
+        (error) => {
+          console.warn("Firestore sync subscription warning:", error);
+        },
+        { currentUser }
+      );
+    };
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        startSyncForAuthenticatedUser(firebaseUser);
+      } else {
+        setFirebaseConnected(false);
+        detachFirestore();
+      }
+    });
+
+    if (auth.currentUser && currentUser) {
+      startSyncForAuthenticatedUser(auth.currentUser);
     }
 
-    initializeSync();
-
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      isCancelled = true;
+      unsubscribeAuth();
+      detachFirestore();
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.role]);
 
   // Handle direct url access with centralized RBAC route protection
   React.useEffect(() => {
@@ -248,12 +274,23 @@ export default function App() {
         const defaultTab = getDefaultTabForRole(currentUser.role);
         setCurrentTab(defaultTab);
         setSelectedOrderId(null);
+        return;
+      }
+
+      if (typeof window !== 'undefined' && currentTab !== 'crm') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', currentTab);
+        ['crmTab', 'qTab', 'qSort', 'qAdv', 'qStatus', 'qPay', 'qProd', 'qSearch', 'qDate', 'qFrom', 'qTo', 'qVal', 'qAmt', 'qMin', 'qMax'].forEach(
+          (k) => url.searchParams.delete(k)
+        );
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
       }
     }
   }, [currentUser, currentTab]);
 
   // Save database shifts on mutations
   const updateDbState = (newDb: AppState) => {
+    latestDbRef.current = newDb;
     setDb(newDb);
     saveState(newDb);
   };
@@ -304,21 +341,42 @@ export default function App() {
     const dateString = formatToDDMMYYYY(new Date());
     const updatedUser: User = {
       ...matched,
-      last_seen: `Today, ${timeString} (${dateString})`
+      last_seen: `Today, ${timeString} (${dateString})`,
     };
 
-    saveUserToFirebase(updatedUser).catch((err) => {
-      console.error("Failed to update last_seen in Firestore:", err);
+    const currentUsers = latestDbRef.current.users || [];
+    const existsInLocal = currentUsers.some((u) => u.id === updatedUser.id);
+    const nextUsers = existsInLocal
+      ? currentUsers.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+      : [...currentUsers, updatedUser];
+    updateDbState({ ...latestDbRef.current, users: nextUsers });
+
+    updateUserLoginMetadataInFirebase(updatedUser.id, {
+      last_seen: updatedUser.last_seen,
+    }).catch((err) => {
+      console.warn("Failed to update last_seen in Firestore:", err);
     });
 
     setCurrentUser(updatedUser);
-    const defaultTab = getDefaultTabForRole(matched.role);
-    setCurrentTab(defaultTab);
+    const urlTab =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('tab')
+        : null;
+    const defaultTab = getDefaultTabForRole(updatedUser.role);
+    setCurrentTab(urlTab && hasPermission(updatedUser.role, urlTab) ? urlTab : defaultTab);
   };
 
   const handleLogout = () => {
+    signOut(auth).catch(() => {});
     setCurrentUser(null);
     setCurrentTab('dashboard');
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      ['tab', 'crmTab', 'qTab', 'qSort', 'qAdv', 'qStatus', 'qPay', 'qProd', 'qSearch', 'qDate', 'qFrom', 'qTo', 'qVal', 'qAmt', 'qMin', 'qMax'].forEach(
+        (k) => url.searchParams.delete(k)
+      );
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
   };
 
   // Staging CRUD updates actions
@@ -424,30 +482,15 @@ export default function App() {
     try {
       setIsDeletingOrderId(orderId);
 
-      // 1. Delete order permanently from Firestore database
+      // 1. Delete order permanently from Firestore database (which targetedly cascades related logs and payments)
       await deleteOrderFromFirebase(orderId);
 
-      // 2. Cascade delete related logs and payments from Firestore
-      const logsToDelete = db.statusLogs.filter((l) => l.order_id === orderId);
-      const paymentsToDelete = db.payments.filter((p) => p.order_id === orderId);
-      await Promise.allSettled([
-        ...logsToDelete.map((l) => deleteStatusLogFromFirebase(l.id)),
-        ...paymentsToDelete.map((p) => deletePaymentFromFirebase(p.id)),
-      ]);
-
-      // 3. Re-fetch fresh Orders, StatusLogs, and Payments directly from the database to ensure synchronization
-      const [freshOrders, freshLogs, freshPayments] = await Promise.all([
-        fetchOrdersFromFirestore().catch(() => db.orders.filter((o) => o.id !== orderId)),
-        fetchStatusLogsFromFirestore().catch(() => db.statusLogs.filter((l) => l.order_id !== orderId)),
-        fetchPaymentsFromFirestore().catch(() => db.payments.filter((p) => p.order_id !== orderId)),
-      ]);
-
-      // 4. Update UI and local state only after successful database deletion
+      // 2. Optimistically update local state immediately (onSnapshot will also seamlessly sync)
       updateDbState({
         ...db,
-        orders: freshOrders,
-        statusLogs: freshLogs,
-        payments: freshPayments,
+        orders: db.orders.filter((o) => o.id !== orderId),
+        statusLogs: db.statusLogs.filter((l) => l.order_id !== orderId),
+        payments: db.payments.filter((p) => p.order_id !== orderId),
       });
     } catch (error: any) {
       console.error("Failed to delete order from database:", error);
@@ -532,12 +575,13 @@ export default function App() {
       auditLogs: updatedAuditLogs,
     });
 
-    // Write to Firestore asynchronously
     saveUserToFirebase(newUser);
+    syncOperatorInviteToFirebase(newUser);
     saveAuditLogToFirebase(auditLog);
   };
 
   const handleUpdateUser = (updatedUser: User) => {
+    const previousUser = db.users.find((u) => u.id === updatedUser.id);
     const updatedUsers = db.users.map((u) => (u.id === updatedUser.id ? updatedUser : u));
     const auditLog: AuditLog = {
       id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
@@ -554,13 +598,15 @@ export default function App() {
       auditLogs: updatedAuditLogs,
     });
 
-    // Check if updating currently simulated user
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
     }
 
-    // Write to Firestore asynchronously
     saveUserToFirebase(updatedUser);
+    syncOperatorInviteToFirebase(updatedUser, previousUser?.email);
+    if (updatedUser.auth_uid) {
+      syncUserAuthMapToFirebase(updatedUser.auth_uid, updatedUser).catch(() => {});
+    }
     saveAuditLogToFirebase(auditLog);
   };
 
@@ -582,12 +628,14 @@ export default function App() {
       auditLogs: updatedAuditLogs,
     });
 
-    // Logout if user deletes their own current session account
     if (currentUser && currentUser.id === userId) {
       handleLogout();
     }
 
     deleteUserFromFirebase(userId).catch(console.error);
+    if (targetUser?.email) {
+      deleteOperatorInviteFromFirebase(targetUser.email).catch(console.error);
+    }
     saveAuditLogToFirebase(auditLog);
   };
 
@@ -638,7 +686,8 @@ export default function App() {
   };
 
   const handleSaveCRMQuotation = (quote: CRMQuotation) => {
-    const custInfo = resolveQuotationCustomer(quote, db.crmCustomers, db.customers);
+    const currentDb = latestDbRef.current;
+    const custInfo = resolveQuotationCustomer(quote, currentDb.crmCustomers, currentDb.customers);
     const receivedAmt = Number(quote.received_amount) || 0;
     const isApproved = quote.status === 'Approved';
     const isInvoice = !isApproved && (receivedAmt > 0 || quote.status === 'INVOICED' || quote.status === 'Invoiced');
@@ -653,22 +702,19 @@ export default function App() {
         ...item,
         id: item.id || `item_${quote.id}_${idx + 1}`,
         images: Array.isArray(item.images)
-          ? item.images.reduce<CRMQuotationPhoto[]>((images, img: any) => {
-              if (typeof img === 'string') {
-                images.push({ url: img, description: '' });
-              } else if (img && typeof img === 'object' && img.url) {
-                images.push({ url: img.url, description: img.description || '' });
-              }
-              return images;
-            }, [])
+          ? item.images.map((img: any) => {
+              if (typeof img === 'string') return { url: img, description: '' };
+              if (img && typeof img === 'object' && img.url) return { url: img.url, description: img.description || '' };
+              return null;
+            }).filter(Boolean)
           : []
       })) : []
     };
 
-    const exists = db.crmQuotations.some(q => q.id === sanitizedQuote.id);
+    const exists = currentDb.crmQuotations.some(q => q.id === sanitizedQuote.id);
     const updatedQuotations = exists
-      ? db.crmQuotations.map(q => q.id === sanitizedQuote.id ? sanitizedQuote : q)
-      : [sanitizedQuote, ...db.crmQuotations];
+      ? currentDb.crmQuotations.map(q => q.id === sanitizedQuote.id ? sanitizedQuote : q)
+      : [sanitizedQuote, ...currentDb.crmQuotations];
 
     saveCRMQuotationToFirebase(sanitizedQuote).catch((err) => console.error("Failed saving quotation to Firebase:", err));
 
@@ -676,12 +722,12 @@ export default function App() {
 
     // Auto-create or update production orders whenever receivedAmount > 0 (Invoice) or Approved
     if ((isInvoice || isApproved) && Array.isArray(sanitizedQuote.items) && sanitizedQuote.items.length > 0) {
-      let freshOrders = [...db.orders];
-      let freshPayments = [...db.payments];
-      let freshLogs = [...db.statusLogs];
-      let freshCustomers = [...db.customers];
-      let freshCrmCustomers = [...(db.crmCustomers || [])];
-      let freshCrmPayments = [...(db.crmPayments || [])];
+      let freshOrders = [...currentDb.orders];
+      let freshPayments = [...currentDb.payments];
+      let freshLogs = [...currentDb.statusLogs];
+      let freshCustomers = [...currentDb.customers];
+      let freshCrmCustomers = [...(currentDb.crmCustomers || [])];
+      let freshCrmPayments = [...(currentDb.crmPayments || [])];
 
       // Ensure customer exists in db.customers
       if (!freshCustomers.some(c => c.id === sanitizedQuote.customer_id)) {
@@ -781,7 +827,7 @@ export default function App() {
             : sanitizedQuote.id.replace('QT', 'ORD');
 
           const cat = detectCategoryFromFurnitureItem(item.furnitureItem);
-          const artNo = generateArticleNumber(cat, '', freshOrders, db.users, idx);
+          const artNo = generateArticleNumber(cat, '', freshOrders, currentDb.users, idx);
 
           const normalizedOrderImages = (item.images || []).map((img: any, imgIdx: number) => ({
             id: `img_${sanitizedQuote.id}_${item.id || idx}_${imgIdx + 1}`,
@@ -883,7 +929,7 @@ export default function App() {
       saveCRMPaymentToFirebase(crmPaymentRecord).catch(err => console.error("CRM Payment save failed:", err));
 
       updateDbState({
-        ...db,
+        ...currentDb,
         crmQuotations: updatedQuotations,
         orders: freshOrders,
         payments: freshPayments,
@@ -893,16 +939,24 @@ export default function App() {
         crmPayments: freshCrmPayments,
       });
     } else {
-      updateDbState({ ...db, crmQuotations: updatedQuotations });
+      updateDbState({ ...currentDb, crmQuotations: updatedQuotations });
     }
   };
 
   const handleDeleteCRMQuotation = (id: string) => {
-    const updated = db.crmQuotations.filter(q => q.id !== id && q.id && q.id.trim() !== '' && (q.customer_name?.trim() || (q.items && q.items.length > 0)));
-    updateDbState({ ...db, crmQuotations: updated });
-    if (id && id.trim()) {
-      deleteCRMQuotationFromFirebase(id);
-    }
+    const targetId = (id || '').trim();
+    if (!targetId) return;
+    setDb((currentDb) => {
+      const updated = (currentDb.crmQuotations || []).filter(
+        q => q && q.id && q.id.trim() !== targetId && (q.customer_name?.trim() || (q.items && q.items.length > 0))
+      );
+      const nextDb = { ...currentDb, crmQuotations: updated };
+      saveState(nextDb);
+      return nextDb;
+    });
+    deleteCRMQuotationFromFirebase(targetId).catch((err) =>
+      console.error("Failed to delete CRM quotation from Firebase:", err)
+    );
   };
 
   const handleSaveCRMFollowUp = (item: CRMFollowUp) => {
@@ -984,11 +1038,12 @@ export default function App() {
   };
 
   // CNC Workshop Handlers (Jobs & Tooling Inventory)
-  const handleSaveCNCJob = (job: CNCJob) => {
-    const exists = (db.cncJobs || []).some((j) => j.id === job.id);
+  const handleSaveCNCJob = async (job: CNCJob): Promise<void> => {
+    const currentDb = latestDbRef.current;
+    const exists = (currentDb.cncJobs || []).some((j) => j.id === job.id);
     const updatedJobs = exists
-      ? (db.cncJobs || []).map((j) => (j.id === job.id ? job : j))
-      : [job, ...(db.cncJobs || [])];
+      ? (currentDb.cncJobs || []).map((j) => (j.id === job.id ? job : j))
+      : [job, ...(currentDb.cncJobs || [])];
 
     const auditLog: AuditLog = {
       id: 'audit_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
@@ -1000,16 +1055,20 @@ export default function App() {
     };
 
     updateDbState({
-      ...db,
+      ...currentDb,
       cncJobs: updatedJobs,
-      auditLogs: [auditLog, ...(db.auditLogs || [])],
+      auditLogs: [auditLog, ...(currentDb.auditLogs || [])],
     });
 
-    saveCNCJobToFirebase(job).catch((err) => console.error("Failed to save CNC job to Firebase:", err));
+    await saveCNCJobToFirebase(job);
     saveAuditLogToFirebase(auditLog).catch((err) => console.error("Failed to save audit log to Firebase:", err));
   };
 
   const handleDeleteCNCJob = (jobId: string) => {
+    if (currentUser && isOperatorRole(currentUser.role)) {
+      console.warn('Permission Denied: CNC Operators cannot delete CNC job records.');
+      return;
+    }
     const targetJob = (db.cncJobs || []).find((j) => j.id === jobId);
     const updatedJobs = (db.cncJobs || []).filter((j) => j.id !== jobId);
 
@@ -1120,7 +1179,7 @@ export default function App() {
     );
   }
 
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = isAdminRole(currentUser.role);
   const isManager = currentUser.role === 'manager';
 
   return (
@@ -1295,6 +1354,7 @@ export default function App() {
                 }}
                 crmAction={crmAction}
                 onResetCrmAction={() => setCrmAction(null)}
+                onViewOrder={handleViewOrder}
               />
             </motion.div>
           )}
@@ -1312,7 +1372,12 @@ export default function App() {
                 users={db.users}
                 customers={db.customers}
                 payments={db.payments}
+                statusLogs={db.statusLogs}
+                crmQuotations={db.crmQuotations}
+                crmCustomers={db.crmCustomers}
+                currentUser={currentUser}
                 onViewOrder={handleViewOrder}
+                onUpdateOrder={handleUpdateOrder}
                 onNavigateTab={(tab) => setCurrentTab(tab)}
                 isAdmin={isAdmin}
                 onDeleteOrder={handleDeleteOrder}
@@ -1381,6 +1446,9 @@ export default function App() {
                 onSaveTool={handleSaveCNCTool}
                 onDeleteTool={handleDeleteCNCTool}
                 onUpdateOrder={handleUpdateOrder}
+                onAddUser={handleAddUser}
+                onUpdateUser={handleUpdateUser}
+                onDeleteUser={handleDeleteUser}
               />
             </motion.div>
           )}
@@ -1590,11 +1658,16 @@ export default function App() {
                 customers={db.customers}
                 statusLogs={db.statusLogs}
                 onRefresh={() => {
-                  syncFirestore(
+                  const unsub = syncFirestore(
                     (remoteData) => {
                       setDb((prev) => ({ ...prev, ...remoteData }));
+                      setTimeout(() => unsub(), 50);
                     },
-                    (err) => console.error(err)
+                    (err) => {
+                      console.error(err);
+                      setTimeout(() => unsub(), 50);
+                    },
+                    { currentUser }
                   );
                 }}
               />

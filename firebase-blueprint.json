@@ -6,12 +6,16 @@
       "type": "object",
       "properties": {
         "id": { "type": "string", "description": "Auth UID and unique internal key" },
+        "auth_uid": { "type": "string", "description": "Linked Firebase Auth UID" },
         "name": { "type": "string", "description": "Display name of the artisan or manager" },
         "email": { "type": "string", "description": "Email address for login" },
-        "role": { "type": "string", "enum": ["admin", "manager", "wood_tab_manager", "cnc_workshop", "carpenter", "polish_person", "qc_staff", "cnc_manager"], "description": "System access control level" },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "manager", "wood_tab_manager", "cnc_workshop", "cnc_manager", "cnc_operator", "carpenter", "polish_person", "qc_staff"], "description": "System access control level" },
         "initials": { "type": "string", "description": "Uppercase abbreviation initials" },
         "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "LOCKED"], "description": "Authorization lifecycle status" },
         "is_active": { "type": "boolean", "description": "Active status of the workspace staff" },
+        "password_configured": { "type": "boolean", "description": "Whether Firebase Auth password has been configured" },
+        "activation_status": { "type": "string", "enum": ["PENDING_ACTIVATION", "ACTIVE"], "description": "Operator onboarding activation status" },
+        "google_linked": { "type": "boolean" },
         "last_seen": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" },
         "created_by": { "type": "string" },
@@ -350,22 +354,65 @@
         "product_name": { "type": "string" },
         "material": { "type": "string", "description": "Wood or panel material type" },
         "dimensions": { "type": "string" },
-        "job_type": { "type": "string", "enum": ["Carving", "Jali Cutting", "3D Relief", "Grooving", "Engraving", "Profile Cutting", "Moulding", "Surfacing", "Other"] },
-        "machine_name": { "type": "string" },
+        "job_type": { "type": "string", "enum": ["Cutting", "Carving", "Turning", "Pillar", "Jali Cutting", "3D Relief", "Grooving", "Engraving", "Profile Cutting", "Moulding", "Surfacing", "Other"] },
+        "machine_name": { "type": "string", "description": "Assigned machine (Small or Big)" },
         "tool_id": { "type": "string" },
         "tool_name": { "type": "string" },
         "run_time_minutes": { "type": "number" },
+        "design_time_minutes": { "type": "number" },
+        "design_time_value": { "type": "number" },
+        "design_time_unit": { "type": "string" },
+        "completion_time_minutes": { "type": "number" },
+        "completion_time_value": { "type": "number" },
+        "completion_time_unit": { "type": "string" },
+        "start_time": { "type": "string", "description": "24-hour machine start time HH:MM" },
+        "stop_time": { "type": "string", "description": "24-hour machine stop time HH:MM" },
+        "machine_running_time": { "type": "string", "description": "Calculated running duration HH:MM" },
+        "is_overnight": { "type": "boolean", "description": "Indicates stop time crosses midnight" },
+        "operator_id": { "type": "string", "description": "Assigned CNC Operator User ID" },
         "operator_name": { "type": "string" },
         "amount": { "type": "number", "description": "CNC Workshop job revenue or rate" },
         "status": { "type": "string", "enum": ["Pending", "Queued", "In Progress", "Completed", "Rework"] },
         "notes": { "type": "string" },
         "design_file": { "type": "string" },
+        "fileName": { "type": "string", "description": "Original file name of the CNC program file (.dxf / .nc)" },
+        "fileUrl": { "type": "string", "description": "Firebase Storage direct download URL of the uploaded program file" },
+        "storagePath": { "type": "string", "description": "Firebase Storage path in format: cnc-programs/{jobId}/{timestamp}_{fileName}" },
+        "fileSize": { "type": "number", "description": "Size of the uploaded program file in bytes" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "design_file_url": { "type": "string", "description": "Firebase Storage download URL of the uploaded .dxf or .nc program file" },
+        "design_file_name": { "type": "string", "description": "Original file name of the CNC program file" },
+        "design_file_size": { "type": "number", "description": "Size of the uploaded program file in bytes" },
+        "design_file_uploaded_at": { "type": "string", "format": "date-time" },
+        "program_files_count": { "type": "number", "description": "Total attached program files count" },
         "image_url": { "type": "string" },
         "completed_at": { "type": "string" },
         "created_at": { "type": "string" },
-        "created_by": { "type": "string" }
+        "created_by": { "type": "string" },
+        "updated_at": { "type": "string" }
       },
       "required": ["id", "job_date", "product_name", "job_type", "status", "created_at"]
+    },
+    "cncProgramFile": {
+      "title": "CNC Program File",
+      "description": "Individual .dxf or .nc file metadata associated with a CNC job",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "jobId": { "type": "string", "description": "Actual Firestore CNC job document ID" },
+        "fileName": { "type": "string" },
+        "extension": { "type": "string" },
+        "storagePath": { "type": "string", "description": "Firebase Storage path: cnc-programs/{jobId}/{fileId}/{fileName}" },
+        "fileUrl": { "type": "string", "description": "Firebase Storage direct download URL" },
+        "size": { "type": "number", "description": "File size in bytes" },
+        "description": { "type": "string" },
+        "version": { "type": "number" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "uploadedBy": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "previousVersionId": { "type": "string" }
+      },
+      "required": ["id", "jobId", "fileName", "extension", "storagePath", "fileUrl", "size", "version", "uploadedAt", "uploadedBy", "isActive"]
     },
     "cncTool": {
       "title": "CNC Tool & Bit Inventory",
@@ -389,6 +436,37 @@
         "updated_at": { "type": "string" }
       },
       "required": ["id", "tool_code", "name", "tool_type", "quantity_in_stock", "condition"]
+    },
+    "userAuthMap": {
+      "title": "User Auth Mapping",
+      "description": "Server-referenced mapping between Firebase Auth UID and ERP staff user ID and role",
+      "type": "object",
+      "properties": {
+        "auth_uid": { "type": "string" },
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["auth_uid", "userId", "role", "status"]
+    },
+    "operatorInvite": {
+      "title": "Operator Activation Invite",
+      "description": "Non-PII staff activation record keyed by SHA-256 hash of lowercase email",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "initials": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string" },
+        "password_configured": { "type": "boolean" },
+        "is_operator": { "type": "boolean" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "role", "status"]
     }
   },
   "firestore": {
@@ -468,9 +546,21 @@
       "schema": "cncJob",
       "description": "Daily CNC Workshop jobs directory linked to furniture production"
     },
+    "/cncJobs/{jobId}/programFiles/{fileId}": {
+      "schema": "cncProgramFile",
+      "description": "Subcollection of CNC program files (.dxf/.nc) with version tracking"
+    },
     "/cncTools/{toolId}": {
       "schema": "cncTool",
       "description": "CNC Workshop tools, bits and router inventory roster"
+    },
+    "/userAuthMap/{authUid}": {
+      "schema": "userAuthMap",
+      "description": "Firebase Auth UID to internal staff profile and role lookup"
+    },
+    "/operatorInvites/{inviteId}": {
+      "schema": "operatorInvite",
+      "description": "Hashed email invite metadata for first-time operator/staff activation"
     }
   }
 }

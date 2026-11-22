@@ -211,7 +211,7 @@ export default function OrderDetailsView({
 
   // QC Failure Note State
   const [showQcFailModal, setShowQcFailModal] = React.useState(false);
-  const [qcFailLogStage, setQcFailLogStage] = React.useState<OrderStage>('Carpentry');
+  const [qcFailLogStage, setQcFailLogStage] = React.useState<OrderStage>('Assembly');
   const [qcFailNote, setQcFailNote] = React.useState('');
 
   // Tab Navigation State
@@ -291,40 +291,33 @@ export default function OrderDetailsView({
   };
 
   const isAdmin = currentUser.role === 'admin';
+  const isManager = currentUser.role === 'manager';
+  const canManageQC = isAdmin || isManager || currentUser.role === 'qc_staff';
 
-  const stages: OrderStage[] = order.requires_cnc
-    ? [
-        'Pending',
-        'Designing',
-        'Wood Procurement',
-        'Making Started',
-        'CNC Wood Carving',
-        'QC 1',
-        'Making Completed',
-        'Polish',
-        'QC 2',
-        'Ready to Dispatch',
-        'Dispatched',
-      ]
-    : [
-        'Pending',
-        'Designing',
-        'Wood Procurement',
-        'Making Started',
-        'QC 1',
-        'Making Completed',
-        'Polish',
-        'QC 2',
-        'Ready to Dispatch',
-        'Dispatched',
-      ];
+  const stages: OrderStage[] = [
+    'Pending',
+    'Designing',
+    'Wood Procurement',
+    'Making Started',
+    'CNC Wood Carving',
+    'Assembly',
+    'QC 1',
+    'Making Completed',
+    'Polish',
+    'QC 2',
+    'Delivery',
+  ];
 
   const getStageIndex = (status: string) => {
     const norm = normalizeStage(status);
+    if (norm === 'Ready to Dispatch' || norm === 'Ready To Dispatch' || norm === 'Dispatched' || norm === 'Delivery') {
+      return 10;
+    }
     const idx = stages.indexOf(norm);
     return idx !== -1 ? idx : 0;
   };
 
+  const normalizedStatus = normalizeStage(order.current_status);
   const currentStageIndex = getStageIndex(order.current_status);
 
   // Debouncing lock to prevent accidental double-clicks from skipping stages
@@ -370,6 +363,7 @@ export default function OrderDetailsView({
     const updatedOrder: Order = {
       ...order,
       current_status: nextStage,
+      stage: nextStage,
       // If going backwards, we mark delayed if QC failed
       is_delayed: qcPassedValue === false ? true : order.is_delayed,
       updated_at: new Date().toISOString(),
@@ -527,7 +521,7 @@ export default function OrderDetailsView({
     if (order.requires_cnc) {
       triggerTransition('CNC Wood Carving', 'Carpentry completed. Order moved to CNC Wood Carving.');
     } else {
-      triggerTransition('QC 1', 'Carpentry completed. Order moved to QC 1.');
+      triggerTransition('Assembly', 'Carpentry completed. Order moved to Assembly.');
     }
   };
 
@@ -553,6 +547,7 @@ export default function OrderDetailsView({
       wood_schedule: updatedWoodSchedule,
       last_qc_failure: order.last_qc_failure?.stage === 'QC 1' ? { ...order.last_qc_failure, resolved: true } : order.last_qc_failure,
       current_status: 'Making Completed',
+      stage: 'Making Completed',
       completion_popup_acknowledged: false,
       completionPopupShown: false,
       updated_at: new Date().toISOString(),
@@ -565,11 +560,11 @@ export default function OrderDetailsView({
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: 'QC 1 passed: Measurements, Finish, and Buffer verified. Carpentry completed successfully.',
+      note: 'QC 1 passed: Measurements, Finish, and Buffer verified. Production advanced to Making Completed.',
       qc_passed: true,
     };
     onUpdateOrder(updatedOrder, log);
-    addToast('QC 1 verified & saved! Carpentry completed successfully.');
+    addToast('QC 1 verified & saved! Production advanced to Making Completed.');
   };
 
   const handleMoveToPolish = () => {
@@ -588,21 +583,23 @@ export default function OrderDetailsView({
       qc_2_final_product_approved: true,
       qc_2_status: 'passed',
       last_qc_failure: order.last_qc_failure?.stage === 'QC 2' ? { ...order.last_qc_failure, resolved: true } : order.last_qc_failure,
-      current_status: 'Ready to Dispatch',
+      current_status: 'Delivery',
+      stage: 'Delivery',
       updated_at: new Date().toISOString(),
     };
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: order.id,
-      stage: 'Ready to Dispatch',
+      stage: 'Delivery',
       changed_by: currentUser.id,
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: 'QC 2 passed: Polish Quality, Surface Finish, and Final Product approved. Order moved to Ready To Dispatch.',
+      note: 'QC 2 passed: Polish Quality, Surface Finish, and Final Product approved. Order moved to Delivery stage.',
       qc_passed: true,
     };
     onUpdateOrder(updatedOrder, log);
+    addToast('QC 2 verified & approved! Order moved to Delivery.');
   };
 
   const handleAdminStepAction = (actionType: 'forward' | 'fail_qc_1' | 'fail_qc_2') => {
@@ -611,14 +608,14 @@ export default function OrderDetailsView({
       const nextIdx = currentStageIndex + 1;
       if (nextIdx < stages.length) {
         const nextStage = stages[nextIdx];
-        if (nextStage === 'Dispatched') {
+        if (nextStage === 'Dispatched' || nextStage === 'Delivery') {
           setShowDispatchModal(true);
         } else {
           triggerTransition(nextStage, `Admin advanced order to "${nextStage}".`);
         }
       }
     } else if (actionType === 'fail_qc_1') {
-      setQcFailLogStage('Making Started');
+      setQcFailLogStage('Assembly');
       setShowQcFailModal(true);
     } else if (actionType === 'fail_qc_2') {
       setQcFailLogStage('Polish');
@@ -627,12 +624,12 @@ export default function OrderDetailsView({
   };
 
   const submitQcFailure = () => {
-    const isQc1 = order.current_status === 'QC 1' || order.current_status === 'QC Check 1' || qcFailLogStage === 'Making Started';
+    const isQc1 = normalizedStatus === 'QC 1' || normalizedStatus === 'QC Check 1' || qcFailLogStage === 'Assembly' || qcFailLogStage === 'Making Started';
     const failedStageName = isQc1 ? 'QC 1' : 'QC 2';
-    const revertTargetStage: OrderStage = isQc1 ? 'Making Started' : 'Polish';
+    const revertTargetStage: OrderStage = isQc1 ? 'Assembly' : 'Polish';
 
     const failTimestamp = new Date().toISOString();
-    const inspectorName = currentUser.name || 'Admin';
+    const inspectorName = currentUser.name || (isAdmin ? 'Admin' : 'Manager');
 
     const failureInfo: QCFailureInfo = {
       stage: failedStageName,
@@ -655,9 +652,22 @@ export default function OrderDetailsView({
       qc_passed: false,
     };
 
+    const updatedWoodSchedule = isQc1 && order.wood_schedule
+      ? {
+          ...order.wood_schedule,
+          qc_check_1_details: {
+            measurement: false,
+            finishing: false,
+            buffer: false,
+          },
+        }
+      : order.wood_schedule;
+
     const updatedOrder: Order = {
       ...order,
       current_status: revertTargetStage,
+      stage: revertTargetStage,
+      wood_schedule: updatedWoodSchedule,
       is_delayed: true,
       last_qc_failure: failureInfo,
       ...(isQc1 ? {
@@ -668,7 +678,6 @@ export default function OrderDetailsView({
         qc_1_fail_notes: qcFailNote.trim(),
         qc_1_failed_at: failTimestamp,
         qc_1_failed_by: inspectorName,
-        carpenter_sub_status: 'under_carpentry',
       } : {
         qc_2_polish_quality_verified: false,
         qc_2_surface_finish_approved: false,
@@ -684,6 +693,12 @@ export default function OrderDetailsView({
     setShowQcFailModal(false);
     onUpdateOrder(updatedOrder, log);
     setQcFailNote('');
+    if (isQc1) {
+      setQc1Measurements(false);
+      setQc1Finish(false);
+      setQc1Buffer(false);
+    }
+    addToast(isQc1 ? 'QC 1 marked failed. Order reverted to Assembly.' : 'QC 2 marked failed. Order reverted to Polish.');
   };
 
   const handleAddImage = () => {
@@ -762,14 +777,18 @@ export default function OrderDetailsView({
             <h1 className="text-xl md:text-2xl font-black font-display text-stone-900 tracking-tight">{order.article_no}</h1>
             <span
               className={`px-3 py-0.5 text-[10px] uppercase font-mono font-black border rounded-md ${
-                order.current_status === 'Ready To Dispatch'
+                normalizedStatus === 'Ready to Dispatch' || normalizedStatus === 'Ready To Dispatch' || normalizedStatus === 'Delivery'
                   ? 'bg-green-150 text-green-800 border-green-300'
-                  : order.current_status === 'Dispatched'
+                  : normalizedStatus === 'Dispatched'
                   ? 'bg-emerald-100 text-emerald-850 border-emerald-300'
                   : 'bg-amber-100 text-[#593622] border-amber-300 animate-pulse'
               }`}
             >
-              {order.current_status === 'Ready To Dispatch' ? 'Ready' : order.current_status === 'Dispatched' ? 'Dispatched' : 'In Production'}
+              {normalizedStatus === 'Ready to Dispatch' || normalizedStatus === 'Ready To Dispatch' || normalizedStatus === 'Delivery'
+                ? 'Ready'
+                : normalizedStatus === 'Dispatched'
+                ? 'Dispatched'
+                : 'In Production'}
             </span>
           </div>
           <p className="text-stone-500 text-xs">
@@ -849,8 +868,11 @@ export default function OrderDetailsView({
               {/* Mobile View: Vertical Timeline */}
               <div className="md:hidden space-y-3.5 relative pl-1.5 py-1">
                 {stages.map((stg, i) => {
-                  const isDispatched = order.current_status === 'Dispatched';
-                  const passed = isDispatched || i < currentStageIndex;
+                  const isDispatched = normalizedStatus === 'Dispatched';
+                  const isQc1Failed = stg === 'QC 1' && order.qc_1_status === 'failed';
+                  const isQc2Failed = stg === 'QC 2' && order.qc_2_status === 'failed';
+                  const isFailed = (isQc1Failed || isQc2Failed) && !isDispatched && i >= currentStageIndex;
+                  const passed = isDispatched || (i < currentStageIndex && !isFailed);
                   const active = !isDispatched && i === currentStageIndex;
                   return (
                     <div key={stg} className="flex items-center gap-4 relative">
@@ -864,17 +886,21 @@ export default function OrderDetailsView({
                         className={`h-7 w-7 rounded-full flex items-center justify-center shrink-0 z-10 text-[10px] font-mono font-bold transition ${
                           active
                             ? 'bg-[#593622] text-amber-300 border-amber-500 shadow-md ring-4 ring-amber-500/10'
+                            : isFailed
+                            ? 'bg-rose-50 text-rose-700 border-rose-500 shadow-xs ring-2 ring-rose-400/20'
                             : passed
                             ? 'bg-green-600 text-white border-green-700'
                             : 'bg-white text-stone-400 border-stone-200'
                         }`}
                       >
-                        {passed ? (
+                        {isFailed ? (
+                          <span className="text-rose-600 font-bold">✕</span>
+                        ) : passed ? (
                           <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.1 }}>✓</motion.span>
                         ) : i + 1}
                       </motion.div>
                       <div className="flex-1">
-                        <span className={`text-[11px] font-semibold ${active ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>
+                        <span className={`text-[11px] font-semibold ${active ? 'text-stone-900 font-bold' : isFailed ? 'text-rose-700 font-bold' : 'text-stone-500'}`}>
                           {stg}
                         </span>
                         {active && (
@@ -886,6 +912,11 @@ export default function OrderDetailsView({
                             Current Stage
                           </motion.span>
                         )}
+                        {isFailed && (
+                          <span className="text-[9px] text-rose-600 font-bold uppercase tracking-wider block leading-none mt-1">
+                            Audit Failed (Reverted)
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -894,14 +925,17 @@ export default function OrderDetailsView({
 
               {/* Desktop View: Horizontal Stepper */}
               <div className="hidden md:block overflow-x-auto no-scrollbar w-full py-1">
-                <div className="relative flex justify-between min-w-[920px] font-mono text-[10px] font-bold text-stone-400 py-2 px-3">
+                <div className="relative flex justify-between min-w-[940px] font-mono text-[10px] font-bold text-stone-400 py-2 px-3">
                   <div className="absolute top-6 left-6 right-6 h-0.5 bg-stone-100 -translate-y-1/2" />
                   {stages.map((stg, i) => {
-                    const isDispatched = order.current_status === 'Dispatched';
-                    const passed = isDispatched || i < currentStageIndex;
+                    const isDispatched = normalizedStatus === 'Dispatched';
+                    const isQc1Failed = stg === 'QC 1' && order.qc_1_status === 'failed';
+                    const isQc2Failed = stg === 'QC 2' && order.qc_2_status === 'failed';
+                    const isFailed = (isQc1Failed || isQc2Failed) && !isDispatched && i >= currentStageIndex;
+                    const passed = isDispatched || (i < currentStageIndex && !isFailed);
                     const active = !isDispatched && i === currentStageIndex;
                     return (
-                      <div key={stg} className="relative z-10 flex flex-col items-center shrink-0 w-[82px]">
+                      <div key={stg} className="relative z-10 flex flex-col items-center shrink-0 w-[78px]">
                         <motion.div
                           initial={active ? { scale: 0.75, y: 4 } : { scale: 1, y: 0 }}
                           animate={active ? { scale: [1, 1.08, 1], y: [0, -3, 0] } : { scale: 1, y: 0 }}
@@ -909,18 +943,22 @@ export default function OrderDetailsView({
                           className={`h-7 w-7 rounded-full flex items-center justify-center border transition ${
                             active
                               ? 'bg-[#593622] text-amber-300 border-amber-500 shadow-md ring-4 ring-amber-500/10'
+                              : isFailed
+                              ? 'bg-rose-50 text-rose-700 border-rose-500 shadow-xs ring-2 ring-rose-400/20'
                               : passed
                               ? 'bg-green-600 text-white border-green-700'
                               : 'bg-white text-stone-400 border-stone-200'
                           }`}
                         >
-                          {passed ? (
+                          {isFailed ? (
+                            <span className="text-rose-600 font-bold">✕</span>
+                          ) : passed ? (
                             <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }}>✓</motion.span>
                           ) : (
                             i + 1
                           )}
                         </motion.div>
-                        <span className={`text-[9px] font-sans text-center mt-2 block leading-tight w-full ${active ? 'text-stone-900 font-extrabold' : 'text-stone-400'}`}>
+                        <span className={`text-[9px] font-sans text-center mt-2 block leading-tight w-full ${active ? 'text-stone-900 font-extrabold' : isFailed ? 'text-rose-700 font-bold' : 'text-stone-400'}`}>
                           {stg}
                         </span>
                       </div>
@@ -942,32 +980,34 @@ export default function OrderDetailsView({
                 <div>
                   <span className="text-[10px] font-bold text-[#593622] uppercase tracking-wider">Current Active Gate</span>
                   <p className="text-stone-850 font-bold font-sans text-sm mt-0.5">
-                    {order.current_status}
+                    {normalizedStatus}
                   </p>
                 </div>
                 <div className="font-mono text-stone-500 text-[11px] font-bold bg-stone-100 px-2.5 py-1 rounded-lg border border-stone-200">
-                  Stage tracking: {order.current_status === 'Dispatched' ? 10 : currentStageIndex} of 10 stages completed
+                  Stage tracking: {normalizedStatus === 'Dispatched' ? 11 : currentStageIndex} of 11 stages completed
                 </div>
               </div>
 
               <div className="text-stone-600 text-[11px] space-y-2">
-                {order.current_status === 'Pending' && <p>Order has just been created. No department has received it yet.</p>}
-                {order.current_status === 'Designing' && <p>Drafting blueprints, measurements, reference drawings, and catalogue selections.</p>}
-                {order.current_status === 'Wood Procurement' && <p>Raw timber calculation and component wood schedule preparation.</p>}
-                {order.current_status === 'Making Started' && <p>Carpentry manufacturing and framework assembly in progress.</p>}
-                {order.current_status === 'QC 1' && <p>First Quality Check (Carpentry Audit) before polishing.</p>}
-                {order.current_status === 'Making Completed' && <p>Carpentry work fully finished, sanded, and ready for polishing.</p>}
-                {order.current_status === 'Polish' && <p>Surface polishing, staining, and protective lacquer coating in progress.</p>}
-                {order.current_status === 'QC 2' && <p>Final Quality Check (Polish & Finish Inspection) before dispatch.</p>}
-                {order.current_status === 'Ready To Dispatch' && <p>Product packaging complete and placed in dispatch bay.</p>}
-                {order.current_status === 'Dispatched' && <p>Product has been physically dispatched from workshop to customer.</p>}
+                {normalizedStatus === 'Pending' && <p>Order has just been created. No department has received it yet.</p>}
+                {normalizedStatus === 'Designing' && <p>Drafting blueprints, measurements, reference drawings, and catalogue selections.</p>}
+                {normalizedStatus === 'Wood Procurement' && <p>Raw timber calculation and component wood schedule preparation.</p>}
+                {normalizedStatus === 'Making Started' && <p>Carpentry manufacturing and framework assembly in progress.</p>}
+                {normalizedStatus === 'CNC Wood Carving' && <p>Computer numerical control routing and decorative wood carving in progress.</p>}
+                {normalizedStatus === 'Assembly' && <p>Woodwork components and carved elements assembly in progress.</p>}
+                {normalizedStatus === 'QC 1' && <p>First Quality Check (Carpentry & Assembly Audit) before polishing.</p>}
+                {normalizedStatus === 'Making Completed' && <p>Carpentry & assembly work fully finished, sanded, and ready for polishing.</p>}
+                {normalizedStatus === 'Polish' && <p>Surface polishing, staining, and protective lacquer coating in progress.</p>}
+                {normalizedStatus === 'QC 2' && <p>Final Quality Check (Polish & Finish Inspection) before dispatch.</p>}
+                {(normalizedStatus === 'Ready To Dispatch' || normalizedStatus === 'Ready to Dispatch' || normalizedStatus === 'Delivery') && <p>Product packaging complete and placed in dispatch bay.</p>}
+                {normalizedStatus === 'Dispatched' && <p>Product has been physically dispatched from workshop to customer.</p>}
               </div>
 
               {/* STAGE SPECIFIC ACTION CONTROLS */}
-              {order.current_status !== 'Dispatched' ? (
+              {normalizedStatus !== 'Dispatched' ? (
                 <div className="pt-3 border-t border-stone-200/80 space-y-3">
                   {/* STAGE 1: PENDING */}
-                  {order.current_status === 'Pending' && isAdmin && (
+                  {normalizedStatus === 'Pending' && (isAdmin || isManager) && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs">Ready to begin design phase?</span>
                       <button
@@ -981,7 +1021,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 2: DESIGNING */}
-                  {order.current_status === 'Designing' && isAdmin && (
+                  {normalizedStatus === 'Designing' && (isAdmin || isManager) && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs">Finalize design blueprints & measurements</span>
                       <button
@@ -995,7 +1035,7 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 3: WOOD PROCUREMENT */}
-                  {order.current_status === 'Wood Procurement' && (
+                  {normalizedStatus === 'Wood Procurement' && (
                     <div className="space-y-2 bg-amber-50/60 p-3 rounded-xl border border-amber-200">
                       {order.wood_schedule_status === 'Pending' || order.wood_schedule_status === 'Pending Review' || (!order.wood_schedule_status && order.wood_schedule) ? (
                         <div className="space-y-2">
@@ -1003,7 +1043,7 @@ export default function OrderDetailsView({
                             <Clock size={15} className="text-amber-700" />
                             <span>Wood Sheet Submitted - Awaiting Admin Approval</span>
                           </div>
-                          {isAdmin && (
+                          {(isAdmin || isManager) && (
                             <div className="flex gap-2 pt-1">
                               <button
                                 disabled={isAdvancing}
@@ -1036,12 +1076,12 @@ export default function OrderDetailsView({
                   )}
 
                   {/* STAGE 4: MAKING STARTED */}
-                  {order.current_status === 'Making Started' && (
+                  {normalizedStatus === 'Making Started' && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <div>
                         <span className="text-stone-800 font-bold text-xs block">Carpentry framework assembly underway</span>
                         <span className="text-[11px] text-stone-500">
-                          {order.requires_cnc ? 'Next stage: CNC Wood Carving' : 'Next stage: QC 1'}
+                          {order.requires_cnc ? 'Next stage: CNC Wood Carving' : 'Next stage: Assembly'}
                         </span>
                       </div>
                       <button
@@ -1049,13 +1089,13 @@ export default function OrderDetailsView({
                         onClick={handleCompleteCarpentry}
                         className="bg-[#593622] hover:bg-[#402414] text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
-                        <CheckCircle2 size={13} /> {order.requires_cnc ? 'Complete Carpentry → CNC' : 'Complete Carpentry → QC 1'}
+                        <CheckCircle2 size={13} /> {order.requires_cnc ? 'Complete Carpentry → CNC' : 'Complete Carpentry → Assembly'}
                       </button>
                     </div>
                   )}
 
-                  {/* STAGE: CNC WOOD CARVING (CONDITIONAL) */}
-                  {order.current_status === 'CNC Wood Carving' && (
+                  {/* STAGE 5: CNC WOOD CARVING */}
+                  {normalizedStatus === 'CNC Wood Carving' && (
                     <div className="bg-cyan-50/80 p-3.5 rounded-xl border border-cyan-300 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-xs text-cyan-950 uppercase tracking-wide flex items-center gap-1.5">
@@ -1067,26 +1107,80 @@ export default function OrderDetailsView({
                         </span>
                       </div>
                       <p className="text-xs text-stone-600">
-                        Order is active in the CNC Workshop. CNC Manager or Admin can record machine details and advance order to QC 1.
+                        Order is active in the CNC Workshop. CNC Manager or Admin can record machine details and advance order to Assembly.
                       </p>
                       <div className="flex gap-2 pt-1">
                         <button
                           disabled={isAdvancing}
-                          onClick={() => triggerTransition('QC 1', 'CNC Wood Carving completed. Order moved to QC 1.')}
+                          onClick={() => triggerTransition('Assembly', 'CNC Wood Carving completed. Order moved to Assembly.')}
                           className="bg-cyan-800 hover:bg-cyan-900 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                         >
-                          <CheckCircle2 size={13} /> Complete CNC Carving → QC 1
+                          <CheckCircle2 size={13} /> Complete CNC Carving → Assembly
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* STAGE 5: QC 1 */}
-                  {order.current_status === 'QC 1' && (
+                  {/* STAGE 6: ASSEMBLY */}
+                  {normalizedStatus === 'Assembly' && (
+                    <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-300 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Hammer size={16} className="text-[#593622]" />
+                          <span className="font-bold text-sm text-[#593622]">Assembly</span>
+                        </div>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900">
+                          Stage 6 of 11 • Active
+                        </span>
+                      </div>
+
+                      {order.last_qc_failure?.stage === 'QC 1' && !order.last_qc_failure?.resolved && (
+                        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-2.5 rounded-lg text-xs space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold">
+                            <AlertCircle size={14} className="text-rose-600" />
+                            <span>QC 1 Reinspection Required</span>
+                          </div>
+                          <p className="text-[11px] text-rose-700">
+                            Order was returned from QC 1 by {order.last_qc_failure.failed_by}
+                            {order.last_qc_failure.notes ? `: "${order.last_qc_failure.notes}"` : '.'}
+                          </p>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-stone-600">
+                        Assembly of woodwork and carved components underway. Once assembly is finalized, mark as completed to send to QC 1.
+                      </p>
+
+                      <div className="pt-1">
+                        <button
+                          disabled={isAdvancing}
+                          onClick={() => {
+                            setQc1Measurements(false);
+                            setQc1Finish(false);
+                            setQc1Buffer(false);
+                            triggerTransition('QC 1', 'Assembly completed. Order moved to QC 1.');
+                          }}
+                          className="bg-[#593622] hover:bg-[#402414] text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-2 cursor-pointer"
+                        >
+                          <CheckCircle2 size={14} /> Mark Assembly as Completed
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STAGE 7: QC 1 */}
+                  {normalizedStatus === 'QC 1' && (
                     <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-300 space-y-3">
-                      <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
-                        QC Check 1 (Carpentry Audit)
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
+                          QC Check 1 (Carpentry & Assembly Audit)
+                        </span>
+                        {order.qc_1_status === 'failed' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
+                            Previous Audit Failed
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-stone-800">
                         <label className="flex items-center gap-2 bg-white p-2 rounded-lg border border-stone-200 cursor-pointer">
                           <input
@@ -1128,7 +1222,7 @@ export default function OrderDetailsView({
                         >
                           <CheckCircle2 size={13} /> Save QC 1
                         </button>
-                        {isAdmin && (
+                        {canManageQC && (
                           <button
                             disabled={isAdvancing}
                             onClick={() => handleAdminStepAction('fail_qc_1')}
@@ -1141,12 +1235,12 @@ export default function OrderDetailsView({
                     </div>
                   )}
 
-                  {/* STAGE 6: MAKING COMPLETED */}
-                  {order.current_status === 'Making Completed' && (
+                  {/* STAGE 8: MAKING COMPLETED */}
+                  {normalizedStatus === 'Making Completed' && (
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
                       <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
                         <CheckCircle2 size={16} className="text-emerald-600" />
-                        <span>✔ Carpentry Completed Successfully</span>
+                        <span>✔ Carpentry & Assembly Completed Successfully</span>
                       </div>
                       <button
                         disabled={isAdvancing}
@@ -1158,8 +1252,8 @@ export default function OrderDetailsView({
                     </div>
                   )}
 
-                  {/* STAGE 7: POLISH */}
-                  {order.current_status === 'Polish' && (
+                  {/* STAGE 9: POLISH */}
+                  {normalizedStatus === 'Polish' && (
                     <div className="flex items-center justify-between bg-stone-100 p-3 rounded-xl border border-stone-200">
                       <span className="text-stone-700 font-semibold text-xs">Polishing, staining & protective sealer coat</span>
                       <button
@@ -1172,8 +1266,8 @@ export default function OrderDetailsView({
                     </div>
                   )}
 
-                  {/* STAGE 8: QC 2 */}
-                  {order.current_status === 'QC 2' && (
+                  {/* STAGE 10: QC 2 */}
+                  {normalizedStatus === 'QC 2' && (
                     <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-300 space-y-3">
                       <span className="font-bold text-xs text-amber-950 uppercase tracking-wide block">
                         QC Check 2 (Polish & Final Product Inspection)
@@ -1219,7 +1313,7 @@ export default function OrderDetailsView({
                         >
                           <CheckCircle2 size={13} /> Approve Final QC
                         </button>
-                        {isAdmin && (
+                        {canManageQC && (
                           <button
                             disabled={isAdvancing}
                             onClick={() => handleAdminStepAction('fail_qc_2')}
@@ -1232,14 +1326,14 @@ export default function OrderDetailsView({
                     </div>
                   )}
 
-                  {/* STAGE 9: READY TO DISPATCH */}
-                  {order.current_status === 'Ready To Dispatch' && (
+                  {/* STAGE 11: DELIVERY / READY TO DISPATCH */}
+                  {(normalizedStatus === 'Ready To Dispatch' || normalizedStatus === 'Ready to Dispatch' || normalizedStatus === 'Delivery') && (
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-2">
                       <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
                         <CheckCircle2 size={16} className="text-emerald-600" />
-                        <span>✔ Product Ready for Dispatch</span>
+                        <span>✔ Product Ready for Delivery / Dispatch</span>
                       </div>
-                      {isAdmin && (
+                      {canManageQC && (
                         <button
                           disabled={isAdvancing}
                           onClick={() => setShowDispatchModal(true)}
@@ -1260,7 +1354,7 @@ export default function OrderDetailsView({
             </motion.div>
 
             {/* Dispatch details card if order is Dispatched */}
-            {(order.current_status === 'Dispatched' || order.dispatchDate || order.vehicleNumber) && (
+            {(normalizedStatus === 'Dispatched' || order.dispatchDate || order.vehicleNumber) && (
               <div className="bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl space-y-3 text-xs text-stone-800">
                 <div className="flex items-center gap-2 border-b border-emerald-200/80 pb-2 text-emerald-800 font-bold">
                   <CheckCircle2 size={16} className="text-emerald-600" />

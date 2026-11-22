@@ -3,7 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'manager' | 'wood_tab_manager' | 'cnc_workshop' | 'carpenter' | 'polish_person' | 'qc_staff' | 'cnc_manager';
+export type UserRole =
+  | 'super_admin'
+  | 'admin'
+  | 'manager'
+  | 'wood_tab_manager'
+  | 'cnc_workshop'
+  | 'cnc_operator'
+  | 'carpenter'
+  | 'polish_person'
+  | 'qc_staff'
+  | 'cnc_manager';
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'LOCKED';
 
@@ -57,6 +67,9 @@ export interface User {
   created_by?: string;
   phone?: string;
   google_linked?: boolean; // If linked to Google single-sign-on
+  auth_uid?: string; // Linked Firebase Auth UID
+  password_configured?: boolean; // True once operator/staff completes password setup
+  activation_status?: 'ACTIVE' | 'PENDING_ACTIVATION';
 }
 
 export interface Customer {
@@ -76,10 +89,12 @@ export type OrderStage =
   | 'Wood Procurement'
   | 'Making Started'
   | 'CNC Wood Carving'
+  | 'Assembly'
   | 'QC 1'
   | 'Making Completed'
   | 'Polish'
   | 'QC 2'
+  | 'Delivery'
   | 'Ready to Dispatch'
   | 'Ready To Dispatch'
   | 'Dispatched'
@@ -137,11 +152,14 @@ export function normalizeStage(stage: string | null | undefined): OrderStage {
     s === 'making_started' ||
     s === '4' ||
     lower === 'making started' ||
-    lower === 'carpentry'
+    lower === 'carpentry' ||
+    lower === 'under carpentry'
   ) {
     return 'Making Started';
   }
   if (
+    s === '5. CNC Wood Carving' ||
+    s === '5. cnc wood carving' ||
     s === 'CNC Wood Carving' ||
     s === 'cnc_wood_carving' ||
     s === 'CNC' ||
@@ -153,11 +171,24 @@ export function normalizeStage(stage: string | null | undefined): OrderStage {
     return 'CNC Wood Carving';
   }
   if (
+    s === '6. Assembly' ||
+    s === '6. assembly' ||
+    s === 'Assembly' ||
+    s === 'assembly' ||
+    s === '6' ||
+    lower === 'assembly'
+  ) {
+    return 'Assembly';
+  }
+  if (
+    s === '7. QC 1' ||
+    s === '7. qc 1' ||
     s === '5. QC 1' ||
     s === '5. qc 1' ||
     s === 'QC 1' ||
     s === 'QC Check 1' ||
     s === 'qc_1' ||
+    s === '7' ||
     s === '5' ||
     lower === 'qc 1' ||
     lower === 'qc check 1'
@@ -165,31 +196,42 @@ export function normalizeStage(stage: string | null | undefined): OrderStage {
     return 'QC 1';
   }
   if (
+    s === '8. Making Completed' ||
+    s === '8. making completed' ||
     s === '6. Making Completed' ||
     s === '6. making completed' ||
     s === 'Making Completed' ||
     s === 'making_completed' ||
+    s === 'making_done' ||
+    s === '8' ||
     s === '6' ||
-    lower === 'making completed'
+    lower === 'making completed' ||
+    lower === 'making done'
   ) {
     return 'Making Completed';
   }
   if (
+    s === '9. Polish' ||
+    s === '9. polish' ||
     s === '7. Polish' ||
     s === '7. polish' ||
     s === 'Polish' ||
     s === 'polish' ||
+    s === '9' ||
     s === '7' ||
     lower === 'polish'
   ) {
     return 'Polish';
   }
   if (
+    s === '10. QC 2' ||
+    s === '10. qc 2' ||
     s === '8. QC 2' ||
     s === '8. qc 2' ||
     s === 'QC 2' ||
     s === 'QC Check 2' ||
     s === 'qc_2' ||
+    s === '10' ||
     s === '8' ||
     lower === 'qc 2' ||
     lower === 'qc check 2'
@@ -197,25 +239,37 @@ export function normalizeStage(stage: string | null | undefined): OrderStage {
     return 'QC 2';
   }
   if (
-    s === '9. Ready to Dispatch' ||
-    s === '9. ready to dispatch' ||
+    s === '11. Delivery' ||
+    s === '11. delivery' ||
+    s === 'Delivery' ||
+    s === 'delivery' ||
+    s === '11' ||
+    lower === 'delivery'
+  ) {
+    return 'Delivery';
+  }
+  if (
     s === 'Ready to Dispatch' ||
     s === 'Ready To Dispatch' ||
+    s === '11. Ready to Dispatch' ||
+    s === '11. Ready To Dispatch' ||
+    s === '9. Ready To Dispatch' ||
     s === 'ready_to_dispatch' ||
+    s === 'ready_for_dispatch' ||
     s === 'Ready' ||
-    s === '9' ||
     lower === 'ready to dispatch' ||
+    lower === 'ready for dispatch' ||
+    lower === '11. ready to dispatch' ||
     lower === 'ready'
   ) {
     return 'Ready to Dispatch';
   }
   if (
-    s === '10. Dispatched' ||
-    s === '10. dispatched' ||
     s === 'Dispatched' ||
+    s === '12. Dispatched' ||
     s === 'dispatched' ||
-    s === '10' ||
-    lower === 'dispatched'
+    lower === 'dispatched' ||
+    lower === '12. dispatched'
   ) {
     return 'Dispatched';
   }
@@ -303,13 +357,14 @@ export interface Order {
   last_qc_failure?: QCFailureInfo;
   qc_1_status?: 'passed' | 'failed' | 'pending' | 'pending_admin_approval';
   qc_1_fail_notes?: string;
+  qc_1_fail_reason?: string;
   qc_1_failed_at?: string;
   qc_1_failed_by?: string;
   qc_2_status?: 'passed' | 'failed' | 'pending';
   qc_2_fail_notes?: string;
   qc_2_failed_at?: string;
   qc_2_failed_by?: string;
-  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'qc_check_1' | 'completed';
+  carpenter_sub_status?: 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'assembly' | 'qc_check_1' | 'completed';
   requires_cnc?: boolean;
   cnc_job_id?: string;
   cnc_status?: 'not_required' | 'pending' | 'in_progress' | 'completed';
@@ -318,6 +373,12 @@ export interface Order {
   cnc_amount?: number;
   cnc_duration_minutes?: number;
   cnc_notes?: string;
+  // Legacy / optional compatibility fields from earlier order schemas
+  wood_type?: string;
+  size_of_product?: string;
+  remarks?: string;
+  cnc_file_url?: string;
+  cad_file_url?: string;
   completion_popup_acknowledged?: boolean;
   completionPopupShown?: boolean;
   total_amount?: number;
@@ -565,6 +626,9 @@ export interface CRMTimelineEvent {
 
 export type CNCJobType =
   | 'Carving'
+  | 'Cutting'
+  | 'Turning'
+  | 'Pillar'
   | 'Jali Cutting'
   | '3D Relief'
   | 'Grooving'
@@ -575,6 +639,7 @@ export type CNCJobType =
   | 'Other';
 
 export type CNCJobStatus = 'Pending' | 'Queued' | 'In Progress' | 'Completed' | 'Rework';
+
 export type CNCDurationUnit = 'Minutes' | 'Hours' | 'Days';
 
 export interface CNCJob {
@@ -598,15 +663,49 @@ export interface CNCJob {
   completion_time_minutes?: number; // Internal duration in minutes for calculations
   completion_time_value?: number; // Preserved numeric value entered by user (e.g. 2.5)
   completion_time_unit?: CNCDurationUnit; // Preserved unit ('Minutes' | 'Hours' | 'Days')
+  operator_id?: string; // Stable operator user ID reference
   operator_name: string;
+  start_time?: string; // 24-hour HH:MM
+  stop_time?: string; // 24-hour HH:MM
+  machine_running_time?: string; // Calculated HH:MM duration
+  is_overnight?: boolean; // True when Stop Time is on the following day (past midnight)
   amount: number; // CNC revenue/rate in ₹
   status: CNCJobStatus;
   notes?: string;
-  design_file?: string; // e.g. JALI_FLORAL_04.dxf
+  // CNC Program File Metadata (Firebase Storage)
+  fileName?: string; // Uploaded .dxf or .nc file name
+  fileUrl?: string; // Firebase Storage download URL
+  storagePath?: string; // Firebase Storage path: cnc-programs/{jobId}/{timestamp}_{fileName}
+  fileSize?: number; // Size in bytes
+  uploadedAt?: string; // Upload ISO timestamp
+  // Backward compatibility aliases
+  design_file?: string; // e.g. JALI_FLORAL_04.dxf or filename
+  design_file_url?: string; // Firebase Storage download URL
+  design_file_name?: string; // Name of the uploaded .dxf or .nc file
+  design_file_size?: number; // Size in bytes
+  design_file_uploaded_at?: string; // Upload ISO timestamp
+  program_files_count?: number; // Total program files attached to this CNC job
   image_url?: string;
   completed_at?: string;
+  updated_at?: string;
   created_at: string;
   created_by: string;
+}
+
+export interface CNCProgramFile {
+  id: string; // fileId (subcollection document ID)
+  jobId: string; // actual Firestore document ID of the CNC job
+  fileName: string; // e.g. "mandir_panel_relief_v2.nc"
+  extension: '.dxf' | '.nc' | string;
+  storagePath: string; // "cnc-programs/{jobId}/{fileId}/{fileName}"
+  fileUrl: string; // Firebase Storage download URL
+  size: number; // size in bytes
+  description?: string; // optional file description or notes
+  version: number; // version index (1, 2, 3...)
+  uploadedAt: string; // ISO 8601 timestamp
+  uploadedBy: string; // name or user ID of uploader
+  isActive: boolean; // true = active current version; false = superseded / archived
+  previousVersionId?: string; // ID of replaced file if version bump
 }
 
 export type CNCToolType =

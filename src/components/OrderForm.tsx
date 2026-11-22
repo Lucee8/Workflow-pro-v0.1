@@ -116,7 +116,7 @@ export default function OrderForm({
 
   // Helper workload count
   const getWorkload = (userId: string) => {
-    return orders.filter((o) => (o.carpenter_id === userId || o.polish_person_id === userId) && !['Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))).length;
+    return orders.filter((o) => (o.carpenter_id === userId || o.polish_person_id === userId) && !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))).length;
   };
 
   // --- STEP 1: PRODUCT STATE ---
@@ -1047,8 +1047,8 @@ export default function OrderForm({
                     </label>
                     <p className="text-[11px] text-stone-500">
                       {requiresCnc 
-                        ? 'Production workflow: Making Started → CNC Wood Carving → QC 1' 
-                        : 'Standard workflow: Making Started → QC 1'}
+                        ? 'Production workflow: Making Started → CNC Wood Carving → Assembly → QC 1' 
+                        : 'Standard workflow: Making Started → Assembly → QC 1'}
                     </p>
                   </div>
                 </div>

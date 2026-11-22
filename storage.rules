@@ -1,0 +1,49 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function userAuthMapPath() {
+      return /databases/(default)/documents/userAuthMap/$(request.auth.uid);
+    }
+
+    function cncJobPath(jobId) {
+      return /databases/(default)/documents/cncJobs/$(jobId);
+    }
+
+    function isActiveVerifiedStaff() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && firestore.exists(userAuthMapPath())
+        && firestore.get(userAuthMapPath()).data.status == 'ACTIVE';
+    }
+
+    function isCncManager() {
+      return isActiveVerifiedStaff()
+        && firestore.get(userAuthMapPath()).data.role in [
+          'admin', 'super_admin', 'manager', 'cnc_workshop', 'cnc_manager'
+        ];
+    }
+
+    function isAssignedCncOperator(jobId) {
+      return isActiveVerifiedStaff()
+        && firestore.get(userAuthMapPath()).data.role in ['cnc_operator', 'operator']
+        && firestore.exists(cncJobPath(jobId))
+        && firestore.get(cncJobPath(jobId)).data.operator_id
+          == firestore.get(userAuthMapPath()).data.userId;
+    }
+
+    function canAccessJob(jobId) {
+      return isCncManager() || isAssignedCncOperator(jobId);
+    }
+
+    match /cnc-programs/{jobId}/{filePath=**} {
+      allow read, delete: if canAccessJob(jobId);
+      allow create, update: if canAccessJob(jobId)
+        && request.resource.size <= 104857600
+        && request.resource.contentType in ['application/dxf', 'text/plain'];
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

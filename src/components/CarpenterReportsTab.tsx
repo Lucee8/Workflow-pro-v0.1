@@ -68,7 +68,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
     // Check for active orders (not completed/dispatched)
     const activeOrdersForWorker = orders.filter(
       (o) => (o.carpenter_id === worker.id || o.polish_person_id === worker.id) &&
-             !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
+             !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
     );
     
     if (activeOrdersForWorker.length > 0) {
@@ -112,13 +112,13 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
     const pending = filteredOrders.filter(o => ['Pending', 'Designing'].includes(normalizeStage(o.current_status)));
     const highPriorityPending = pending.filter(o => o.priority === 'urgent');
     
-    const inProgress = filteredOrders.filter(o => !['Pending', 'Designing', 'Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)));
+    const inProgress = filteredOrders.filter(o => !['Pending', 'Designing', 'Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)));
     const delayedInProgress = inProgress.filter(o => o.is_delayed || (o.delivery_date && o.delivery_date < todayStr));
 
-    const completed = filteredOrders.filter(o => ['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)));
+    const completed = filteredOrders.filter(o => ['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)));
 
     const overdue = filteredOrders.filter(
-      o => !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) && 
+      o => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) && 
            (o.is_delayed || (o.delivery_date && o.delivery_date < todayStr))
     );
 
@@ -144,7 +144,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
     const now = new Date(todayStr);
 
     const overdueTasks = allOrders.filter(
-      o => !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) && 
+      o => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) && 
            (o.is_delayed || (o.delivery_date && o.delivery_date < todayStr))
     ).map(o => {
       const delivery = new Date(o.delivery_date);
@@ -161,10 +161,10 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
     });
 
     const blockedTasks = allOrders.filter(
-      o => !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) && 
+      o => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) && 
            (o.internal_notes?.toLowerCase().includes('wait') || 
             o.special_notes?.toLowerCase().includes('block') || 
-            o.current_status === 'Pending')
+            normalizeStage(o.current_status) === 'Pending')
     ).map(o => {
       const orderDate = new Date(o.order_date);
       const diff = Math.ceil((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -180,7 +180,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
     });
 
     const qaFailedTasks = allOrders.filter(
-      o => ['QC 1', 'QC Check 1', 'QC 2', 'QC Check 2'].includes(o.current_status)
+      o => ['QC 1', 'QC Check 1', 'QC 2', 'QC Check 2'].includes(normalizeStage(o.current_status))
     ).map(o => {
       return {
         ...o,
@@ -206,11 +206,11 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
 
       const status = getWorkerStatus(worker, db.orders || []);
       const activeTasks = workerOrders.filter(
-        (o) => !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
+        (o) => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
       );
       
       const inProgress = activeTasks.filter(
-        (o) => !['Pending', 'Designing', 'Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
+        (o) => !['Pending', 'Designing', 'Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
       );
 
       const overdue = activeTasks.filter(
@@ -218,7 +218,7 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
       );
 
       const completed = workerOrders.filter(
-        (o) => ['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
+        (o) => ['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
       );
 
       // Completion Rate
@@ -1114,11 +1114,11 @@ export default function CarpenterReportsTab({ db, currentUser }: CarpenterReport
                 <div className="space-y-2.5">
                   {(db.orders || []).filter(o => 
                     (o.carpenter_id === selectedCarpenterDetails.id || o.polish_person_id === selectedCarpenterDetails.id) &&
-                    !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
+                    !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
                   ).length > 0 ? (
                     (db.orders || []).filter(o => 
                       (o.carpenter_id === selectedCarpenterDetails.id || o.polish_person_id === selectedCarpenterDetails.id) &&
-                      !['Ready to Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
+                      !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status))
                     ).sort(compareOrdersByArticleSerialDesc).map(o => {
                       const isOverdue = o.is_delayed || (o.delivery_date && o.delivery_date < todayStr);
                       return (

@@ -211,6 +211,34 @@ export const SEED_USERS: User[] = [
     phone: '9876543233',
   },
   {
+    id: 'user_cnc_op_swapnil',
+    name: 'Swapnil',
+    email: 'swapnil.demo@example.com',
+    role: 'cnc_operator',
+    initials: 'SW',
+    status: 'ACTIVE',
+    is_active: true,
+    activation_status: 'PENDING_ACTIVATION',
+    password_configured: false,
+    last_seen: 'Never active yet',
+    created_at: '2026-11-22T00:00:00Z',
+    google_linked: false,
+  },
+  {
+    id: 'user_cnc_op_vaibhav',
+    name: 'Vaibhav',
+    email: 'vaibhav.demo@example.com',
+    role: 'cnc_operator',
+    initials: 'VB',
+    status: 'ACTIVE',
+    is_active: true,
+    activation_status: 'PENDING_ACTIVATION',
+    password_configured: false,
+    last_seen: 'Never active yet',
+    created_at: '2026-11-22T00:00:00Z',
+    google_linked: false,
+  },
+  {
     id: 'user_suspended_sample',
     name: 'Suspended Account Sample',
     email: 'suspended_user@gmail.com',
@@ -461,7 +489,7 @@ export function loadState(): AppState {
             }
           }
 
-          // Ensure required manager, wood_tab_manager, and cnc_workshop users exist
+          // Ensure required manager, wood_tab_manager, cnc_workshop, and seeded CNC operator users exist
           const existingUsers: User[] = Array.isArray(parsed.users) ? parsed.users : [];
           const requiredUsers: User[] = [
             SEED_USERS.find(u => u.email === 'yogesh@gmail.com')!,
@@ -483,6 +511,22 @@ export function loadState(): AppState {
                 is_active: reqUser.status === 'ACTIVE' || existingUsers[idx].is_active,
                 name: reqUser.name,
               };
+            }
+          });
+
+          // Ensure initial CNC operators (Swapnil, Vaibhav) are backfilled only if missing by ID & email,
+          // preserving any admin edits to their name, email, or active status.
+          const seededOperators: User[] = [
+            SEED_USERS.find(u => u.id === 'user_cnc_op_swapnil')!,
+            SEED_USERS.find(u => u.id === 'user_cnc_op_vaibhav')!,
+          ].filter(Boolean);
+
+          seededOperators.forEach(seedOp => {
+            const existsByIdOrEmail = existingUsers.some(
+              u => u.id === seedOp.id || u.email.toLowerCase() === seedOp.email.toLowerCase()
+            );
+            if (!existsByIdOrEmail) {
+              existingUsers.push(seedOp);
             }
           });
 

@@ -221,6 +221,7 @@ export default function WorkerDashboard({
         normalized === 'Making Started' ||
         normalized === 'Carpentry' ||
         normalized === 'CNC Wood Carving' ||
+        normalized === 'Assembly' ||
         normalized === 'Pending' ||
         normalized === 'Designing' ||
         normalized === 'QC 1' ||
@@ -233,7 +234,7 @@ export default function WorkerDashboard({
 
   // Search, Filter & Sort states
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_update' | 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'qc_1' | 'completed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_update' | 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'assembly' | 'qc_1' | 'completed'>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'deadline' | 'priority' | 'article'>('newest');
 
@@ -339,6 +340,9 @@ export default function WorkerDashboard({
         if (statusFilter === 'cnc_wood_carving') {
           return !isDone && (ord.carpenter_sub_status === 'cnc_wood_carving' || ord.current_status === 'CNC Wood Carving');
         }
+        if (statusFilter === 'assembly') {
+          return !isDone && (ord.carpenter_sub_status === 'assembly' || ord.current_status === 'Assembly');
+        }
         if (statusFilter === 'qc_1') {
           return !isDone && (ord.carpenter_sub_status === 'qc_check_1' || ord.current_status === 'QC 1' || ord.qc_1_status === 'pending_admin_approval');
         }
@@ -348,7 +352,7 @@ export default function WorkerDashboard({
 
     // Priority filter
     if (priorityFilter !== 'all') {
-      list = list.filter((ord) => (ord.priority || 'Normal').toLowerCase() === priorityFilter.toLowerCase());
+      list = list.filter((ord) => (ord.priority || 'normal').toLowerCase() === priorityFilter.toLowerCase());
     }
 
     // Sorting
@@ -361,8 +365,10 @@ export default function WorkerDashboard({
         return dateA.localeCompare(dateB);
       }
       if (sortBy === 'priority') {
-        const weight: Record<string, number> = { Urgent: 3, High: 2, Medium: 1, Normal: 1, Low: 0 };
-        return (weight[b.priority || 'Normal'] || 0) - (weight[a.priority || 'Normal'] || 0);
+        const weight: Record<string, number> = { urgent: 3, high: 2, medium: 1, normal: 1, low: 0 };
+        const pB = String(b.priority || 'normal').toLowerCase();
+        const pA = String(a.priority || 'normal').toLowerCase();
+        return (weight[pB] || 0) - (weight[pA] || 0);
       }
       if (sortBy === 'article') {
         return (a.article_no || '').localeCompare(b.article_no || '');
@@ -379,30 +385,34 @@ export default function WorkerDashboard({
     let woodPending = 0;
     let underCarpentry = 0;
     let cncPending = 0;
+    let assemblyPending = 0;
     let qc1Pending = 0;
     let completed = 0;
 
     baseAssignedOrders.forEach((o) => {
+      const stage = normalizeStage(o.current_status);
       const isDone =
         o.carpenter_sub_status === 'completed' ||
         o.qc_1_status === 'passed' ||
-        o.current_status === 'Making Completed' ||
-        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(o.current_status);
+        stage === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(stage);
 
       if (isDone) {
         completed++;
-      } else if (o.carpenter_sub_status === 'wood_procurement' || o.current_status === 'Wood Procurement') {
+      } else if (o.carpenter_sub_status === 'wood_procurement' || stage === 'Wood Procurement') {
         woodPending++;
-      } else if (o.carpenter_sub_status === 'under_carpentry' || o.current_status === 'Making Started') {
+      } else if (o.carpenter_sub_status === 'under_carpentry' || stage === 'Making Started') {
         underCarpentry++;
-      } else if (o.carpenter_sub_status === 'cnc_wood_carving' || o.current_status === 'CNC Wood Carving') {
+      } else if (o.carpenter_sub_status === 'cnc_wood_carving' || stage === 'CNC Wood Carving') {
         cncPending++;
-      } else if (o.carpenter_sub_status === 'qc_check_1' || o.current_status === 'QC 1') {
+      } else if (o.carpenter_sub_status === 'assembly' || stage === 'Assembly') {
+        assemblyPending++;
+      } else if (o.carpenter_sub_status === 'qc_check_1' || stage === 'QC 1') {
         qc1Pending++;
       }
     });
 
-    return { total, woodPending, underCarpentry, cncPending, qc1Pending, completed };
+    return { total, woodPending, underCarpentry, cncPending, assemblyPending, qc1Pending, completed };
   }, [baseAssignedOrders]);
 
   // Webcam stream handlers
@@ -476,19 +486,24 @@ export default function WorkerDashboard({
     setQcBuffer(!!ord.qc_1_buffer_verified || !!ws.qc_check_1_details?.buffer);
 
     // Determine initial Progress Status
+    const normStage = normalizeStage(ord.current_status);
     const isCarpentryDone =
       ord.carpenter_sub_status === 'completed' ||
       ord.qc_1_status === 'passed' ||
-      ord.current_status === 'Making Completed' ||
-      ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status);
+      normStage === 'Making Completed' ||
+      ['Polish', 'QC 2', 'Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normStage);
 
     if (isCarpenter) {
       if (isCarpentryDone) {
         setProgressStatus('qc_check_1');
+      } else if (normStage === 'Assembly' || ord.carpenter_sub_status === 'assembly') {
+        setProgressStatus('assembly');
+      } else if (normStage === 'CNC Wood Carving' || ord.carpenter_sub_status === 'cnc_wood_carving') {
+        setProgressStatus('cnc_wood_carving');
       } else if (ord.carpenter_sub_status) {
         setProgressStatus(ord.carpenter_sub_status);
       } else {
-        const stage = normalizeStage(ord.current_status);
+        const stage = normStage;
         if (stage === 'Wood Procurement') setProgressStatus('wood_procurement');
         else if (stage === 'Making Started' || stage === 'Carpentry') setProgressStatus('under_carpentry');
         else if (stage === 'QC 1' || stage === 'QC Check 1') setProgressStatus('qc_check_1');
@@ -644,25 +659,26 @@ export default function WorkerDashboard({
     const log: StatusLog = {
       id: 'log_' + generateUUID().split('-')[0],
       order_id: activeOrder.id,
-      stage: 'Making Started',
+      stage: 'Assembly',
       changed_by: currentUser.id,
       changed_by_name: currentUser.name,
       changed_by_role: currentUser.role,
       timestamp: new Date().toISOString(),
-      note: `${currentUser.name} (Carpenter) acknowledged QC failure notes and restarted carpentry adjustments.`,
+      note: `${currentUser.name} (Carpenter) acknowledged QC 1 failure notes and returned order to Assembly for rework.`,
     };
 
     const updatedOrder: Order = {
       ...activeOrder,
-      current_status: 'Making Started',
-      carpenter_sub_status: 'under_carpentry',
+      current_status: 'Assembly',
+      stage: 'Assembly',
+      carpenter_sub_status: 'assembly',
       qc_1_status: 'failed',
       last_qc_failure: {
         ...(getQCFailureInfo(activeOrder) || {
           stage: 'QC 1',
           failed_by: 'Inspector',
           failed_at: new Date().toISOString(),
-          notes: 'Re-working carpentry components.',
+          notes: 'Re-working assembly and components.',
           acknowledged: true,
           resolved: true,
         }),
@@ -674,13 +690,46 @@ export default function WorkerDashboard({
 
     onUpdateOrder(updatedOrder, log);
     setActiveOrder(updatedOrder);
-    setProgressStatus('under_carpentry');
+    setProgressStatus('assembly');
     setQcMeasurement(false);
     setQcFinishing(false);
     setQcBuffer(false);
     setShowQcFailPopup(false);
     setSeenQcFailures((prev) => ({ ...prev, [activeOrder.id]: true }));
-    alert('Order restarted at "Under Carpentry". Please correct the carpentry issues noted and re-verify QC 1 when ready.');
+    alert('Order returned to "Assembly". Please correct the issues noted and mark Assembly completed when ready for reinspection.');
+  };
+
+  // Handler for Assembly completion -> automatically moves order to QC 1
+  const handleMarkAssemblyCompleted = () => {
+    if (!activeOrder) return;
+    if (!isOrderInMyStage(activeOrder.current_status)) {
+      alert('Access restriction: You can only update stages for assigned active workshop orders.');
+      return;
+    }
+
+    const updatedOrder: Order = {
+      ...activeOrder,
+      current_status: 'QC 1',
+      stage: 'QC 1',
+      carpenter_sub_status: 'qc_check_1',
+      updated_at: new Date().toISOString(),
+    };
+
+    const log: StatusLog = {
+      id: 'log_' + generateUUID().split('-')[0],
+      order_id: activeOrder.id,
+      stage: 'QC 1',
+      changed_by: currentUser.id,
+      changed_by_name: currentUser.name,
+      changed_by_role: currentUser.role,
+      timestamp: new Date().toISOString(),
+      note: `${currentUser.name} marked Assembly as completed. Order automatically moved to QC 1.`,
+    };
+
+    onUpdateOrder(updatedOrder, log);
+    setActiveOrder(updatedOrder);
+    setProgressStatus('qc_check_1');
+    alert('Assembly marked as completed! Order has moved to QC 1.');
   };
 
   // Staging save handler
@@ -694,7 +743,7 @@ export default function WorkerDashboard({
     }
 
     let nextStage: OrderStage = activeOrder.current_status;
-    let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
+    let nextSubStatus: 'wood_procurement' | 'under_carpentry' | 'cnc_wood_carving' | 'assembly' | 'qc_check_1' | 'completed' | undefined = activeOrder.carpenter_sub_status;
 
     if (isCarpenter) {
       if (progressStatus === 'wood_procurement') {
@@ -714,16 +763,23 @@ export default function WorkerDashboard({
           nextSubStatus = 'cnc_wood_carving';
           nextStage = 'CNC Wood Carving';
         } else {
-          nextSubStatus = 'qc_check_1';
-          nextStage = 'Making Started';
+          nextSubStatus = 'assembly';
+          nextStage = 'Assembly';
         }
       } else if (progressStatus === 'cnc_wood_carving') {
         if (!isWoodScheduleApproved) {
           alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
           return;
         }
-        nextSubStatus = 'cnc_wood_carving';
-        nextStage = 'CNC Wood Carving';
+        nextSubStatus = 'assembly';
+        nextStage = 'Assembly';
+      } else if (progressStatus === 'assembly') {
+        if (!isWoodScheduleApproved) {
+          alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
+          return;
+        }
+        nextSubStatus = 'assembly';
+        nextStage = 'Assembly';
       } else if (progressStatus === 'qc_check_1') {
         if (!isWoodScheduleApproved) {
           alert('Making Started is locked. Admin must approve the Wood Schedule in Wood Management before carpentry work can begin.');
@@ -751,6 +807,8 @@ export default function WorkerDashboard({
         ? 'Under Carpentry'
         : progressStatus === 'cnc_wood_carving'
         ? 'CNC Wood Carving'
+        : progressStatus === 'assembly'
+        ? 'Assembly'
         : progressStatus === 'qc_check_1'
         ? 'QC Check 1 (Pending Admin Approval)'
         : progressStatus === 'completed'
@@ -821,7 +879,7 @@ export default function WorkerDashboard({
 
     onUpdateOrder(updatedOrder, log);
 
-    if (isCarpenter && ['Making Started', 'Wood Procurement', 'Carpentry', 'QC 1', 'QC Check 1'].includes(nextStage)) {
+    if (isCarpenter && ['Making Started', 'Wood Procurement', 'Carpentry', 'CNC Wood Carving', 'Assembly', 'QC 1', 'QC Check 1'].includes(nextStage)) {
       setActiveOrder(updatedOrder);
       setProgressStatus(nextSubStatus || 'wood_procurement');
       setUpdateNotes('');
@@ -832,7 +890,13 @@ export default function WorkerDashboard({
           alert('Success: Wood procurement verified! Sub-status updated to "Under Carpentry".');
         }
       } else if (progressStatus === 'under_carpentry') {
-        alert('Success: Under Carpentry progress saved! Ready for QC Check 1.');
+        alert(activeOrder.requires_cnc 
+          ? 'Success: Under Carpentry progress saved! Order forwarded to CNC Wood Carving.' 
+          : 'Success: Under Carpentry progress saved! Order forwarded to Assembly.');
+      } else if (progressStatus === 'cnc_wood_carving') {
+        alert('Success: CNC Wood Carving progress saved! Ready for Assembly.');
+      } else if (progressStatus === 'assembly') {
+        alert('Success: Assembly progress saved! When completed, click "Mark Assembly as Completed" to move to QC 1.');
       } else if (progressStatus === 'qc_check_1') {
         alert('Success: QC 1 checklist (3/3 items) verified and submitted to Admin for final QC 1 inspection.');
       }
@@ -867,7 +931,7 @@ export default function WorkerDashboard({
     d.setDate(d.getDate() + 14);
     return d.toISOString().split('T')[0];
   });
-  const [newTaskPriority, setNewTaskPriority] = useState<OrderPriority>('Normal');
+  const [newTaskPriority, setNewTaskPriority] = useState<OrderPriority>('normal');
   const [newTaskNotes, setNewTaskNotes] = useState('');
   const [newTaskParts, setNewTaskParts] = useState<WoodPart[]>([
     { id: 'part_' + Date.now() + '_1', part_name: 'MAIN FRAME STRUCTURE', width: 2, breadth: 4, length: 6.5, quantity: 2 },
@@ -968,8 +1032,10 @@ export default function WorkerDashboard({
       isCarpenter &&
       (activeOrder.carpenter_sub_status === 'completed' ||
         activeOrder.qc_1_status === 'passed' ||
-        activeOrder.current_status === 'Making Completed' ||
-        ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(activeOrder.current_status));
+        normalizeStage(activeOrder.current_status) === 'Making Completed' ||
+        ['Polish', 'QC 2', 'Ready To Dispatch', 'Ready to Dispatch', 'Dispatched', 'Delivery'].includes(
+          normalizeStage(activeOrder.current_status)
+        ));
 
     const savedSub = isCarpentryDone ? 'qc_check_1' : activeOrder.carpenter_sub_status || 'wood_procurement';
     const orderRefImages = activeOrder.images?.filter((img) => img.type === 'Design Reference') || [];
@@ -1262,7 +1328,7 @@ export default function WorkerDashboard({
                           progressStatus === 'cnc_wood_carving' ||
                           progressStatus === 'qc_check_1' ||
                           isCarpentryDone ||
-                          activeOrder.current_status === 'Making Completed';
+                          normalizeStage(activeOrder.current_status) === 'Making Completed';
 
                         return (
                           <button
@@ -1301,6 +1367,7 @@ export default function WorkerDashboard({
                       {activeOrder?.requires_cnc && (() => {
                         const isSelected = progressStatus === 'cnc_wood_carving';
                         const isCompleted =
+                          progressStatus === 'assembly' ||
                           progressStatus === 'qc_check_1' ||
                           activeOrder.cnc_status === 'completed' ||
                           isCarpentryDone;
@@ -1338,7 +1405,52 @@ export default function WorkerDashboard({
                         );
                       })()}
 
-                      {/* Step 3: Quality Check */}
+                      {/* Step: Assembly */}
+                      {(() => {
+                        const isSelected = progressStatus === 'assembly';
+                        const isCompleted =
+                          progressStatus === 'qc_check_1' ||
+                          isCarpentryDone ||
+                          normalizeStage(activeOrder.current_status) === 'QC 1' ||
+                          normalizeStage(activeOrder.current_status) === 'Making Completed' ||
+                          ['Polish', 'QC 2', 'Ready To Dispatch', 'Ready to Dispatch', 'Dispatched', 'Delivery'].includes(
+                            normalizeStage(activeOrder.current_status)
+                          );
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setProgressStatus('assembly')}
+                            className={`flex-1 min-w-[105px] p-3 rounded-2xl border flex flex-col items-center justify-between text-center transition cursor-pointer active:scale-[0.98] ${
+                              isSelected
+                                ? 'bg-white border-2 border-purple-700 ring-2 ring-purple-700/10 shadow-xs'
+                                : 'bg-[#F0EEF7]/50 border-stone-200/80 hover:bg-stone-100/70'
+                            }`}
+                          >
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors ${
+                                isSelected
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : isCompleted
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-stone-200/70 text-stone-600'
+                              }`}
+                            >
+                              {isCompleted && !isSelected ? <Check size={18} strokeWidth={2.5} /> : <Layers size={18} />}
+                            </div>
+                            <div className="min-w-0 w-full">
+                              <strong className="text-xs font-bold text-stone-900 block leading-tight mb-1">
+                                Assembly
+                              </strong>
+                              <span className="text-[10px] text-purple-700 font-medium block leading-tight">
+                                {isCompleted ? 'Completed ✔' : 'Joinery & Frame'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Step: Quality Check */}
                       {(() => {
                         const isSelected = progressStatus === 'qc_check_1';
                         const isCompleted = isCarpentryDone || activeOrder.qc_1_status === 'passed';
@@ -1378,7 +1490,7 @@ export default function WorkerDashboard({
                     </div>
 
                     {/* DESKTOP / TABLET VIEW: Stages Grid */}
-                    <div className={`hidden sm:grid ${activeOrder?.requires_cnc ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3`}>
+                    <div className={`hidden sm:grid ${activeOrder?.requires_cnc ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-3`}>
                       {/* Step 1: Get Wood */}
                       <button
                         type="button"
@@ -1465,7 +1577,34 @@ export default function WorkerDashboard({
                         </button>
                       )}
 
-                      {/* Step 3: Quality Check */}
+                      {/* Step: Assembly */}
+                      <button
+                        type="button"
+                        onClick={() => setProgressStatus('assembly')}
+                        className={`p-3.5 rounded-2xl border flex items-center gap-3 transition text-left cursor-pointer ${
+                          progressStatus === 'assembly'
+                            ? 'bg-white border-2 border-purple-700 ring-2 ring-purple-700/10 shadow-sm relative'
+                            : 'bg-stone-50/80 hover:bg-stone-100/70 border-stone-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                            progressStatus === 'assembly'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-stone-200/80 text-stone-600'
+                          }`}
+                        >
+                          <Layers size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <strong className="text-xs font-bold text-stone-900 block leading-tight">Assembly</strong>
+                          <span className="text-[10px] text-stone-500 block mt-0.5 truncate">
+                            {progressStatus === 'qc_check_1' || isCarpentryDone ? 'Completed ✔' : 'Joinery & Frame'}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Step: Quality Check */}
                       <button
                         type="button"
                         onClick={() => setProgressStatus('qc_check_1')}
@@ -1525,7 +1664,7 @@ export default function WorkerDashboard({
                           </div>
                           <div className="bg-white/80 p-2 rounded-lg border border-cyan-200">
                             <span className="text-[10px] font-bold text-stone-500 uppercase block">Carpentry Handoff</span>
-                            <span className="font-semibold">{activeOrder.cnc_status === 'completed' ? 'Carving Done — Proceed to QC 1' : 'Awaiting CNC Workshop'}</span>
+                            <span className="font-semibold">{activeOrder.cnc_status === 'completed' ? 'Carving Done — Proceed to Assembly' : 'Awaiting CNC Workshop'}</span>
                           </div>
                         </div>
 
@@ -1539,16 +1678,87 @@ export default function WorkerDashboard({
                         <div className="flex items-center justify-between pt-1">
                           <p className="text-[11px] text-cyan-800">
                             {activeOrder.cnc_status === 'completed'
-                              ? 'Carving is marked complete by CNC Manager. You may proceed to Quality Check.'
-                              : 'When timber has been carved and finished by CNC, advance to Quality Check.'}
+                              ? 'Carving is marked complete by CNC Manager. You may proceed to Assembly.'
+                              : 'When timber has been carved and finished by CNC, advance to Assembly.'}
                           </p>
                           <button
                             type="button"
-                            onClick={() => setProgressStatus('qc_check_1')}
+                            onClick={() => {
+                              setProgressStatus('assembly');
+                              if (normalizeStage(activeOrder.current_status) === 'CNC Wood Carving') {
+                                const updatedOrder: Order = {
+                                  ...activeOrder,
+                                  current_status: 'Assembly',
+                                  stage: 'Assembly',
+                                  carpenter_sub_status: 'assembly',
+                                  updated_at: new Date().toISOString(),
+                                };
+                                const log: StatusLog = {
+                                  id: 'log_' + generateUUID().split('-')[0],
+                                  order_id: activeOrder.id,
+                                  stage: 'Assembly',
+                                  changed_by: currentUser.id,
+                                  changed_by_name: currentUser.name,
+                                  changed_by_role: currentUser.role,
+                                  timestamp: new Date().toISOString(),
+                                  note: `${currentUser.name} moved order to Assembly stage.`,
+                                };
+                                onUpdateOrder(updatedOrder, log);
+                                setActiveOrder(updatedOrder);
+                              }
+                            }}
                             className="px-3 py-1.5 bg-cyan-800 hover:bg-cyan-900 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0"
                           >
-                            <span>Proceed to Quality Check</span>
-                            <ShieldCheck size={13} />
+                            <span>Proceed to Assembly</span>
+                            <Layers size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Assembly Stage Card for Carpenter */}
+                    {progressStatus === 'assembly' && (
+                      <div className="p-4 bg-purple-50/80 border border-purple-200 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between pb-2 border-b border-purple-200/80">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                              <Layers size={18} />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-sm text-purple-950">Assembly</h4>
+                              <p className="text-[11px] text-purple-800">
+                                Joinery, frame structure, and timber component assembly
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-purple-200 text-purple-900">
+                            Stage 6 of 11
+                          </span>
+                        </div>
+
+                        {activeOrder.qc_1_fail_reason && (
+                          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-start gap-2">
+                            <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="block font-bold">Returned from QC 1 for Correction:</strong>
+                              <span>{activeOrder.qc_1_fail_reason}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+                          <p className="text-xs text-stone-600 max-w-lg leading-relaxed">
+                            Assemble all carved and cut timber components. Verify structural joints, framing, and alignment.
+                            Once the piece is fully assembled, click the button below to submit the order for QC 1 inspection.
+                          </p>
+
+                          <button
+                            type="button"
+                            onClick={handleMarkAssemblyCompleted}
+                            className="w-full sm:w-auto px-5 py-2.5 bg-[#593622] hover:bg-[#402414] text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                          >
+                            <CheckCircle2 size={16} className="text-amber-300" />
+                            <span>Mark Assembly as Completed</span>
                           </button>
                         </div>
                       </div>
@@ -2172,11 +2382,12 @@ export default function WorkerDashboard({
               {filteredOrders.length > 0 ? (
                 filteredOrders.map((ord) => {
                   const matchingCust = customers.find((c) => c.id === ord.customer_id);
+                  const ordStage = normalizeStage(ord.current_status);
                   const isDone =
                     ord.carpenter_sub_status === 'completed' ||
                     ord.qc_1_status === 'passed' ||
-                    ord.current_status === 'Making Completed' ||
-                    ['Polish', 'QC 2', 'Ready to Dispatch', 'Dispatched'].includes(ord.current_status);
+                    ordStage === 'Making Completed' ||
+                    ['Polish', 'QC 2', 'Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(ordStage);
                   const isStagedMine = isOrderInMyStage(ord.current_status);
                   const isOverdue =
                     !isDone &&
@@ -2191,7 +2402,7 @@ export default function WorkerDashboard({
                           <span className="font-mono font-black text-stone-900 text-xs">
                             #{ord.article_no}
                           </span>
-                          {ord.priority === 'Urgent' && (
+                          {String(ord.priority || '').toLowerCase() === 'urgent' && (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-100 text-red-800 border border-red-200">
                               URGENT
                             </span>
@@ -2224,21 +2435,29 @@ export default function WorkerDashboard({
                           <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
                             <CheckCircle2 size={11} /> Completed
                           </span>
-                        ) : ord.carpenter_sub_status === 'wood_procurement' || ord.current_status === 'Wood Procurement' ? (
+                        ) : ord.carpenter_sub_status === 'wood_procurement' || ordStage === 'Wood Procurement' ? (
                           <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
                             Wood Procurement
                           </span>
-                        ) : ord.carpenter_sub_status === 'under_carpentry' || ord.current_status === 'Making Started' ? (
+                        ) : ord.carpenter_sub_status === 'under_carpentry' || ordStage === 'Making Started' ? (
                           <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5 font-bold text-[10px] animate-pulse">
                             Under Carpentry
                           </span>
-                        ) : ord.carpenter_sub_status === 'qc_check_1' || ord.current_status === 'QC 1' ? (
+                        ) : ord.carpenter_sub_status === 'cnc_wood_carving' || ordStage === 'CNC Wood Carving' ? (
+                          <span className="inline-flex items-center gap-1 text-cyan-800 bg-cyan-50 border border-cyan-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
+                            CNC Carving
+                          </span>
+                        ) : ord.carpenter_sub_status === 'assembly' || ordStage === 'Assembly' ? (
+                          <span className="inline-flex items-center gap-1 text-purple-800 bg-purple-50 border border-purple-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
+                            Assembly
+                          </span>
+                        ) : ord.carpenter_sub_status === 'qc_check_1' || ordStage === 'QC 1' ? (
                           <span className="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
                             QC 1 Review
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-stone-600 bg-stone-100 border border-stone-200 rounded-full px-2.5 py-0.5 font-bold text-[10px]">
-                            {ord.current_status}
+                            {ordStage}
                           </span>
                         )}
                       </td>
@@ -2486,12 +2705,11 @@ export default function WorkerDashboard({
                   </label>
                   <select
                     value={newTaskPriority}
-                    onChange={(e) => setNewTaskPriority(e.target.value as OrderPriority)}
+                    onChange={(e) => setNewTaskPriority(e.target.value === 'urgent' ? 'urgent' : 'normal')}
                     className="w-full p-2 bg-stone-50 border border-stone-200 rounded-lg text-xs font-bold"
                   >
-                    <option value="Normal">Normal</option>
-                    <option value="High">High</option>
-                    <option value="Urgent">Urgent</option>
+                    <option value="normal">Normal</option>
+                    <option value="urgent">Urgent</option>
                   </select>
                 </div>
               </div>

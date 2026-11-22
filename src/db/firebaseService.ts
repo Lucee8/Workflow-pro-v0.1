@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { signInAnonymously } from 'firebase/auth';
 import { 
   collection, 
   doc, 
@@ -11,25 +10,27 @@ import {
   getDocs, 
   onSnapshot, 
   writeBatch, 
+  getDoc,
   getDocFromServer,
-  deleteDoc
+  deleteDoc,
+  updateDoc,
+  query,
+  where,
+  limit,
+  orderBy,
+  QueryConstraint
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { AppState } from './store';
-import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool } from '../types';
+import { User, Customer, Order, StatusLog, Material, Payment, CRMCustomer, CRMQuotation, CRMFollowUp, CRMPayment, CRMNote, CRMAttachment, CRMTimelineEvent, AuditLog, normalizeStage, CNCJob, CNCTool, CNCProgramFile } from '../types';
+import { sha256Hex, isOperatorRole } from '../components/cncHelpers';
 
 // Connect with proper authentication securely or proceed with existing auth session
 export async function authenticateFirebase(): Promise<boolean> {
   try {
-    if (auth.currentUser) {
-      return true;
-    }
-    // Attempt anonymous auth session so Firebase Auth has an active session for real-time sync
-    try {
-      await signInAnonymously(auth);
-    } catch (authErr) {
-      // If anonymous auth is not enabled in the Firebase console, proceed with Firestore directly
-      console.log("Firebase Auth notice (anonymous mode not required or disabled):", authErr);
+    // Await Firebase Auth state initialization cleanly without calling restricted anonymous auth
+    if (typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
     }
     // Test if Firestore is reachable
     await testConnection();
@@ -48,15 +49,36 @@ async function testConnection() {
   }
 }
 
+/**
+ * Lightweight check to verify if Firestore has already been populated with data.
+ * Uses limit(1) queries to consume only 1-2 document reads instead of full collection scans.
+ */
+export async function isDatabasePopulated(): Promise<boolean> {
+  try {
+    const ordersSnap = await getDocs(query(collection(db, 'orders'), limit(1)));
+    if (!ordersSnap.empty) return true;
+
+    const customersSnap = await getDocs(query(collection(db, 'customers'), limit(1)));
+    if (!customersSnap.empty) return true;
+
+    const quotesSnap = await getDocs(query(collection(db, 'crmQuotations'), limit(1)));
+    return !quotesSnap.empty;
+  } catch (err) {
+    console.warn("isDatabasePopulated check failed:", err);
+    throw err;
+  }
+}
+
 // Check with server and sync any local cache records to Firestore if they are missing or if the DB is empty
 export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
   try {
     const syncCollectionToFirestore = async (name: string, items: any[]) => {
       if (!items || items.length === 0) return;
       const colRef = collection(db, name);
-      const snapshot = await getDocs(colRef);
+      // Lightweight emptiness check using limit(1) to avoid reading entire collections!
+      const checkSnap = await getDocs(query(colRef, limit(1)));
       
-      if (snapshot.empty) {
+      if (checkSnap.empty) {
         console.log(`Cloud collection '${name}' is empty. Initially seeding '${name}' with ${items.length} initial items...`);
         // Batch write with chunking (max 450 items per batch)
         const chunkSize = 450;
@@ -70,40 +92,34 @@ export async function seedFirestoreIfEmpty(seedData: AppState): Promise<void> {
           }
           await batch.commit();
         }
-      } else {
-        if (name === 'users') {
-          const batch = writeBatch(db);
-          let modified = false;
-          const existingEmails = new Set<string>();
+      } else if (name === 'users') {
+        const usersSnap = await getDocs(colRef);
+        const batch = writeBatch(db);
+        let modified = false;
+        const existingEmails = new Set<string>();
+        const existingIds = new Set<string>();
 
-          snapshot.docs.forEach((d) => {
-            const userData = d.data();
-            if (
-              d.id === 'user_amit_prod' ||
-              d.id === 'user_mahesh_prod' ||
-              userData.name === 'Amit Sharma' ||
-              userData.name === 'Bhavesh k' ||
-              userData.name === 'Mahesh Verma'
-            ) {
-              batch.delete(d.ref);
-              modified = true;
-            } else if (userData.email) {
-              existingEmails.add(userData.email.toLowerCase());
-            }
-          });
-
-          // Ensure required manager, wood tab manager, and admin users are in Firestore
-          for (const item of items) {
-            if (item.email && !existingEmails.has(item.email.toLowerCase())) {
-              batch.set(doc(db, 'users', item.id), cleanUndefined(item));
-              modified = true;
-            }
+        usersSnap.docs.forEach((d) => {
+          const userData = d.data();
+          existingIds.add(d.id);
+          if (typeof userData.email === 'string' && userData.email.trim()) {
+            existingEmails.add(userData.email.trim().toLowerCase());
           }
+        });
 
-          if (modified) {
-            console.log("Updating users in Firestore...");
-            await batch.commit();
+        // Only add missing non-demo seed users without deleting or overwriting any existing users
+        for (const item of items) {
+          const emailLower = typeof item?.email === 'string' ? item.email.trim().toLowerCase() : '';
+          if (!item?.id || !emailLower || emailLower.endsWith('@example.com')) continue;
+          if (!existingIds.has(item.id) && !existingEmails.has(emailLower)) {
+            batch.set(doc(db, 'users', item.id), cleanUndefined(sanitizeUserForFirestore(item)));
+            modified = true;
           }
+        }
+
+        if (modified) {
+          console.log("Synchronizing missing non-demo users in Firestore...");
+          await batch.commit();
         }
       }
     };
@@ -276,17 +292,32 @@ export async function fetchFullFirestoreState(): Promise<Partial<AppState>> {
   return result;
 }
 
+export interface SyncFirestoreOptions {
+  currentUser?: User | null;
+}
+
 // Sync Firestore changes in real-time
 export function syncFirestore(
   onUpdate: (updatedState: Partial<AppState>) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  options?: SyncFirestoreOptions
 ): () => void {
   const unsubscribers: (() => void)[] = [];
+  const activeUser = options?.currentUser;
+  const operatorOnly = Boolean(activeUser && isOperatorRole(activeUser.role));
 
-  const listenCollection = (name: string, callback: (docs: any[]) => void) => {
+  const listenCollection = (
+    name: string, 
+    callback: (docs: any[]) => void,
+    constraints?: QueryConstraint[]
+  ) => {
     const colRef = collection(db, name);
+    const targetQuery = constraints && constraints.length > 0
+      ? query(colRef, ...constraints)
+      : colRef;
+
     const unsub = onSnapshot(
-      colRef,
+      targetQuery,
       (snapshot) => {
         const docs = snapshot.docs
           .map(docSnap => {
@@ -319,22 +350,29 @@ export function syncFirestore(
     unsubscribers.push(unsub);
   };
 
-  listenCollection('users', (docs) => onUpdate({ users: docs as User[] }));
-  listenCollection('customers', (docs) => onUpdate({ customers: docs as Customer[] }));
-  listenCollection('orders', (docs) => onUpdate({ orders: docs as Order[] }));
-  listenCollection('statusLogs', (docs) => onUpdate({ statusLogs: docs as StatusLog[] }));
-  listenCollection('materials', (docs) => onUpdate({ materials: docs as Material[] }));
-  listenCollection('payments', (docs) => onUpdate({ payments: docs as Payment[] }));
-  listenCollection('crmCustomers', (docs) => onUpdate({ crmCustomers: docs as CRMCustomer[] }));
-  listenCollection('crmQuotations', (docs) => onUpdate({ crmQuotations: docs as CRMQuotation[] }));
-  listenCollection('crmFollowUps', (docs) => onUpdate({ crmFollowUps: docs as CRMFollowUp[] }));
-  listenCollection('crmPayments', (docs) => onUpdate({ crmPayments: docs as CRMPayment[] }));
-  listenCollection('crmNotes', (docs) => onUpdate({ crmNotes: docs as CRMNote[] }));
-  listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
-  listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
-  listenCollection('auditLogs', (docs) => onUpdate({ auditLogs: docs as AuditLog[] }));
-  listenCollection('cncJobs', (docs) => onUpdate({ cncJobs: docs as CNCJob[] }));
-  listenCollection('cncTools', (docs) => onUpdate({ cncTools: docs as CNCTool[] }));
+  if (operatorOnly && activeUser) {
+    // Operators strictly sync only their own user record and CNC jobs assigned to their user ID
+    listenCollection('users', (docs) => onUpdate({ users: docs as User[] }), [where('id', '==', activeUser.id)]);
+    listenCollection('cncJobs', (docs) => onUpdate({ cncJobs: docs as CNCJob[] }), [where('operator_id', '==', activeUser.id)]);
+  } else {
+    listenCollection('users', (docs) => onUpdate({ users: docs as User[] }));
+    listenCollection('customers', (docs) => onUpdate({ customers: docs as Customer[] }));
+    listenCollection('orders', (docs) => onUpdate({ orders: docs as Order[] }));
+    // Bound append-only collections to avoid reading thousands of historical logs repeatedly
+    listenCollection('statusLogs', (docs) => onUpdate({ statusLogs: docs as StatusLog[] }), [orderBy('timestamp', 'desc'), limit(500)]);
+    listenCollection('materials', (docs) => onUpdate({ materials: docs as Material[] }));
+    listenCollection('payments', (docs) => onUpdate({ payments: docs as Payment[] }));
+    listenCollection('crmCustomers', (docs) => onUpdate({ crmCustomers: docs as CRMCustomer[] }));
+    listenCollection('crmQuotations', (docs) => onUpdate({ crmQuotations: docs as CRMQuotation[] }));
+    listenCollection('crmFollowUps', (docs) => onUpdate({ crmFollowUps: docs as CRMFollowUp[] }));
+    listenCollection('crmPayments', (docs) => onUpdate({ crmPayments: docs as CRMPayment[] }));
+    listenCollection('crmNotes', (docs) => onUpdate({ crmNotes: docs as CRMNote[] }));
+    listenCollection('crmAttachments', (docs) => onUpdate({ crmAttachments: docs as CRMAttachment[] }));
+    listenCollection('crmTimelineEvents', (docs) => onUpdate({ crmTimelineEvents: docs as CRMTimelineEvent[] }));
+    listenCollection('auditLogs', (docs) => onUpdate({ auditLogs: docs as AuditLog[] }), [orderBy('timestamp', 'desc'), limit(100)]);
+    listenCollection('cncJobs', (docs) => onUpdate({ cncJobs: docs as CNCJob[] }));
+    listenCollection('cncTools', (docs) => onUpdate({ cncTools: docs as CNCTool[] }));
+  }
 
   return () => {
     unsubscribers.forEach(unsub => unsub());
@@ -363,13 +401,49 @@ function cleanUndefined<T>(obj: T): T {
   return obj;
 }
 
+function sanitizeUserForFirestore(user: User): Record<string, any> {
+  const { permissions: _ignoredPermissions, ...rest } = user as User & { permissions?: unknown };
+  const normalizedStatus = (user.status || (user.is_active !== false ? 'ACTIVE' : 'INACTIVE')).toUpperCase() as User['status'];
+  const normalizedRole = (String(user.role) === 'operator' ? 'cnc_operator' : user.role) as User['role'];
+  return {
+    ...rest,
+    email: (user.email || '').trim().toLowerCase(),
+    role: normalizedRole,
+    initials: (user.initials || user.name?.slice(0, 2) || 'US').trim().toUpperCase().slice(0, 6),
+    status: normalizedStatus,
+    is_active: normalizedStatus === 'ACTIVE',
+  };
+}
+
 // Standard Write and Mutate Operations securely isolated with handleFirestoreError
 export async function saveUserToFirebase(user: User): Promise<void> {
   const path = `users/${user.id}`;
   try {
-    await setDoc(doc(db, 'users', user.id), cleanUndefined(user));
+    await setDoc(doc(db, 'users', user.id), cleanUndefined(sanitizeUserForFirestore(user)), { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+export async function updateUserLoginMetadataInFirebase(
+  userId: string,
+  metadata: Partial<Pick<User, 'auth_uid' | 'google_linked' | 'password_configured' | 'activation_status' | 'last_seen'>>
+): Promise<void> {
+  if (!userId) return;
+  const path = `users/${userId}`;
+  const allowedPayload = cleanUndefined({
+    ...(metadata.auth_uid !== undefined ? { auth_uid: metadata.auth_uid } : {}),
+    ...(metadata.google_linked !== undefined ? { google_linked: metadata.google_linked } : {}),
+    ...(metadata.password_configured !== undefined ? { password_configured: metadata.password_configured } : {}),
+    ...(metadata.activation_status !== undefined ? { activation_status: metadata.activation_status } : {}),
+    ...(metadata.last_seen !== undefined ? { last_seen: metadata.last_seen } : {}),
+  });
+  if (Object.keys(allowedPayload).length === 0) return;
+  try {
+    await updateDoc(doc(db, 'users', userId), allowedPayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
     throw error;
   }
 }
@@ -475,65 +549,33 @@ export async function deleteOrderFromFirebase(orderId: string): Promise<void> {
   const path = `orders/${trimmedId}`;
 
   try {
-    // 1. Direct document deletion using the provided document ID
+    // 1. Direct document deletion using doc ID
+    await deleteDoc(doc(db, 'orders', trimmedId));
+
+    // 2. Cascade cleanup of related status logs via targeted query (reads only this order's logs!)
     try {
-      await deleteDoc(doc(db, 'orders', trimmedId));
-    } catch (err) {
-      console.warn(`Direct deleteDoc for orders/${trimmedId} encountered:`, err);
-    }
-
-    // 2. Comprehensive check: query the orders collection to find any matching docs by doc.id, data.id, or data.article_no
-    const colRef = collection(db, 'orders');
-    const snapshot = await getDocs(colRef);
-    const docsToDelete = snapshot.docs.filter((d) => {
-      const data = d.data();
-      return (
-        d.id === trimmedId ||
-        data.id === trimmedId ||
-        (data.article_no && data.article_no === trimmedId)
-      );
-    });
-
-    if (docsToDelete.length > 0) {
-      const batch = writeBatch(db);
-      docsToDelete.forEach((d) => {
-        batch.delete(d.ref);
-      });
-      await batch.commit();
-    }
-
-    // 3. Cascade cleanup of related status logs in Firestore
-    try {
-      const logsCol = collection(db, 'statusLogs');
-      const logsSnap = await getDocs(logsCol);
-      const logsToDelete = logsSnap.docs.filter(d => {
-        const data = d.data();
-        return data.order_id === trimmedId || d.id === trimmedId;
-      });
-      if (logsToDelete.length > 0) {
+      const logsQuery = query(collection(db, 'statusLogs'), where('order_id', '==', trimmedId));
+      const logsSnap = await getDocs(logsQuery);
+      if (!logsSnap.empty) {
         const batch = writeBatch(db);
-        logsToDelete.forEach(d => batch.delete(d.ref));
+        logsSnap.docs.forEach((d) => batch.delete(d.ref));
         await batch.commit();
       }
     } catch (logErr) {
-      console.warn(`Failed cascading statusLogs deletion for order ${trimmedId}:`, logErr);
+      console.warn(`Targeted cascading statusLogs deletion notice for ${trimmedId}:`, logErr);
     }
 
-    // 4. Cascade cleanup of related payments in Firestore
+    // 3. Cascade cleanup of related payments via targeted query (reads only this order's payments!)
     try {
-      const payCol = collection(db, 'payments');
-      const paySnap = await getDocs(payCol);
-      const payToDelete = paySnap.docs.filter(d => {
-        const data = d.data();
-        return data.order_id === trimmedId;
-      });
-      if (payToDelete.length > 0) {
+      const payQuery = query(collection(db, 'payments'), where('order_id', '==', trimmedId));
+      const paySnap = await getDocs(payQuery);
+      if (!paySnap.empty) {
         const batch = writeBatch(db);
-        payToDelete.forEach(d => batch.delete(d.ref));
+        paySnap.docs.forEach((d) => batch.delete(d.ref));
         await batch.commit();
       }
     } catch (payErr) {
-      console.warn(`Failed cascading payments deletion for order ${trimmedId}:`, payErr);
+      console.warn(`Targeted cascading payments deletion notice for ${trimmedId}:`, payErr);
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -629,21 +671,7 @@ export async function deleteCRMCustomerFromFirebase(id: string): Promise<void> {
   const trimmedId = id.trim();
   const path = `crmCustomers/${trimmedId}`;
   try {
-    // 1. Direct document deletion
-    try {
-      await deleteDoc(doc(db, 'crmCustomers', trimmedId));
-    } catch (err) {
-      console.warn(`Direct deleteDoc for crmCustomers/${trimmedId}:`, err);
-    }
-    // 2. Comprehensive check: delete any matching doc by doc.id or data.id
-    const colRef = collection(db, 'crmCustomers');
-    const snapshot = await getDocs(colRef);
-    const docsToDelete = snapshot.docs.filter(d => d.id === trimmedId || d.data().id === trimmedId);
-    if (docsToDelete.length > 0) {
-      const batch = writeBatch(db);
-      docsToDelete.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    }
+    await deleteDoc(doc(db, 'crmCustomers', trimmedId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -675,11 +703,13 @@ export async function saveCRMQuotationToFirebase(quote: CRMQuotation): Promise<v
 
 export async function deleteCRMQuotationFromFirebase(id: string): Promise<void> {
   if (!id || !id.trim()) return;
-  const path = `crmQuotations/${id}`;
+  const trimmedId = id.trim();
+  const path = `crmQuotations/${trimmedId}`;
   try {
-    await deleteDoc(doc(db, 'crmQuotations', id));
+    await deleteDoc(doc(db, 'crmQuotations', trimmedId));
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
   }
 }
 
@@ -911,6 +941,347 @@ export async function deleteCNCToolFromFirebase(toolId: string): Promise<void> {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+/**
+ * Saves or updates CNC Program File metadata in subcollection:
+ * cncJobs/{jobId}/programFiles/{fileId}
+ */
+export async function saveCNCProgramFileMetadata(
+  jobId: string,
+  programFile: CNCProgramFile
+): Promise<void> {
+  if (!jobId || !programFile?.id) {
+    throw new Error('Missing CNC Job ID or Program File ID.');
+  }
+  const path = `cncJobs/${jobId}/programFiles/${programFile.id}`;
+  try {
+    const fileRef = doc(db, 'cncJobs', jobId, 'programFiles', programFile.id);
+    await setDoc(fileRef, cleanUndefined(programFile), { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Fetches all CNC Program File metadata documents for a job from subcollection.
+ */
+export async function fetchCNCProgramFiles(jobId: string): Promise<CNCProgramFile[]> {
+  if (!jobId) return [];
+  const path = `cncJobs/${jobId}/programFiles`;
+  try {
+    const subColRef = collection(db, 'cncJobs', jobId, 'programFiles');
+    const snapshot = await getDocs(subColRef);
+    const files: CNCProgramFile[] = [];
+    snapshot.forEach((d) => {
+      files.push(d.data() as CNCProgramFile);
+    });
+    return files.sort((a, b) => (b.version || 1) - (a.version || 1));
+  } catch (error) {
+    console.warn(`Could not fetch program files from ${path}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Real-time listener for CNC Program Files of a specific CNC job document.
+ */
+export function listenCNCProgramFiles(
+  jobId: string,
+  onUpdate: (files: CNCProgramFile[]) => void
+): () => void {
+  if (!jobId) {
+    onUpdate([]);
+    return () => {};
+  }
+  const subColRef = collection(db, 'cncJobs', jobId, 'programFiles');
+  const unsubscribe = onSnapshot(
+    subColRef,
+    (snapshot) => {
+      const files: CNCProgramFile[] = [];
+      snapshot.forEach((d) => {
+        files.push(d.data() as CNCProgramFile);
+      });
+      // Sort newest / highest version and active first
+      files.sort((a, b) => {
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        return (b.version || 1) - (a.version || 1);
+      });
+      onUpdate(files);
+    },
+    (err) => {
+      console.warn(`Realtime listener error on cncJobs/${jobId}/programFiles:`, err);
+    }
+  );
+  return unsubscribe;
+}
+
+/**
+ * Deletes CNC Program File metadata document from subcollection.
+ */
+export async function deleteCNCProgramFileMetadata(
+  jobId: string,
+  fileId: string
+): Promise<void> {
+  if (!jobId || !fileId) return;
+  const path = `cncJobs/${jobId}/programFiles/${fileId}`;
+  try {
+    const fileRef = doc(db, 'cncJobs', jobId, 'programFiles', fileId);
+    await deleteDoc(fileRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+/**
+ * Updates program_files_count on an existing parent CNC job document.
+ */
+export async function updateCNCJobFilesCount(
+  jobId: string,
+  count: number
+): Promise<void> {
+  if (!jobId) return;
+  try {
+    const jobRef = doc(db, 'cncJobs', jobId);
+    await updateDoc(jobRef, {
+      program_files_count: count,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn(`Could not update program_files_count for job ${jobId}:`, err);
+  }
+}
+
+function normalizeUserDocFromFirestore(docId: string, rawData: any): User {
+  const status = String(rawData?.status || (rawData?.is_active !== false ? 'ACTIVE' : 'INACTIVE')).toUpperCase() as User['status'];
+  return {
+    ...rawData,
+    id: docId,
+    email: String(rawData?.email || '').trim().toLowerCase(),
+    name: String(rawData?.name || rawData?.email || 'Staff User'),
+    role: (rawData?.role || 'carpenter') as User['role'],
+    initials: String(rawData?.initials || rawData?.name?.slice(0, 2) || 'SU').toUpperCase(),
+    status,
+    is_active: status === 'ACTIVE',
+    created_at: rawData?.created_at || new Date().toISOString(),
+  };
+}
+
+/**
+ * Resolves the authoritative staff user document from Firestore after Firebase Auth sign-in.
+ * Supports existing users across fresh browsers even before localStorage or users collection listeners hydrate.
+ */
+export async function resolveAuthenticatedUserFromFirebase(
+  authUid: string,
+  authEmail?: string | null
+): Promise<User | null> {
+  const emailLower = (authEmail || '').trim().toLowerCase();
+
+  // 1. Check authoritative UID mapping first
+  if (authUid) {
+    try {
+      const mapSnap = await getDoc(doc(db, 'userAuthMap', authUid));
+      if (mapSnap.exists()) {
+        const mapData = mapSnap.data() as { userId?: string; email?: string; name?: string; role?: string; status?: string };
+        if (mapData?.userId) {
+          try {
+            const userSnap = await getDoc(doc(db, 'users', mapData.userId));
+            if (userSnap.exists()) {
+              return normalizeUserDocFromFirestore(userSnap.id, userSnap.data());
+            }
+          } catch (userLookupErr) {
+            console.warn('Mapped user profile fetch notice:', userLookupErr);
+          }
+          return normalizeUserDocFromFirestore(mapData.userId, {
+            email: mapData.email || emailLower,
+            name: mapData.name || emailLower.split('@')[0] || 'Staff User',
+            role: mapData.role || 'carpenter',
+            status: mapData.status || 'ACTIVE',
+            auth_uid: authUid,
+          });
+        }
+      }
+    } catch (mapErr) {
+      console.warn('userAuthMap lookup notice:', mapErr);
+    }
+  }
+
+  // 2. Check hashed operator/staff invite -> fetch full authoritative /users/{userId} doc
+  if (emailLower) {
+    try {
+      const invite = await checkOperatorInviteByEmail(emailLower);
+      if (invite?.userId) {
+        try {
+          const userSnap = await getDoc(doc(db, 'users', invite.userId));
+          if (userSnap.exists()) {
+            return normalizeUserDocFromFirestore(userSnap.id, userSnap.data());
+          }
+        } catch (inviteUserErr) {
+          console.warn('Invite user document lookup notice:', inviteUserErr);
+        }
+      }
+    } catch (inviteErr) {
+      console.warn('Invite check notice:', inviteErr);
+    }
+  }
+
+  // 3. Check direct UID-keyed /users documents (readable when auth_uid or email matches)
+  if (authUid) {
+    for (const candidateId of [authUid, `user_${authUid}`]) {
+      try {
+        const directSnap = await getDoc(doc(db, 'users', candidateId));
+        if (directSnap.exists()) {
+          return normalizeUserDocFromFirestore(directSnap.id, directSnap.data());
+        }
+      } catch {
+        // Ignore permission-denied on non-existent or unowned candidate IDs
+      }
+    }
+  }
+
+  // 4. For bootstrap admin or already-verified staff, query /users by email
+  if (emailLower) {
+    const emailCandidates = Array.from(new Set([emailLower, (authEmail || '').trim()].filter(Boolean)));
+    for (const candidateEmail of emailCandidates) {
+      try {
+        const q = query(collection(db, 'users'), where('email', '==', candidateEmail), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          return normalizeUserDocFromFirestore(d.id, d.data());
+        }
+      } catch {
+        // Non-admin unmapped sessions cannot list /users under security rules; expected fallback
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Persists the authoritative Firebase Auth UID -> Staff User mapping in /userAuthMap/{authUid}
+ * so Firestore security rules can enforce RBAC & operator job ownership without relying on client claims.
+ * Propagates errors to callers so UID mapping failures are never silently masked.
+ */
+export async function syncUserAuthMapToFirebase(authUid: string, user: User): Promise<void> {
+  if (!authUid || !user?.id) {
+    throw new Error('Missing Firebase UID or staff user ID for authorization mapping.');
+  }
+  const path = `userAuthMap/${authUid}`;
+  try {
+    const normalizedEmail = (user.email || '').trim().toLowerCase();
+    const status = (user.status || (user.is_active !== false ? 'ACTIVE' : 'INACTIVE')).toUpperCase();
+    await setDoc(
+      doc(db, 'userAuthMap', authUid),
+      cleanUndefined({
+        auth_uid: authUid,
+        userId: user.id,
+        email: normalizedEmail,
+        name: user.name,
+        role: user.role,
+        status,
+        updated_at: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Writes a non-PII operator/staff activation invite keyed by SHA-256(lowercaseEmail)
+ * so first-time account activation can verify eligibility before signing in.
+ */
+export async function syncOperatorInviteToFirebase(user: User, previousEmail?: string): Promise<void> {
+  if (!user?.email || !user?.id) return;
+  const cleanEmail = user.email.trim().toLowerCase();
+  if (cleanEmail.endsWith('@example.com')) return;
+  try {
+    if (previousEmail && previousEmail.trim().toLowerCase() !== cleanEmail) {
+      await deleteOperatorInviteFromFirebase(previousEmail);
+    }
+    const inviteId = await sha256Hex(cleanEmail);
+    const status = (user.status || (user.is_active ? 'ACTIVE' : 'INACTIVE')).toUpperCase();
+    await setDoc(
+      doc(db, 'operatorInvites', inviteId),
+      cleanUndefined({
+        userId: user.id,
+        name: user.name,
+        initials: user.initials,
+        role: user.role,
+        status,
+        password_configured: Boolean(user.password_configured),
+        is_operator: isOperatorRole(user.role),
+        updated_at: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+  } catch (error) {
+    console.warn('Operator invite sync notice:', error);
+  }
+}
+
+/**
+ * Updates only password_configured + updated_at on an existing operatorInvites record,
+ * matching non-admin Firestore update rules.
+ */
+export async function markOperatorInvitePasswordConfigured(email: string): Promise<void> {
+  if (!email) return;
+  const cleanEmail = email.trim().toLowerCase();
+  if (cleanEmail.endsWith('@example.com')) return;
+  try {
+    const inviteId = await sha256Hex(cleanEmail);
+    const ref = doc(db, 'operatorInvites', inviteId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    await updateDoc(ref, {
+      password_configured: true,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn('Operator invite password status update notice:', error);
+  }
+}
+
+export async function deleteOperatorInviteFromFirebase(email: string): Promise<void> {
+  if (!email) return;
+  try {
+    const inviteId = await sha256Hex(email.trim().toLowerCase());
+    await deleteDoc(doc(db, 'operatorInvites', inviteId));
+  } catch (error) {
+    console.warn('Operator invite cleanup notice:', error);
+  }
+}
+
+export interface OperatorInviteRecord {
+  userId: string;
+  name?: string;
+  initials?: string;
+  role: string;
+  status: string;
+  password_configured?: boolean;
+}
+
+/**
+ * Looks up a single hashed invite doc by exact SHA-256(email) during first-time account activation.
+ */
+export async function checkOperatorInviteByEmail(email: string): Promise<OperatorInviteRecord | null> {
+  if (!email) return null;
+  try {
+    const inviteId = await sha256Hex(email.trim().toLowerCase());
+    const snap = await getDoc(doc(db, 'operatorInvites', inviteId));
+    if (!snap.exists()) return null;
+    return snap.data() as OperatorInviteRecord;
+  } catch (error) {
+    console.warn('Operator invite lookup notice:', error);
+    return null;
+  }
+}
+
+
 
 
 

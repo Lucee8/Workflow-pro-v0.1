@@ -1,0 +1,141 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { UserRole } from '../types';
+
+/**
+ * Centralized Role-Based Access Control (RBAC) Permissions Map
+ * Single source of truth for all role authorization across the application.
+ */
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
+  SUPER_ADMIN: ['*'],
+  ADMIN: ['*'],
+  MANAGER: [
+    'crm',
+    'orders',
+    'detail_order_form',
+    'order_details',
+  ],
+  WOOD_TAB_MANAGER: [
+    'wood_management',
+  ],
+  CARPENTER: [
+    'my_orders',
+    'profile',
+    'order_details',
+  ],
+  POLISH_PERSON: [
+    'my_orders',
+    'profile',
+    'order_details',
+  ],
+  QC_STAFF: [
+    'my_orders',
+    'profile',
+    'order_details',
+  ],
+  CNC_MANAGER: [
+    'cnc_workshop',
+    'orders',
+    'order_details',
+  ],
+  CNC_WORKSHOP: [
+    'cnc_workshop',
+    'orders',
+    'order_details',
+  ],
+  CNC_OPERATOR: [
+    'cnc_workshop',
+  ],
+  OPERATOR: [
+    'cnc_workshop',
+  ],
+};
+
+/**
+ * Check whether a given user role has permission to access a specific module or feature.
+ */
+export function hasPermission(role: UserRole | string | undefined | null, permission: string): boolean {
+  if (!role) return false;
+  const normalizedRole = role.toUpperCase().replace(/[\s-]+/g, '_');
+  const allowed = ROLE_PERMISSIONS[normalizedRole] || [];
+  if (allowed.includes('*')) return true;
+
+  const normalizedTarget = permission.toLowerCase().replace(/[-_]/g, '');
+  return allowed.some((p) => {
+    if (p === permission) return true;
+    const normP = p.toLowerCase().replace(/[-_]/g, '');
+    return normP === normalizedTarget;
+  });
+}
+
+/**
+ * Robust authorization validator checking user existence, ACTIVE status, and role/custom permissions.
+ * Fails closed on any invalid status or missing permission.
+ */
+export function isUserAuthorized(
+  user: { role?: UserRole | string; status?: string; is_active?: boolean; permissions?: string[] } | null | undefined,
+  permission: string
+): boolean {
+  if (!user) return false;
+  
+  // Enforce ACTIVE status only
+  const status = (user.status || (user.is_active ? 'ACTIVE' : 'INACTIVE')).toUpperCase();
+  if (status !== 'ACTIVE') return false;
+
+  // Custom assigned permissions override if present
+  if (user.permissions && Array.isArray(user.permissions)) {
+    if (user.permissions.includes('*')) return true;
+    if (user.permissions.includes(permission)) return true;
+  }
+
+  return hasPermission(user.role, permission);
+}
+
+/**
+ * Get the initial landing / default tab for any user role upon login or redirect.
+ */
+export function getDefaultTabForRole(role: UserRole | string | undefined | null): string {
+  if (!role) return 'dashboard';
+  const normalized = role.toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'admin' || normalized === 'super_admin') return 'dashboard';
+  if (normalized === 'manager') return 'orders';
+  if (normalized === 'wood_tab_manager') return 'wood_management';
+  if (normalized === 'cnc_manager' || normalized === 'cnc_workshop' || normalized === 'cnc_operator' || normalized === 'operator') return 'cnc_workshop';
+  if (normalized === 'carpenter' || normalized === 'polish_person' || normalized === 'qc_staff') return 'my_orders';
+  return 'dashboard';
+}
+
+/**
+ * Get formatted human-readable display name for any role.
+ */
+export function getRoleDisplayName(role: UserRole | string | undefined | null): string {
+  if (!role) return 'Unknown';
+  const normalized = role.toLowerCase().replace(/[\s-]+/g, '_');
+  switch (normalized) {
+    case 'super_admin':
+      return 'Super Admin';
+    case 'admin':
+      return 'Administrator';
+    case 'manager':
+      return 'Manager';
+    case 'wood_tab_manager':
+      return 'Wood Tab Manager';
+    case 'cnc_workshop':
+    case 'cnc_manager':
+      return 'CNC Workshop';
+    case 'cnc_operator':
+    case 'operator':
+      return 'CNC Operator';
+    case 'carpenter':
+      return 'Carpenter';
+    case 'polish_person':
+      return 'Polish Person';
+    case 'qc_staff':
+      return 'QC Staff';
+    default:
+      return role.replace(/_/g, ' ');
+  }
+}

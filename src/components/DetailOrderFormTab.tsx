@@ -124,30 +124,41 @@ export default function DetailOrderFormTab({
   // Handle local image file load & compression to keep size optimal
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
+      if (!base64Str) {
+        resolve('');
+        return;
+      }
       const img = new Image();
-      img.src = base64Str;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
+        let width = img.width || 600;
+        let height = img.height || 600;
         const max_size = 600;
         if (width > height) {
           if (width > max_size) {
-            height *= max_size / width;
+            height = Math.round((height * max_size) / width);
             width = max_size;
           }
         } else {
           if (height > max_size) {
-            width *= max_size / height;
+            width = Math.round((width * max_size) / height);
             height = max_size;
           }
         }
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
         const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.6));
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
+        } else {
+          resolve(base64Str);
+        }
       };
+      img.onerror = () => resolve(base64Str);
+      img.src = base64Str;
     });
   };
 
@@ -574,30 +585,21 @@ export default function DetailOrderFormTab({
       const { quoteId, item, notes, quoteObj } = selected;
       const quote = quoteObj || crmQuotations?.find((q) => q.id === quoteId);
 
-// Extract reference images uploaded during quotation stage for this specific item
-const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
+      // Extract reference images uploaded during quotation stage for this specific item
+      const rawItemImages = (item.images && Array.isArray(item.images) ? item.images : []).filter(Boolean);
       
-const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> =
-  rawItemImages
-    .map((img: any, imgIdx: number) => {
-      const urlStr = typeof img === 'string' ? img : (img?.url || '');
-
-      const imgObj = {
-        id: `ref_q_${item.id || itemIdx}_${imgIdx}_${Math.random().toString(36).substring(2, 6)}`,
-        url: urlStr,
-        type: 'Design Reference' as const,
-      };
-
-      if (urlStr && !allExtractedImages.some((existing) => existing.url === urlStr)) {
-        allExtractedImages.push(imgObj);
-      }
-
-      return imgObj;
-    })
-    .filter(
-      (img: { id: string; url: string; type: 'Design Reference' }) =>
-        Boolean(img.url),
-    );
+      const itemRefImages: Array<{ id: string; url: string; type: 'Design Reference' }> = rawItemImages.map((img: any, imgIdx: number) => {
+        const urlStr = typeof img === 'string' ? img : (img?.url || '');
+        const imgObj = {
+          id: `ref_q_${item.id || itemIdx}_${imgIdx}_${Math.random().toString(36).substring(2, 6)}`,
+          url: urlStr,
+          type: 'Design Reference' as const,
+        };
+        if (urlStr && !allExtractedImages.some((existing) => existing.url === urlStr)) {
+          allExtractedImages.push(imgObj);
+        }
+        return imgObj;
+      }).filter(img => Boolean(img.url));
       
       let matchedCat = 'Beds';
       for (const [cat, subs] of Object.entries(CATEGORY_MAP)) {
@@ -1527,8 +1529,8 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
                   </label>
                   <p className="text-[11px] text-stone-500">
                     {requiresCnc 
-                      ? 'Workflow path: Making Started → CNC Wood Carving → QC 1' 
-                      : 'Workflow path: Making Started → QC 1'}
+                      ? 'Workflow path: Making Started → CNC Wood Carving → Assembly → QC 1' 
+                      : 'Workflow path: Making Started → Assembly → QC 1'}
                   </p>
                 </div>
               </div>
@@ -2883,4 +2885,3 @@ Thank you for choosing *Bhise'z Wood Workshop*!`;
     </div>
   );
 }
-//Updated on 2024-06-20

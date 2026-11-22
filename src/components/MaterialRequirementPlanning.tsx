@@ -243,10 +243,12 @@ export default function MaterialRequirementPlanning({ selectedOrderId, orders, c
   }, [selectedOrderId]);
 
   // Dynamic BOM Loader from Firestore with automatic fallback + initial seed
+  const activeProject = orders.find(o => o.id === activeProjectId);
+  const activeProjectCategory = activeProject?.category || '';
+  const activeProjectSubCategory = activeProject?.sub_category || '';
+
   useEffect(() => {
     if (!activeProjectId) return;
-    const project = orders.find(o => o.id === activeProjectId);
-    if (!project) return;
 
     const savedBOMKey = activeProjectId;
     const unsubBOM = onSnapshot(
@@ -259,8 +261,8 @@ export default function MaterialRequirementPlanning({ selectedOrderId, orders, c
           }
         } else {
           // fallback mapping category names or items to appropriate templates
-          const sub = (project.sub_category || '').toLowerCase();
-          const cat = (project.category || '').toLowerCase();
+          const sub = activeProjectSubCategory.toLowerCase();
+          const cat = activeProjectCategory.toLowerCase();
           let key = 'bed';
 
           if (sub.includes('cabinet') || sub.includes('wardrobe') || sub.includes('almirah') || cat.includes('kitchen')) {
@@ -295,7 +297,7 @@ export default function MaterialRequirementPlanning({ selectedOrderId, orders, c
     return () => {
       unsubBOM();
     };
-  }, [activeProjectId, orders]);
+  }, [activeProjectId, activeProjectCategory, activeProjectSubCategory]);
 
   // Save changes back to Firestore project storage
   const saveActiveProjectBOM = async (updatedBOM: ProjectBOMItem[]) => {
