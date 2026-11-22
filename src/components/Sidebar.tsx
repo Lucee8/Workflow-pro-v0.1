@@ -5,7 +5,6 @@
 
 import { User } from '../types';
 import { hasPermission, getRoleDisplayName } from '../permissions';
-import { isAdminRole } from './cncHelpers';
 import logoImg from '../assets/images/logo.png';
 import { motion } from 'motion/react';
 import {
@@ -70,7 +69,7 @@ export default function Sidebar({
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [confirmLogout, setConfirmLogout] = React.useState(false);
   const [switcherExpanded, setSwitcherExpanded] = React.useState(true);
-  const isAdmin = isAdminRole(currentUser.role);
+  const isAdmin = currentUser.role === 'admin';
 
   // Auto-reset logout confirmation banner after 3.5 seconds
   React.useEffect(() => {
@@ -161,7 +160,7 @@ export default function Sidebar({
             <img 
               src={logoImg} 
               alt="Bhisez Logo" 
-              className="w-full h-auto block m-0 p-0"
+              className="w-40 h-auto block m-0 p-0"
               referrerPolicy="no-referrer"
             />
           </div>
@@ -243,7 +242,6 @@ export default function Sidebar({
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-[13px] shrink-0">🪑</span>
                     <span className="truncate">Furniture Admin</span>
                   </span>
                   <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
@@ -256,7 +254,6 @@ export default function Sidebar({
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-stone-300 hover:text-white bg-stone-950/40 hover:bg-[#593622]/40 border border-stone-900/50 hover:border-amber-500/30 text-[11px] font-bold transition group"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="text-[13px] shrink-0">🌶️</span>
                     <span className="truncate">Masale Admin</span>
                   </span>
                   <ArrowUpRight size={11} className="text-stone-500 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
