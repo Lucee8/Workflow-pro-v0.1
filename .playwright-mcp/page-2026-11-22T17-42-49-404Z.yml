@@ -1,0 +1,52 @@
+- generic [ref=e9]:
+  - generic [ref=e10]:
+    - img "Bhisez Workshop Logo" [ref=e11]
+    - generic [ref=e12]:
+      - generic [ref=e13]: Private Management Portal
+      - heading "Bhisez Workshop" [level=1] [ref=e17]
+      - paragraph [ref=e18]: Authorized personnel & CNC operator access control
+  - generic [ref=e19]:
+    - button "Sign In" [ref=e20] [cursor=pointer]
+    - button "Activate" [ref=e25] [cursor=pointer]
+    - button "Reset" [ref=e30] [cursor=pointer]
+  - generic [ref=e35]:
+    - button "Continue with Google Account" [ref=e36] [cursor=pointer]
+    - generic [ref=e43]: or email & password
+  - generic [ref=e47]:
+    - generic [ref=e48]:
+      - generic [ref=e49]: Authorized Staff Email Address
+      - textbox "e.g. swapnil.demo@example.com" [ref=e54]
+    - generic [ref=e55]:
+      - generic [ref=e56]: Password
+      - generic [ref=e57]:
+        - textbox "Enter your password" [ref=e61]
+        - button "Show password" [ref=e62] [cursor=pointer]
+    - button "Sign In & Enter Workshop" [ref=e66] [cursor=pointer]
+    - generic [ref=e70]:
+      - generic [ref=e71]: "Quick Fill Approved Staff Email:"
+      - generic [ref=e72]:
+        - button "Swapnil (cnc_operator)" [ref=e73] [cursor=pointer]:
+          - generic [ref=e75]: Swapnil
+          - generic [ref=e76]: (cnc_operator)
+        - button "Vaibhav (cnc_operator)" [ref=e77] [cursor=pointer]:
+          - generic [ref=e79]: Vaibhav
+          - generic [ref=e80]: (cnc_operator)
+        - button "Admin Manager (admin)" [ref=e81] [cursor=pointer]:
+          - generic [ref=e83]: Admin Manager
+          - generic [ref=e84]: (admin)
+        - button "Lucee Code Administrator (admin)" [ref=e85] [cursor=pointer]:
+          - generic [ref=e87]: Lucee Code Administrator
+          - generic [ref=e88]: (admin)
+        - button "Yogesh (manager)" [ref=e89] [cursor=pointer]:
+          - generic [ref=e91]: Yogesh
+          - generic [ref=e92]: (manager)
+        - button "Suresh (manager)" [ref=e93] [cursor=pointer]:
+          - generic [ref=e95]: Suresh
+          - generic [ref=e96]: (manager)
+        - button "Wood Tab Manager (wood_tab_manager)" [ref=e97] [cursor=pointer]:
+          - generic [ref=e99]: Wood Tab Manager
+          - generic [ref=e100]: (wood_tab_manager)
+        - button "Rinku Vishwakarma (carpenter)" [ref=e101] [cursor=pointer]:
+          - generic [ref=e103]: Rinku Vishwakarma
+          - generic [ref=e104]: (carpenter)
+  - paragraph [ref=e106]: Protected by Centralized RBAC and Firebase Authentication. All login attempts and access events are audited.

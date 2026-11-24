@@ -1,0 +1,65 @@
+warning: in the working copy of 'firebase-blueprint.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'firestore.rules', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'index.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/CalendarTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/CustomersTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/DashboardTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/DetailOrderFormTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/LoginScreen.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/MaterialRequirementPlanning.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/NotificationCenter.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/OrderDetailsView.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/OrderForm.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/OrdersTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/Sidebar.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/UsersTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/db/firebase.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/db/firebaseService.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/db/store.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/types.ts', LF will be replaced by CRLF the next time Git touches it
+src/components/CNCWorkshopTab.tsx:11: trailing whitespace.
+[32m+[m[32m  StatusLog,[m[41m  [m
+src/components/CNCWorkshopTab.tsx:23: trailing whitespace.
+[32m+[m[32mimport {[m[41m [m
+src/components/CNCWorkshopTab.tsx:24: trailing whitespace.
+[32m+[m[32m  uploadCNCProgramFile,[m[41m [m
+src/components/CNCWorkshopTab.tsx:25: trailing whitespace.
+[32m+[m[32m  downloadCNCProgramFile,[m[41m [m
+src/components/CarpenterReportsTab.tsx:121: trailing whitespace.
+[32m+[m[32m      o => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) &&[m[41m [m
+src/components/CarpenterReportsTab.tsx:147: trailing whitespace.
+[32m+[m[32m      o => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) &&[m[41m [m
+src/components/CarpenterReportsTab.tsx:164: trailing whitespace.
+[32m+[m[32m      o => !['Delivery', 'Ready to Dispatch', 'Ready To Dispatch', 'Dispatched'].includes(normalizeStage(o.current_status)) &&[m[41m [m
+src/components/DashboardTab.tsx:9: trailing whitespace.
+[32m+[m[32m  import {[m[41m [m
+src/components/DashboardTab.tsx:10: trailing whitespace.
+[32m+[m[32m    Eye,[m[41m [m
+src/components/DashboardTab.tsx:11: trailing whitespace.
+[32m+[m[32m    CheckCircle2,[m[41m [m
+src/components/DashboardTab.tsx:12: trailing whitespace.
+[32m+[m[32m    UserPlus,[m[41m [m
+src/components/DashboardTab.tsx:13: trailing whitespace.
+[32m+[m[32m    Plus,[m[41m [m
+src/components/DashboardTab.tsx:14: trailing whitespace.
+[32m+[m[32m    FileText,[m[41m [m
+src/components/DetailOrderFormTab.tsx:1532: trailing whitespace.
+[32m+[m[32m                      ? 'Workflow path: Making Started → CNC Wood Carving → Assembly → QC 1'[m[41m [m
+src/components/OrderForm.tsx:1050: trailing whitespace.
+[32m+[m[32m                        ? 'Production workflow: Making Started → CNC Wood Carving → Assembly → QC 1'[m[41m [m
+src/components/WorkerDashboard.tsx:893: trailing whitespace.
+[32m+[m[32m        alert(activeOrder.requires_cnc[m[41m [m
+src/components/WorkerDashboard.tsx:894: trailing whitespace.
+[32m+[m[32m          ? 'Success: Under Carpentry progress saved! Order forwarded to CNC Wood Carving.'[m[41m [m
+src/db/firebase.ts:15: trailing whitespace.
+[32m+[m[32mimport {[m[41m [m
+src/db/firebase.ts:16: trailing whitespace.
+[32m+[m[32m  initializeFirestore,[m[41m [m
+src/db/firebase.ts:19: trailing whitespace.
+[32m+[m[32m  persistentMultipleTabManager[m[41m [m
+src/db/firebaseService.ts:310: trailing whitespace.
+[32m+[m[32m    name: string,[m[41m [m
+src/db/firebaseService.ts:1283: new blank line at EOF.

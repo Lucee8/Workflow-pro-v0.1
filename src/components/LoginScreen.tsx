@@ -43,7 +43,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
 } from 'firebase/auth';
-import { isAdminRole, isOperatorRole, isUserActiveStatus } from './cncHelpers';
+import { isAdminRole, isUserActiveStatus } from './cncHelpers';
 
 interface LoginScreenProps {
   users: User[];
@@ -69,7 +69,6 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [isProcessing, setIsProcessing] = React.useState(false);
 
-  const passwordInputRef = React.useRef<HTMLInputElement>(null);
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
 
   const handleCopyDomain = () => {
@@ -529,18 +528,6 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
     }
   };
 
-  // Quick-fill email chips for authorized active users (never bypasses authentication)
-  const quickFillUsers = React.useMemo(() => {
-    return users
-      .filter((u) => isUserActiveStatus(u))
-      .sort((a, b) => {
-        const aOp = isOperatorRole(a.role) ? 0 : 1;
-        const bOp = isOperatorRole(b.role) ? 0 : 1;
-        return aOp - bOp;
-      })
-      .slice(0, 8);
-  }, [users]);
-
   return (
     <div id="login-screen-wrapper" className="flex-1 min-h-screen bg-[#f7f5f0] flex flex-col justify-between font-sans">
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 md:py-14">
@@ -808,7 +795,6 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 text-stone-400" size={14} />
                       <input
-                        ref={passwordInputRef}
                         id="login-password-input"
                         type={showPassword ? 'text' : 'password'}
                         required
@@ -837,38 +823,6 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                     <span>{isProcessing ? 'Signing In...' : 'Sign In & Enter Workshop'}</span>
                     <ArrowRight size={14} />
                   </button>
-
-                  {/* Quick Email Pre-fill Directory (never bypasses authentication) */}
-                  <div className="pt-1 space-y-1.5">
-                    <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">
-                      Quick Fill Approved Staff Email:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {quickFillUsers.map((u) => (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => {
-                            setEmail(u.email);
-                            resetMessages();
-                            if (isOperatorRole(u.role) && !u.password_configured) {
-                              setAuthMode('activate');
-                              setPassword('');
-                              setConfirmPassword('');
-                            } else {
-                              setTimeout(() => passwordInputRef.current?.focus(), 50);
-                            }
-                          }}
-                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[10px] font-medium transition cursor-pointer border border-stone-200/90"
-                          title={`Pre-fill ${u.name} (${u.email})`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          <span className="font-semibold">{u.name}</span>
-                          <span className="font-mono text-[9px] text-stone-500">({u.role})</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </form>
               )}
 
