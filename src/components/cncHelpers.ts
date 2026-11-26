@@ -88,6 +88,60 @@ export function parse24HourTimeToMinutes(hhmm?: string | null): number | null {
   return Number(hStr) * 60 + Number(mStr);
 }
 
+export type TimePeriod = 'AM' | 'PM';
+
+export interface Time12HourParts {
+  hour: number; // 1..12
+  minute: number; // 0..59
+  period: TimePeriod;
+}
+
+/**
+ * Converts a 24-hour HH:MM string (e.g. "00:15", "09:30", "13:45") into 12-hour parts.
+ * Returns null if the input is empty or invalid.
+ */
+export function parse24HourTo12Hour(hhmm?: string | null): Time12HourParts | null {
+  if (!hhmm) return null;
+  const normalized = normalize24HourTimeInput(hhmm);
+  if (!isValid24HourTime(normalized)) return null;
+  const [hStr, mStr] = normalized.split(':');
+  const h24 = Number(hStr);
+  const minute = Number(mStr);
+  const period: TimePeriod = h24 >= 12 ? 'PM' : 'AM';
+  const hour = h24 % 12 === 0 ? 12 : h24 % 12;
+  return { hour, minute, period };
+}
+
+/**
+ * Converts 12-hour parts (hour 1..12, minute 0..59, AM/PM) into strict 24-hour HH:MM.
+ */
+export function format12HourTo24Hour(hour: number, minute: number, period: TimePeriod): string {
+  const safeHour = Math.max(1, Math.min(12, Math.round(hour)));
+  const safeMinute = Math.max(0, Math.min(59, Math.round(minute)));
+  let h24 = safeHour % 12;
+  if (period === 'PM') {
+    h24 += 12;
+  }
+  return `${String(h24).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+}
+
+/**
+ * Formats 12-hour parts as "hh:mm AM/PM" (e.g. "09:30 AM").
+ */
+export function format12HourPartsDisplay(parts: Time12HourParts): string {
+  return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')} ${parts.period}`;
+}
+
+/**
+ * Formats a 24-hour HH:MM string as "hh:mm AM/PM" (e.g. "13:45" -> "01:45 PM").
+ * Returns empty string if input is empty or invalid.
+ */
+export function format24HourTo12HourDisplay(hhmm?: string | null): string {
+  const parts = parse24HourTo12Hour(hhmm);
+  if (!parts) return '';
+  return format12HourPartsDisplay(parts);
+}
+
 /**
  * Formats integer minutes into 24-hour duration HH:MM (e.g. 150 -> "02:30").
  */
@@ -124,7 +178,7 @@ export function calculateMachineRunningTime(
       formatted: '',
       minutes: 0,
       isOvernight,
-      error: 'Start Time and Stop Time are required in 24-hour HH:MM format.',
+      error: 'Start Time and Stop Time are required.',
     };
   }
 
@@ -134,7 +188,7 @@ export function calculateMachineRunningTime(
       formatted: '',
       minutes: 0,
       isOvernight,
-      error: 'Enter valid 24-hour times between 00:00 and 23:59 (e.g. 09:30, 18:30).',
+      error: 'Select valid Start Time and Stop Time values.',
     };
   }
 
@@ -156,12 +210,14 @@ export function calculateMachineRunningTime(
     diffMinutes = stopMins - startMins;
   } else {
     if (!isOvernight) {
+      const startDisplay = format24HourTo12HourDisplay(start) || start;
+      const stopDisplay = format24HourTo12HourDisplay(stop) || stop;
       return {
         isValid: false,
         formatted: '',
         minutes: 0,
         isOvernight: false,
-        error: `Stop Time (${stop}) is earlier than Start Time (${start}). Enable "Overnight shift" if the job ran past midnight.`,
+        error: `Stop Time (${stopDisplay}) is earlier than Start Time (${startDisplay}). Enable "Overnight shift" if the job ran past midnight.`,
       };
     }
     diffMinutes = 24 * 60 - startMins + stopMins;

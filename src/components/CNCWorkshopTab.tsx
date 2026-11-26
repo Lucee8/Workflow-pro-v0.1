@@ -25,17 +25,18 @@ import {
   downloadCNCProgramFile, 
   openCNCProgramFile,
   validateCNCProgramFile,
-  deleteCNCProgramFileFromStorage,
   UploadProgressInfo
 } from '../db/firebaseStorage';
 import type { UploadTask } from 'firebase/storage';
 import { CNCProgramFiles } from './CNCProgramFiles';
+import { TimeWheelPicker } from './TimeWheelPicker';
 import {
   CNC_MACHINES,
   getLocalDateYYYYMMDD,
   getLocalTimeHHMM,
   formatDateDDMMYYYY,
   normalize24HourTimeInput,
+  format24HourTo12HourDisplay,
   calculateMachineRunningTime,
   isAdminRole,
   isOperatorRole,
@@ -303,10 +304,17 @@ export default function CNCWorkshopTab({
 
   // Modals / Form Drawers
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [activeTimePickerField, setActiveTimePickerField] = useState<'start_time' | 'stop_time' | null>(null);
   const [isToolModalOpen, setIsToolModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<CNCJob | null>(null);
   const [editingTool, setEditingTool] = useState<CNCTool | null>(null);
   const [jobFormError, setJobFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isJobModalOpen) {
+      setActiveTimePickerField(null);
+    }
+  }, [isJobModalOpen]);
 
   // Admin Operator Management States
   const [operatorSearchTerm, setOperatorSearchTerm] = useState('');
@@ -1130,15 +1138,8 @@ export default function CNCWorkshopTab({
         },
       });
 
-      // Successful upload: If replacing a previous file, cleanly delete the old file from Firebase Storage
-      if (replacingPreviousFileRef.current?.storagePath || replacingPreviousFileRef.current?.fileUrl) {
-        const oldTarget = replacingPreviousFileRef.current.storagePath || replacingPreviousFileRef.current.fileUrl;
-        if (oldTarget) {
-          deleteCNCProgramFileFromStorage(oldTarget).catch((delErr) => {
-            console.warn('Note: Non-critical old file cleanup response:', delErr);
-          });
-        }
-      }
+      // Preserve previous Storage binary when replacing legacy single-file slot;
+      // Storage cleanup is deferred strictly to authorized permanent purge + reference checks.
       replacingPreviousFileRef.current = null;
 
       // Update form state with new verified upload metadata
@@ -1243,12 +1244,8 @@ export default function CNCWorkshopTab({
   };
 
   const handleRemoveProgramFile = () => {
-    const oldTarget = jobFormData.storagePath || jobFormData.fileUrl || jobFormData.design_file_url;
-    if (oldTarget) {
-      deleteCNCProgramFileFromStorage(oldTarget).catch((e) =>
-        console.warn('Remove file storage cleanup note:', e)
-      );
-    }
+    // Do not delete Firebase Storage binary on ordinary form removal;
+    // Storage objects remain protected until authorized permanent purge + reference check.
     setJobFormData(prev => ({
       ...prev,
       fileName: '',
@@ -4801,7 +4798,12 @@ export default function CNCWorkshopTab({
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSubmitJobForm} className="p-4 md:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+            <form
+              onSubmit={handleSubmitJobForm}
+              className={`p-4 md:p-6 space-y-4 flex-1 text-xs ${
+                activeTimePickerField ? 'overflow-hidden md:overflow-y-auto' : 'overflow-y-auto'
+              }`}
+            >
               {jobFormError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2">
                   <AlertCircle size={15} className="shrink-0 text-rose-600" />
@@ -5038,11 +5040,11 @@ export default function CNCWorkshopTab({
                   </div>
                 </div>
 
-                {/* Field 10: 24-Hour Start Time, Stop Time & Auto-Calculated Machine Running Time */}
+                {/* Field 10: 12-Hour Scroll-Wheel Start Time, Stop Time & Auto-Calculated Machine Running Time */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between flex-wrap gap-x-2 gap-y-1 mb-1">
                     <label className="text-xs font-semibold text-stone-700">
-                      Machine Running Time (24h) <span className="text-rose-500">*</span>
+                      Machine Running Time <span className="text-rose-500">*</span>
                     </label>
                     <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-600 cursor-pointer select-none">
                       <input
@@ -5058,8 +5060,8 @@ export default function CNCWorkshopTab({
                     </label>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                    <div className="min-w-0">
                       <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
                         <span>Start Time</span>
                         <button
@@ -5072,26 +5074,27 @@ export default function CNCWorkshopTab({
                           Now
                         </button>
                       </div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={5}
-                        placeholder="09:30"
-                        value={jobFormData.start_time || ''}
-                        onChange={(e) =>
-                          setJobFormData({ ...jobFormData, start_time: e.target.value })
-                        }
-                        onBlur={(e) => {
-                          const norm = normalize24HourTimeInput(e.target.value);
-                          if (norm !== e.target.value) {
-                            setJobFormData((prev) => ({ ...prev, start_time: norm }));
-                          }
-                        }}
-                        className="w-full px-2.5 py-2 bg-white border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                      />
+                      <button
+                        type="button"
+                        aria-label="Start Time"
+                        aria-haspopup="dialog"
+                        onClick={() => setActiveTimePickerField('start_time')}
+                        className="w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 bg-white border border-stone-200 hover:border-teal-600 rounded-xl text-[11px] sm:text-xs font-mono tabular-nums flex items-center justify-center sm:justify-between gap-1 text-left cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      >
+                        <span
+                          className={`whitespace-nowrap ${
+                            jobFormData.start_time
+                              ? 'font-bold text-stone-900'
+                              : 'font-medium text-stone-400'
+                          }`}
+                        >
+                          {format24HourTo12HourDisplay(jobFormData.start_time) || '09:30 AM'}
+                        </span>
+                        <Clock size={12} className="text-stone-400 shrink-0 hidden sm:block" />
+                      </button>
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
                         <span>Stop Time</span>
                         <button
@@ -5104,31 +5107,32 @@ export default function CNCWorkshopTab({
                           Now
                         </button>
                       </div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={5}
-                        placeholder="13:45"
-                        value={jobFormData.stop_time || ''}
-                        onChange={(e) =>
-                          setJobFormData({ ...jobFormData, stop_time: e.target.value })
-                        }
-                        onBlur={(e) => {
-                          const norm = normalize24HourTimeInput(e.target.value);
-                          if (norm !== e.target.value) {
-                            setJobFormData((prev) => ({ ...prev, stop_time: norm }));
-                          }
-                        }}
-                        className="w-full px-2.5 py-2 bg-white border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                      />
+                      <button
+                        type="button"
+                        aria-label="Stop Time"
+                        aria-haspopup="dialog"
+                        onClick={() => setActiveTimePickerField('stop_time')}
+                        className="w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 bg-white border border-stone-200 hover:border-teal-600 rounded-xl text-[11px] sm:text-xs font-mono tabular-nums flex items-center justify-center sm:justify-between gap-1 text-left cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                      >
+                        <span
+                          className={`whitespace-nowrap ${
+                            jobFormData.stop_time
+                              ? 'font-bold text-stone-900'
+                              : 'font-medium text-stone-400'
+                          }`}
+                        >
+                          {format24HourTo12HourDisplay(jobFormData.stop_time) || '01:45 PM'}
+                        </span>
+                        <Clock size={12} className="text-stone-400 shrink-0 hidden sm:block" />
+                      </button>
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <div className="text-[10px] text-stone-500 font-semibold mb-0.5">
                         Running Time
                       </div>
                       <div
-                        className={`w-full px-2.5 py-2 rounded-xl border text-xs font-mono font-black flex items-center justify-center ${
+                        className={`w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 rounded-xl border text-[11px] sm:text-xs font-mono font-black tabular-nums flex items-center justify-center ${
                           liveRunningTimeResult.isValid
                             ? 'bg-teal-50 border-teal-200 text-[#115e59]'
                             : jobFormData.start_time || jobFormData.stop_time
@@ -5235,6 +5239,28 @@ export default function CNCWorkshopTab({
           </div>
         </div>
       )}
+
+      {/* Reusable 12-Hour Scroll-Wheel Time Picker for CNC Start/Stop Time */}
+      <TimeWheelPicker
+        isOpen={isJobModalOpen && activeTimePickerField !== null}
+        title={activeTimePickerField === 'start_time' ? 'Select Start Time' : 'Select Stop Time'}
+        value={
+          activeTimePickerField === 'start_time'
+            ? jobFormData.start_time
+            : activeTimePickerField === 'stop_time'
+            ? jobFormData.stop_time
+            : ''
+        }
+        onConfirm={(hhmm24) => {
+          if (activeTimePickerField === 'start_time') {
+            setJobFormData((prev) => ({ ...prev, start_time: hhmm24 }));
+          } else if (activeTimePickerField === 'stop_time') {
+            setJobFormData((prev) => ({ ...prev, stop_time: hhmm24 }));
+          }
+          setActiveTimePickerField(null);
+        }}
+        onCancel={() => setActiveTimePickerField(null)}
+      />
 
       {/* MODAL: TOOL & BIT ENTRY / EDIT (Google Stitch Design) */}
       {isToolModalOpen && (
