@@ -642,15 +642,25 @@ export type CNCJobStatus = 'Pending' | 'Queued' | 'In Progress' | 'Completed' | 
 
 export type CNCDurationUnit = 'Minutes' | 'Hours' | 'Days';
 
+export interface CNCMachineTimeSession {
+  id: string;
+  start_time: string; // 24-hour HH:MM
+  stop_time: string; // 24-hour HH:MM
+  running_time: string; // Calculated HH:MM duration
+  duration_minutes: number;
+  is_overnight: boolean;
+}
+
 export interface CNCJob {
   id: string; // UUID
   order_id?: string; // Foreign key linking to existing production order
   article_no?: string; // Order Article Number (e.g. 12/03/26/0001)
-  customer_name?: string;
+  customer_name?: string; // Historical customer reference preserved on existing jobs
+  jobName?: string; // Dedicated job name for CNC Workshop entries
   job_number: string; // Sequential CNC job ID (e.g. CNC-2026-001)
   job_date: string; // YYYY-MM-DD
   product_name: string; // Component or product (e.g. Mandir Jali Panel, Bed Headboard)
-  material: string; // Timber/Sheet (e.g. Teak Wood, MDF 18mm, Sheesham)
+  material: string; // Timber/Sheet (e.g. Teak Wood, Akashi, Shivan, or custom material)
   dimensions: string; // e.g. 48" x 24" x 1.5"
   job_type: CNCJobType;
   machine_name: string; // e.g. CNC Router 1 (3-Axis), CNC Heavy Carver
@@ -665,10 +675,11 @@ export interface CNCJob {
   completion_time_unit?: CNCDurationUnit; // Preserved unit ('Minutes' | 'Hours' | 'Days')
   operator_id?: string; // Stable operator user ID reference
   operator_name: string;
-  start_time?: string; // 24-hour HH:MM
-  stop_time?: string; // 24-hour HH:MM
-  machine_running_time?: string; // Calculated HH:MM duration
-  is_overnight?: boolean; // True when Stop Time is on the following day (past midnight)
+  start_time?: string; // 24-hour HH:MM (first session start time for legacy compatibility)
+  stop_time?: string; // 24-hour HH:MM (last session stop time for legacy compatibility)
+  machine_running_time?: string; // Calculated total HH:MM duration across all sessions
+  is_overnight?: boolean; // True when any session Stop Time is on the following day (past midnight)
+  time_sessions?: CNCMachineTimeSession[]; // Structured multi-session machine running time records
   amount: number; // CNC revenue/rate in ₹
   status: CNCJobStatus;
   notes?: string;
@@ -749,5 +760,198 @@ export interface CNCTool {
   updated_at?: string;
 }
 
+// ==========================================
+// CENTRALIZED RECENTLY DELETED (TRASH) & ACTIVITY TIMELINE TYPES (PHASE 1)
+// ==========================================
 
+export const TRASH_RETENTION_DAYS = 30;
+export const TRASH_INLINE_MAX_BYTES = 650 * 1024; // Leave headroom under Firestore 1 MiB doc limit
+export const TRASH_CHUNK_MAX_BYTES = 500 * 1024;
 
+export type TrashModule =
+  | 'orders'
+  | 'crm'
+  | 'customers'
+  | 'cnc_workshop'
+  | 'wood_management'
+  | 'mrp'
+  | 'users';
+
+export type TrashEntityType =
+  | 'order'
+  | 'customer'
+  | 'crm_customer'
+  | 'crm_quotation'
+  | 'crm_followup'
+  | 'crm_payment'
+  | 'crm_note'
+  | 'crm_attachment'
+  | 'cnc_job'
+  | 'cnc_program_file'
+  | 'cnc_tool'
+  | 'wood_request'
+  | 'mrp_hardware'
+  | 'mrp_wood'
+  | 'mrp_bom'
+  | 'user';
+
+export type TrashStatus = 'IN_TRASH' | 'RESTORED' | 'PURGED';
+
+export type TrashSnapshotMode = 'inline' | 'chunked';
+
+export interface TrashRelatedRef {
+  id: string;
+  collection: string;
+  entityType: TrashEntityType | string;
+  displayLabel?: string;
+}
+
+export interface TrashDependencyCheck {
+  canRestore: boolean;
+  hasIdCollision: boolean;
+  existingActiveRecordId?: string;
+  missingDependencies: Array<{
+    entityType: TrashEntityType | string;
+    originalCollection: string;
+    originalId: string;
+    matchingTrashId?: string;
+    reason: string;
+  }>;
+}
+
+export interface RecentlyDeletedItem<TPayload = Record<string, unknown>> {
+  id: string;
+  module: TrashModule;
+  entityType: TrashEntityType;
+  originalCollection: string;
+  originalId: string;
+  /** Parent document ID for nested subcollections (e.g. jobId for cnc_program_file) */
+  parentId?: string;
+  displayTitle: string;
+  displaySubtitle?: string;
+  snapshotMode: TrashSnapshotMode;
+  /** Present when snapshotMode === 'inline' and payloadBytes <= TRASH_INLINE_MAX_BYTES */
+  payload?: TPayload;
+  payloadBytes: number;
+  chunkCount: number;
+  relatedCount: number;
+  relatedRefs?: TrashRelatedRef[];
+  /** Firebase Storage paths (e.g. cnc-programs/...) retained in Trash until permanent purge */
+  storagePaths?: string[];
+  parentTrashId?: string;
+  batchId?: string;
+  deletedByAuthUid: string;
+  deletedByUserId: string;
+  deletedByName: string;
+  deletedByEmail: string;
+  deletedByRole: UserRole | string;
+  /** Server-generated timestamp (normalized to ISO string on client read) */
+  deletedAt: string;
+  /** Server-calculated deletion timestamp + 30 days (normalized to ISO string on client read) */
+  expiresAt: string;
+  retentionDays: number;
+  status: TrashStatus;
+  restoredAt?: string;
+  restoredByAuthUid?: string;
+  restoredByUserId?: string;
+  restoredByName?: string;
+  restoredByEmail?: string;
+  restoredByRole?: UserRole | string;
+  restoreTargetId?: string;
+  purgedAt?: string;
+  purgedByAuthUid?: string;
+  purgedByUserId?: string;
+  purgedByRole?: UserRole | string;
+}
+
+export interface TrashPayloadChunk {
+  id: string;
+  trashId: string;
+  chunkIndex: number;
+  totalChunks: number;
+  encoding: 'utf-8-json-slice';
+  data: string;
+  byteLength: number;
+  createdAt: string;
+}
+
+export interface TrashRelatedRecord {
+  id: string;
+  trashId: string;
+  entityType: string;
+  originalCollection: string;
+  originalId: string;
+  payload: Record<string, unknown>;
+  payloadBytes: number;
+  createdAt: string;
+}
+
+export type ActivityModule =
+  | 'auth'
+  | 'orders'
+  | 'crm'
+  | 'customers'
+  | 'cnc_workshop'
+  | 'wood_management'
+  | 'mrp'
+  | 'users'
+  | 'settings'
+  | 'trash';
+
+export type ActivityAction =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'RESTORE'
+  | 'PURGE'
+  | 'STAGE_CHANGE'
+  | 'STATUS_CHANGE'
+  | 'ASSIGN'
+  | 'PAYMENT'
+  | 'UPLOAD'
+  | 'EXPORT'
+  | 'LOGIN'
+  | 'LOGIN_DENIED'
+  | 'ACCESS_DENIED';
+
+export type ActivityVerificationStatus =
+  | 'SERVER_VERIFIED'
+  | 'RULE_BOUND_MUTATION'
+  | 'CLIENT_TELEMETRY';
+
+export interface ActivityProof {
+  collection: string;
+  documentId: string;
+  parentId?: string;
+  trashId?: string;
+}
+
+export interface ActivityFieldChange {
+  field: string;
+  from?: string | number | boolean | null;
+  to?: string | number | boolean | null;
+}
+
+export interface ActivityEvent {
+  id: string;
+  module: ActivityModule;
+  action: ActivityAction;
+  entityType: string;
+  entityId: string;
+  entityLabel: string;
+  actorAuthUid: string;
+  actorUserId: string;
+  actorName: string;
+  actorEmail: string;
+  actorRole: UserRole | string;
+  summary: string;
+  changes?: ActivityFieldChange[];
+  metadata?: Record<string, string | number | boolean | null>;
+  /** Links critical mutation events to the exact Firestore operation executed in the same atomic batch */
+  proof?: ActivityProof;
+  /** Distinguishes Admin SDK / Cloud Function verified events from rule-verified batch mutations and telemetry */
+  verificationStatus: ActivityVerificationStatus;
+  source: 'web_client' | 'server_trusted';
+  /** Server-generated timestamp (normalized to ISO string on client read) */
+  createdAt: string;
+}

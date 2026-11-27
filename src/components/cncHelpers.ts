@@ -3,10 +3,90 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CNCJob, User, UserRole } from '../types';
+import { CNCJob, CNCMachineTimeSession, User, UserRole } from '../types';
 
 export const CNC_MACHINES = ['Small', 'Big'] as const;
 export type CNCMachineOption = (typeof CNC_MACHINES)[number];
+
+export const CNC_STANDARD_MATERIALS = ['Teak Wood', 'Akashi', 'Shivan'] as const;
+export const CNC_MATERIAL_OPTIONS = ['Teak Wood', 'Akashi', 'Shivan', 'Other'] as const;
+export type CNCMaterialOption = (typeof CNC_MATERIAL_OPTIONS)[number];
+
+export const CNC_TOOL_OPTIONS: readonly string[] = [
+  '60° V-Groove Carving Bit (1/2" Shank)',
+  '6mm Solid Carbide Ball Nose',
+  '90° V-Carve Chamfer Bit (1/2" Shank)',
+  'Ball nose 1.5 mm',
+  'Ball nose 2 mm',
+  'Ball nose 4 mm',
+  'Ball nose 5 mm',
+  'Ball nose 6 mm',
+  'Ball nose 8 mm',
+  'Ball nose 12 mm',
+  'Flat end mill 6 mm',
+  'Flat end mill 12 mm',
+  'Straight router 6 mm',
+  'Straight router 12 mm',
+  'Surfacing bit 25 mm',
+  'Taper Ball nose 1 mm',
+  'Taper Ball nose 3 mm',
+  'Taper Ball nose 4 mm',
+  'Tapper Ballnose 1.5 mm',
+  'Tapper Ballnose 2 mm',
+  'Turning Bit',
+  'V-bit 60° (carving)',
+  'V-bit 90°',
+] as const;
+
+export function parseMaterialSelection(savedMaterial?: string | null): {
+  materialOption: CNCMaterialOption;
+  customMaterial: string;
+} {
+  const trimmed = (savedMaterial || '').trim();
+  if (!trimmed) {
+    return { materialOption: 'Teak Wood', customMaterial: '' };
+  }
+  const matchedPreset = CNC_STANDARD_MATERIALS.find(
+    (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (matchedPreset) {
+    return { materialOption: matchedPreset, customMaterial: '' };
+  }
+  if (trimmed.toLowerCase() === 'other') {
+    return { materialOption: 'Other', customMaterial: '' };
+  }
+  return { materialOption: 'Other', customMaterial: trimmed };
+}
+
+export function resolveMaterialForSave(
+  materialOption: CNCMaterialOption,
+  customMaterial: string
+): { isValid: boolean; value: string; error?: string } {
+  if (materialOption === 'Other') {
+    const trimmedCustom = (customMaterial || '').trim();
+    if (!trimmedCustom) {
+      return {
+        isValid: false,
+        value: '',
+        error: 'Please enter a custom Wood / Material name.',
+      };
+    }
+    if (trimmedCustom.toLowerCase() === 'other') {
+      return {
+        isValid: false,
+        value: '',
+        error: 'Please enter the actual material name instead of "Other".',
+      };
+    }
+    return { isValid: true, value: trimmedCustom };
+  }
+  return { isValid: true, value: materialOption };
+}
+
+export function getJobDisplayName(job?: Partial<CNCJob> | null): string {
+  if (!job) return '';
+  return (job.jobName || '').trim() || (job.customer_name || '').trim() || '';
+}
 
 /**
  * Returns local calendar date in YYYY-MM-DD without UTC timezone drift.
@@ -231,6 +311,109 @@ export function calculateMachineRunningTime(
   };
 }
 
+export interface TimeSessionDraft {
+  id: string;
+  start_time: string;
+  stop_time: string;
+  is_overnight: boolean;
+}
+
+export interface EvaluatedTimeSession extends TimeSessionDraft {
+  index: number;
+  result: RunningTimeResult;
+}
+
+export interface MultiSessionEvaluation {
+  sessions: EvaluatedTimeSession[];
+  validSessions: CNCMachineTimeSession[];
+  totalMinutes: number;
+  totalFormatted: string;
+  allValid: boolean;
+  hasAnyInput: boolean;
+  error?: string;
+}
+
+export function createEmptyTimeSession(id?: string): TimeSessionDraft {
+  return {
+    id: id || `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    start_time: '',
+    stop_time: '',
+    is_overnight: false,
+  };
+}
+
+export function normalizeJobTimeSessions(job?: Partial<CNCJob> | null): TimeSessionDraft[] {
+  if (Array.isArray(job?.time_sessions) && job.time_sessions.length > 0) {
+    return job.time_sessions.map((s, idx) => ({
+      id: (s?.id || '').trim() || `session_${idx + 1}`,
+      start_time: (s?.start_time || '').trim(),
+      stop_time: (s?.stop_time || '').trim(),
+      is_overnight: Boolean(s?.is_overnight),
+    }));
+  }
+  if ((job?.start_time || '').trim() || (job?.stop_time || '').trim()) {
+    return [
+      {
+        id: 'session_1',
+        start_time: (job?.start_time || '').trim(),
+        stop_time: (job?.stop_time || '').trim(),
+        is_overnight: Boolean(job?.is_overnight),
+      },
+    ];
+  }
+  return [createEmptyTimeSession('session_1')];
+}
+
+export function evaluateTimeSessions(sessions: TimeSessionDraft[]): MultiSessionEvaluation {
+  const safeSessions = sessions.length > 0 ? sessions : [createEmptyTimeSession('session_1')];
+  const evaluated: EvaluatedTimeSession[] = safeSessions.map((session, index) => ({
+    ...session,
+    index,
+    result: calculateMachineRunningTime(
+      session.start_time,
+      session.stop_time,
+      Boolean(session.is_overnight)
+    ),
+  }));
+
+  const hasAnyInput = evaluated.some(
+    (s) => Boolean(s.start_time.trim()) || Boolean(s.stop_time.trim())
+  );
+
+  const validSessions: CNCMachineTimeSession[] = [];
+  let totalMinutes = 0;
+  let firstError: string | undefined;
+
+  evaluated.forEach((item) => {
+    if (item.result.isValid) {
+      totalMinutes += item.result.minutes;
+      validSessions.push({
+        id: item.id,
+        start_time: normalize24HourTimeInput(item.start_time),
+        stop_time: normalize24HourTimeInput(item.stop_time),
+        running_time: item.result.formatted,
+        duration_minutes: item.result.minutes,
+        is_overnight: item.result.isOvernight,
+      });
+    } else if (!firstError) {
+      const prefix = evaluated.length > 1 ? `Session ${item.index + 1}: ` : '';
+      firstError = `${prefix}${item.result.error || 'Select valid Start Time and Stop Time values.'}`;
+    }
+  });
+
+  const allValid = evaluated.every((s) => s.result.isValid);
+
+  return {
+    sessions: evaluated,
+    validSessions,
+    totalMinutes,
+    totalFormatted: formatMinutesToHHMM(totalMinutes),
+    allValid,
+    hasAnyInput,
+    error: allValid ? undefined : firstError,
+  };
+}
+
 export function normalizeUserRole(role?: UserRole | string | null): string {
   if (!role) return '';
   return String(role).trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -308,9 +491,16 @@ export function filterJobsForUser(jobs: CNCJob[], currentUser: User): CNCJob[] {
 }
 
 /**
- * Resolves numeric machine running minutes from machine_running_time or legacy run_time_minutes.
+ * Resolves numeric machine running minutes from time_sessions, machine_running_time, or legacy run_time_minutes.
  */
 export function getJobRunningMinutes(job: CNCJob): number {
+  if (Array.isArray(job.time_sessions) && job.time_sessions.length > 0) {
+    const sum = job.time_sessions.reduce(
+      (acc, s) => acc + Math.max(0, Math.round(Number(s?.duration_minutes) || 0)),
+      0
+    );
+    if (sum > 0) return sum;
+  }
   if (job.machine_running_time) {
     const match = job.machine_running_time.trim().match(/^(\d+):([0-5]\d)$/);
     if (match) {
@@ -321,13 +511,13 @@ export function getJobRunningMinutes(job: CNCJob): number {
 }
 
 /**
- * Returns HH:MM string for display in queue, dashboard, and reports (with legacy minute fallback).
+ * Returns HH:MM string for display in queue, dashboard, and reports (with multi-session and legacy minute fallback).
  */
 export function getJobRunningTimeDisplay(job: CNCJob): string {
   if (job.machine_running_time && /^\d+:[0-5]\d$/.test(job.machine_running_time.trim())) {
     return job.machine_running_time.trim();
   }
-  const mins = Number(job.run_time_minutes ?? job.completion_time_minutes ?? 0);
+  const mins = getJobRunningMinutes(job);
   if (mins > 0) {
     return formatMinutesToHHMM(mins);
   }

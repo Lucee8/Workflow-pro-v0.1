@@ -30,14 +30,22 @@ import {
 import type { UploadTask } from 'firebase/storage';
 import { CNCProgramFiles } from './CNCProgramFiles';
 import { TimeWheelPicker } from './TimeWheelPicker';
+import { SearchableToolSelect } from './SearchableToolSelect';
 import {
   CNC_MACHINES,
+  CNC_MATERIAL_OPTIONS,
+  CNCMaterialOption,
+  TimeSessionDraft,
   getLocalDateYYYYMMDD,
   getLocalTimeHHMM,
   formatDateDDMMYYYY,
-  normalize24HourTimeInput,
   format24HourTo12HourDisplay,
-  calculateMachineRunningTime,
+  parseMaterialSelection,
+  resolveMaterialForSave,
+  getJobDisplayName,
+  createEmptyTimeSession,
+  normalizeJobTimeSessions,
+  evaluateTimeSessions,
   isAdminRole,
   isOperatorRole,
   isCNCManagerRole,
@@ -168,18 +176,6 @@ const DEFAULT_MACHINES = [...CNC_MACHINES];
 // Approved CNC Job Form Options
 const FORM_JOB_TYPES: CNCJobType[] = ['Cutting', 'Carving', 'Turning', 'Pillar'];
 const FORM_MACHINES = [...CNC_MACHINES];
-const FORM_TOOLS = [
-  'mm',
-  '1.5mm',
-  '2mm',
-  '2mm Taper',
-  '3mm',
-  '4mm',
-  '5mm',
-  '5mm Endmill',
-  '6mm',
-  'Turning',
-];
 
 const DEFAULT_JOB_TYPES: CNCJobType[] = [
   'Carving',
@@ -304,7 +300,16 @@ export default function CNCWorkshopTab({
 
   // Modals / Form Drawers
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
-  const [activeTimePickerField, setActiveTimePickerField] = useState<'start_time' | 'stop_time' | null>(null);
+  const [activeTimePickerTarget, setActiveTimePickerTarget] = useState<{
+    sessionId: string;
+    sessionIndex: number;
+    field: 'start_time' | 'stop_time';
+  } | null>(null);
+  const [materialOption, setMaterialOption] = useState<CNCMaterialOption>('Teak Wood');
+  const [customMaterial, setCustomMaterial] = useState<string>('');
+  const [timeSessions, setTimeSessions] = useState<TimeSessionDraft[]>(() => [
+    createEmptyTimeSession('session_1'),
+  ]);
   const [isToolModalOpen, setIsToolModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<CNCJob | null>(null);
   const [editingTool, setEditingTool] = useState<CNCTool | null>(null);
@@ -312,7 +317,7 @@ export default function CNCWorkshopTab({
 
   useEffect(() => {
     if (!isJobModalOpen) {
-      setActiveTimePickerField(null);
+      setActiveTimePickerTarget(null);
     }
   }, [isJobModalOpen]);
 
@@ -347,10 +352,13 @@ export default function CNCWorkshopTab({
   // Form State for CNC Job Record
   const [jobFormData, setJobFormData] = useState<Partial<CNCJob>>({
     job_number: '',
+    article_no: '',
+    customer_name: '',
+    jobName: '',
     job_date: getLocalDateYYYYMMDD(),
     job_type: 'Carving',
     machine_name: 'Small',
-    tool_name: '2mm Taper',
+    tool_name: '',
     run_time_minutes: 0,
     design_time_minutes: 45,
     design_time_value: 45,
@@ -502,6 +510,8 @@ export default function CNCWorkshopTab({
     const items: Array<{
       id: string;
       article_no: string;
+      customer_name: string;
+      jobName: string;
       job_date: string;
       job_type: string;
       machine_name: string;
@@ -523,31 +533,40 @@ export default function CNCWorkshopTab({
       isOrderPendingOnly?: boolean;
       rawJob?: CNCJob;
       rawOrder?: Order;
-    }> = scopedCncJobs.map(job => ({
-      id: job.id,
-      article_no: job.article_no || job.job_number || 'CNC-JOB',
-      job_date: job.job_date || '',
-      job_type: job.job_type || 'Carving',
-      machine_name: job.machine_name || 'Small',
-      tool_name: job.tool_name || '2mm Taper',
-      design_time: job.design_time_minutes ?? 0,
-      design_time_value: job.design_time_value,
-      design_time_unit: job.design_time_unit,
-      completion_time: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
-      completion_time_value: job.completion_time_value,
-      completion_time_unit: job.completion_time_unit,
-      start_time: job.start_time,
-      stop_time: job.stop_time,
-      machine_running_time: job.machine_running_time,
-      is_overnight: job.is_overnight,
-      amount: job.amount || 0,
-      operator_id: job.operator_id,
-      operator_name: job.operator_name || 'Unassigned',
-      status: job.status || 'Queued',
-      isOrderPendingOnly: false,
-      rawJob: job,
-      rawOrder: orders.find(o => o.id === job.order_id),
-    }));
+    }> = scopedCncJobs.map(job => {
+      const linkedOrd = orders.find(o => o.id === job.order_id);
+      const resolvedCustomerName =
+        job.customer_name ||
+        (linkedOrd?.customer_id ? customerMap.get(linkedOrd.customer_id)?.name : '') ||
+        '';
+      return {
+        id: job.id,
+        article_no: job.article_no || job.job_number || 'CNC-JOB',
+        customer_name: resolvedCustomerName,
+        jobName: (job.jobName || '').trim(),
+        job_date: job.job_date || '',
+        job_type: job.job_type || 'Carving',
+        machine_name: job.machine_name || 'Small',
+        tool_name: job.tool_name || '2mm Taper',
+        design_time: job.design_time_minutes ?? 0,
+        design_time_value: job.design_time_value,
+        design_time_unit: job.design_time_unit,
+        completion_time: job.completion_time_minutes ?? job.run_time_minutes ?? 0,
+        completion_time_value: job.completion_time_value,
+        completion_time_unit: job.completion_time_unit,
+        start_time: job.start_time,
+        stop_time: job.stop_time,
+        machine_running_time: job.machine_running_time,
+        is_overnight: job.is_overnight,
+        amount: job.amount || 0,
+        operator_id: job.operator_id,
+        operator_name: job.operator_name || 'Unassigned',
+        status: job.status || 'Queued',
+        isOrderPendingOnly: false,
+        rawJob: job,
+        rawOrder: linkedOrd,
+      };
+    });
 
     // Add pending queue orders that do not have a CNC job record yet (Admins / CNC Managers only)
     pendingQueueOrders.forEach(ord => {
@@ -556,6 +575,8 @@ export default function CNCWorkshopTab({
         items.push({
           id: `pending_ord_${ord.id}`,
           article_no: ord.article_no || 'ORD-CNC',
+          customer_name: customerMap.get(ord.customer_id)?.name || '',
+          jobName: '',
           job_date: ord.created_at ? getLocalDateYYYYMMDD(new Date(ord.created_at)) : getLocalDateYYYYMMDD(),
           job_type: (ord.cnc_job_type as any) || 'Carving',
           machine_name: 'Small',
@@ -576,7 +597,7 @@ export default function CNCWorkshopTab({
     });
 
     return items;
-  }, [scopedCncJobs, cncJobs, pendingQueueOrders, orders]);
+  }, [scopedCncJobs, cncJobs, pendingQueueOrders, orders, customerMap]);
 
   // Filtered queue items based on search and statusFilter
   const filteredQueueItems = useMemo(() => {
@@ -585,6 +606,8 @@ export default function CNCWorkshopTab({
       const matchSearch =
         !q ||
         item.article_no.toLowerCase().includes(q) ||
+        item.jobName.toLowerCase().includes(q) ||
+        item.customer_name.toLowerCase().includes(q) ||
         item.job_type.toLowerCase().includes(q) ||
         item.machine_name.toLowerCase().includes(q) ||
         item.tool_name.toLowerCase().includes(q) ||
@@ -760,15 +783,10 @@ export default function CNCWorkshopTab({
     return `${todayDateObj.getDate()} ${todayDateObj.toLocaleString('default', { month: 'short' })}`;
   }, [todayDateObj]);
 
-  // Live 24-hour Machine Running Time calculation for Record/Edit modal
-  const liveRunningTimeResult = useMemo(
-    () =>
-      calculateMachineRunningTime(
-        jobFormData.start_time,
-        jobFormData.stop_time,
-        Boolean(jobFormData.is_overnight)
-      ),
-    [jobFormData.start_time, jobFormData.stop_time, jobFormData.is_overnight]
+  // Live multi-session Machine Running Time calculation for Record/Edit modal
+  const liveSessionsEvaluation = useMemo(
+    () => evaluateTimeSessions(timeSessions),
+    [timeSessions]
   );
 
   // Operator-only Personal Dashboard Metrics
@@ -913,27 +931,31 @@ export default function CNCWorkshopTab({
 
   // Open modal to create a new job, optionally linked to an order
   const handleOpenNewJobModal = (order?: Order) => {
-    const nextJobNo = `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
     const newJobId = `cnc_job_${generateUUID().split('-')[0]}`;
     const defaultOp = resolveDefaultOperatorForForm();
     const localToday = getLocalDateYYYYMMDD();
     setJobFormError(null);
     setStagedProgramFiles([]);
+    setTimeSessions([createEmptyTimeSession('session_1')]);
 
     if (order) {
       const cust = customerMap.get(order.customer_id);
+      const parsedMat = parseMaterialSelection(order.material || 'Teak Wood');
+      setMaterialOption(parsedMat.materialOption);
+      setCustomMaterial(parsedMat.customMaterial);
       setSelectedOrderForJob(order);
       setEditingJob(null);
       setJobFormData({
         id: newJobId,
-        job_number: nextJobNo,
+        job_number: order.article_no || '',
         order_id: order.id,
-        article_no: order.article_no || nextJobNo,
-        customer_name: cust?.name || 'Walk-in Client',
+        article_no: order.article_no || '',
+        customer_name: cust?.name || '',
+        jobName: '',
         product_name: order.sub_category || order.category || 'Furniture Item',
         job_type: 'Carving',
         machine_name: 'Small',
-        tool_name: '2mm Taper',
+        tool_name: order.cnc_tool_used || '',
         run_time_minutes: order.cnc_duration_minutes || 0,
         design_time_minutes: 45,
         design_time_value: 45,
@@ -958,6 +980,8 @@ export default function CNCWorkshopTab({
     } else {
       setSelectedOrderForJob(null);
       setEditingJob(null);
+      setMaterialOption('Teak Wood');
+      setCustomMaterial('');
       setFileUploadError(null);
       setFileSuccessMsg(null);
       setIsUploadingFile(false);
@@ -968,12 +992,14 @@ export default function CNCWorkshopTab({
       if (fileInputRef.current) fileInputRef.current.value = '';
       setJobFormData({
         id: newJobId,
-        job_number: nextJobNo,
-        article_no: nextJobNo,
+        job_number: '',
+        article_no: '',
+        customer_name: '',
+        jobName: '',
         job_date: localToday,
         job_type: 'Carving',
         machine_name: 'Small',
-        tool_name: '2mm Taper',
+        tool_name: '',
         run_time_minutes: 0,
         design_time_minutes: 45,
         design_time_value: 45,
@@ -1020,6 +1046,11 @@ export default function CNCWorkshopTab({
     currentUploadTaskRef.current = null;
     replacingPreviousFileRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const parsedMat = parseMaterialSelection(job.material);
+    setMaterialOption(parsedMat.materialOption);
+    setCustomMaterial(parsedMat.customMaterial);
+    setTimeSessions(normalizeJobTimeSessions(job));
 
     // Safely extract design time with backward compatibility
     let desVal: number | undefined = undefined;
@@ -1070,10 +1101,15 @@ export default function CNCWorkshopTab({
       ...job,
       job_number: job.job_number || job.article_no || '',
       article_no: job.article_no || job.job_number || '',
+      customer_name:
+        job.customer_name ||
+        (linkedOrder?.customer_id ? customerMap.get(linkedOrder.customer_id)?.name : '') ||
+        '',
+      jobName: job.jobName || '',
       job_date: job.job_date || getLocalDateYYYYMMDD(),
       job_type: (job.job_type as CNCJobType) || 'Carving',
       machine_name: job.machine_name || 'Small',
-      tool_name: job.tool_name || '2mm Taper',
+      tool_name: job.tool_name || '',
       design_time_minutes: job.design_time_minutes ?? (desVal !== undefined ? convertDurationToMinutes(desVal, desUnit) : 0),
       design_time_value: desVal,
       design_time_unit: desUnit,
@@ -1286,8 +1322,29 @@ export default function CNCWorkshopTab({
     e.preventDefault();
     setJobFormError(null);
 
+    const trimmedJobName = (jobFormData.jobName ?? '').trim();
+    const hasLegacyCustomerFallback = Boolean(
+      editingJob && !editingJob.jobName && editingJob.customer_name?.trim()
+    );
+    if (!trimmedJobName && !hasLegacyCustomerFallback) {
+      setJobFormError('Please enter Job Name.');
+      return;
+    }
+
     if (!jobFormData.machine_name?.trim()) {
       setJobFormError('Please select Machine Assigned (Small or Big).');
+      return;
+    }
+
+    const trimmedToolName = (jobFormData.tool_name ?? '').trim();
+    if (!trimmedToolName) {
+      setJobFormError('Please select Tool Used.');
+      return;
+    }
+
+    const resolvedMaterial = resolveMaterialForSave(materialOption, customMaterial);
+    if (!resolvedMaterial.isValid) {
+      setJobFormError(resolvedMaterial.error || 'Please select or enter Wood / Material.');
       return;
     }
 
@@ -1313,37 +1370,36 @@ export default function CNCWorkshopTab({
       }
     }
 
-    // Validate Start Time / Stop Time (24-hour HH:MM) and Machine Running Time
-    const hasStart = Boolean(jobFormData.start_time?.trim());
-    const hasStop = Boolean(jobFormData.stop_time?.trim());
+    // Validate Start Time / Stop Time (24-hour HH:MM) across all Machine Running Time sessions
     const isLegacyNoTimeEdit =
       Boolean(editingJob) &&
       !editingJob?.start_time &&
       !editingJob?.stop_time &&
-      !hasStart &&
-      !hasStop;
+      !(editingJob?.time_sessions && editingJob.time_sessions.length > 0) &&
+      !liveSessionsEvaluation.hasAnyInput;
 
     let finalStartTime: string | undefined = undefined;
     let finalStopTime: string | undefined = undefined;
     let finalRunningTimeFormatted: string | undefined = editingJob?.machine_running_time;
-    let finalIsOvernight = Boolean(jobFormData.is_overnight);
+    let finalIsOvernight = false;
+    let finalTimeSessions = editingJob?.time_sessions;
     let compMinutes = 0;
 
     if (!isLegacyNoTimeEdit) {
-      const timeCalc = calculateMachineRunningTime(
-        jobFormData.start_time,
-        jobFormData.stop_time,
-        Boolean(jobFormData.is_overnight)
-      );
-      if (!timeCalc.isValid) {
-        setJobFormError(timeCalc.error || 'Please enter valid 24-hour Start Time and Stop Time.');
+      if (!liveSessionsEvaluation.allValid || liveSessionsEvaluation.validSessions.length === 0) {
+        setJobFormError(
+          liveSessionsEvaluation.error || 'Please enter valid Start Time and Stop Time values.'
+        );
         return;
       }
-      finalStartTime = normalize24HourTimeInput(jobFormData.start_time || '');
-      finalStopTime = normalize24HourTimeInput(jobFormData.stop_time || '');
-      finalRunningTimeFormatted = timeCalc.formatted;
-      finalIsOvernight = timeCalc.isOvernight;
-      compMinutes = timeCalc.minutes;
+      finalTimeSessions = liveSessionsEvaluation.validSessions;
+      finalStartTime = liveSessionsEvaluation.validSessions[0].start_time;
+      finalStopTime =
+        liveSessionsEvaluation.validSessions[liveSessionsEvaluation.validSessions.length - 1]
+          .stop_time;
+      finalRunningTimeFormatted = liveSessionsEvaluation.totalFormatted;
+      finalIsOvernight = liveSessionsEvaluation.validSessions.some((s) => s.is_overnight);
+      compMinutes = liveSessionsEvaluation.totalMinutes;
     } else {
       compMinutes = Number(
         editingJob?.completion_time_minutes ?? editingJob?.run_time_minutes ?? 0
@@ -1354,10 +1410,16 @@ export default function CNCWorkshopTab({
     }
 
     const jobId = editingJob?.id || jobFormData.id || `cnc_job_${generateUUID().split('-')[0]}`;
-    const autoJobNo =
-      jobFormData.article_no ||
+    const resolvedJobNo =
+      editingJob?.job_number ||
       jobFormData.job_number ||
+      editingJob?.article_no ||
+      jobFormData.article_no ||
       `CNC-${new Date().getFullYear()}-${String(cncJobs.length + 1).padStart(3, '0')}`;
+    const resolvedArticleNo =
+      editingJob?.article_no ||
+      jobFormData.article_no ||
+      resolvedJobNo;
 
     const desVal =
       jobFormData.design_time_value !== undefined &&
@@ -1375,16 +1437,25 @@ export default function CNCWorkshopTab({
       ? Number(editingJob?.amount || 0)
       : Number(jobFormData.amount) || 0;
 
+    // Preserve historical customer_name without overwriting or deleting it
+    const preservedCustomerName =
+      editingJob?.customer_name?.trim() || jobFormData.customer_name?.trim() || undefined;
+
     const jobToSave: CNCJob = {
       id: jobId,
-      job_number: autoJobNo,
+      job_number: resolvedJobNo,
       order_id: jobFormData.order_id || selectedOrderForJob?.id || undefined,
-      article_no: autoJobNo,
-      customer_name: editingJob?.customer_name || jobFormData.customer_name || 'Walk-in Client',
-      product_name: editingJob?.product_name || jobFormData.product_name || 'CNC Component',
+      article_no: resolvedArticleNo,
+      customer_name: preservedCustomerName,
+      jobName: trimmedJobName || undefined,
+      product_name:
+        editingJob?.product_name ||
+        jobFormData.product_name ||
+        trimmedJobName ||
+        'CNC Component',
       job_type: (jobFormData.job_type as CNCJobType) || 'Carving',
       machine_name: jobFormData.machine_name || 'Small',
-      tool_name: jobFormData.tool_name || '2mm Taper',
+      tool_name: trimmedToolName,
       tool_id: jobFormData.tool_id,
       run_time_minutes: compMinutes,
       design_time_minutes: desMinutes,
@@ -1397,12 +1468,13 @@ export default function CNCWorkshopTab({
       stop_time: finalStopTime,
       machine_running_time: finalRunningTimeFormatted,
       is_overnight: finalIsOvernight,
+      time_sessions: finalTimeSessions,
       amount: finalAmount,
       status: editingJob?.status || (jobFormData.status as CNCJobStatus) || 'In Progress',
       operator_id: resolvedOperatorId || undefined,
       operator_name: resolvedOperatorName,
       job_date: jobFormData.job_date || getLocalDateYYYYMMDD(),
-      material: jobFormData.material || 'Teak Wood',
+      material: resolvedMaterial.value,
       dimensions: editingJob?.dimensions || '',
       fileName: jobFormData.fileName || jobFormData.design_file_name || jobFormData.design_file || undefined,
       fileUrl: jobFormData.fileUrl || jobFormData.design_file_url || undefined,
@@ -2960,7 +3032,7 @@ export default function CNCWorkshopTab({
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
                 <input
                   type="text"
-                  placeholder="Search Article/Job No, Machine, Tool, Operator..."
+                  placeholder="Search Job Name, Machine, Tool, Operator..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-64 md:w-72 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
@@ -3056,7 +3128,7 @@ export default function CNCWorkshopTab({
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-[#115e59]/5 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3 px-3.5">Article / Job No.</th>
+                    <th className="py-3 px-3.5">Job Name</th>
                     <th className="py-3 px-3">Date</th>
                     <th className="py-3 px-3">Job Type</th>
                     <th className="py-3 px-3">Machine</th>
@@ -3072,9 +3144,9 @@ export default function CNCWorkshopTab({
                 <tbody className="divide-y divide-stone-100">
                   {filteredQueueItems.map(item => (
                     <tr key={item.id} className="hover:bg-stone-50/70 transition">
-                      <td className="py-3 px-3.5 font-bold text-stone-900 font-mono">
+                      <td className="py-3 px-3.5 font-bold text-stone-900">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{item.article_no}</span>
+                          <span>{item.jobName || item.customer_name || item.article_no}</span>
                           {item.rawJob && (
                             <button
                               type="button"
@@ -3117,10 +3189,17 @@ export default function CNCWorkshopTab({
                             ? getJobRunningTimeDisplay(item.rawJob)
                             : formatJobDurationDisplay(item.completion_time_value, item.completion_time_unit, item.completion_time)}
                         </div>
-                        {item.start_time && item.stop_time && (
-                          <div className="text-[10px] font-mono text-stone-400">
-                            {item.start_time} – {item.stop_time}{item.is_overnight ? ' (+1d)' : ''}
+                        {item.rawJob?.time_sessions && item.rawJob.time_sessions.length > 1 ? (
+                          <div className="text-[10px] font-mono text-teal-700 font-semibold">
+                            {item.rawJob.time_sessions.length} sessions
                           </div>
+                        ) : (
+                          item.start_time &&
+                          item.stop_time && (
+                            <div className="text-[10px] font-mono text-stone-400">
+                              {item.start_time} – {item.stop_time}{item.is_overnight ? ' (+1d)' : ''}
+                            </div>
+                          )
                         )}
                       </td>
                       {!isOperator && (
@@ -3252,6 +3331,7 @@ export default function CNCWorkshopTab({
               const status = job?.status || item.status;
 
               // Additional Firestore job-specific fields
+              const jobDisplayTitle = job ? getJobDisplayName(job) : (item.jobName || item.customer_name || '');
               const customerName = job?.customer_name || (order?.customer_id ? customerMap.get(order.customer_id)?.name : '') || '';
               const productName = job?.product_name || order?.sub_category || order?.category || '';
               const dimensions = job?.dimensions || order?.size_of_product || '';
@@ -3265,15 +3345,15 @@ export default function CNCWorkshopTab({
                   key={item.id}
                   className="bg-white rounded-xl border border-stone-200/90 shadow-2xs overflow-hidden transition-all"
                 >
-                  {/* Collapsed Card Header: Job No., date/type, machine, status, amount, and clear expand/collapse control */}
+                  {/* Collapsed Card Header: Job Name, date/type, machine, status, amount, and clear expand/collapse control */}
                   <div
                     onClick={() => toggleExpandJob(item.id)}
                     className="p-2.5 flex flex-col gap-1.5 cursor-pointer hover:bg-stone-50/60 transition select-none"
                   >
-                    {/* Top line: Job No., Status, Amount, Expand/Collapse Control */}
+                    {/* Top line: Job Name, Status, Amount, Expand/Collapse Control */}
                     <div className="flex items-center justify-between gap-1.5">
-                      <div className="font-bold text-xs text-stone-900 font-mono truncate min-w-0">
-                        {articleNo}
+                      <div className="font-bold text-xs text-stone-900 truncate min-w-0">
+                        {jobDisplayTitle || articleNo}
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -3344,6 +3424,22 @@ export default function CNCWorkshopTab({
                           </div>
 
                           <div>
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">
+                              {job?.jobName ? 'Job Name' : 'Customer Name'}
+                            </span>
+                            <span className="font-semibold text-stone-900 truncate block">
+                              {job?.jobName || customerName || '—'}
+                            </span>
+                          </div>
+
+                          {job?.jobName && customerName && customerName !== job.jobName && (
+                            <div>
+                              <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Customer Name</span>
+                              <span className="font-medium text-stone-700 truncate block">{customerName}</span>
+                            </div>
+                          )}
+
+                          <div>
                             <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Article / Job No.</span>
                             <span className="font-mono font-bold text-stone-900 truncate block">{articleNo || '—'}</span>
                           </div>
@@ -3399,10 +3495,20 @@ export default function CNCWorkshopTab({
                             <span className="font-mono font-bold text-stone-900 block">
                               {job ? getJobRunningTimeDisplay(job) : formatJobDurationDisplay(item.completion_time_value, item.completion_time_unit, completionTime)}
                             </span>
-                            {job?.start_time && job?.stop_time && (
-                              <span className="text-[10px] font-mono text-stone-400 block">
-                                {job.start_time} – {job.stop_time}{job.is_overnight ? ' (+1d)' : ''}
-                              </span>
+                            {job?.time_sessions && job.time_sessions.length > 0 ? (
+                              <div className="mt-0.5 space-y-0.5">
+                                {job.time_sessions.map((s, sIdx) => (
+                                  <span key={s.id || sIdx} className="text-[10px] font-mono text-stone-500 block">
+                                    #{sIdx + 1}: {format24HourTo12HourDisplay(s.start_time) || s.start_time} – {format24HourTo12HourDisplay(s.stop_time) || s.stop_time} ({s.running_time})
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              job?.start_time && job?.stop_time && (
+                                <span className="text-[10px] font-mono text-stone-400 block">
+                                  {job.start_time} – {job.stop_time}{job.is_overnight ? ' (+1d)' : ''}
+                                </span>
+                              )
                             )}
                           </div>
 
@@ -4335,8 +4441,12 @@ export default function CNCWorkshopTab({
                       <td className="p-3 font-bold text-cyan-900 font-mono">{j.article_no || j.job_number}</td>
                       <td className="p-3 font-semibold text-stone-700">{j.operator_name || 'Unassigned'}</td>
                       <td className="p-3">
-                        <div className="font-semibold text-stone-800">{j.product_name}</div>
-                        <div className="text-[10px] text-stone-400">{j.customer_name}</div>
+                        <div className="font-semibold text-stone-800">
+                          {j.jobName || j.product_name}
+                        </div>
+                        {j.customer_name && (
+                          <div className="text-[10px] text-stone-400">{j.customer_name}</div>
+                        )}
                       </td>
                       <td className="p-3 text-stone-600">{j.job_type}</td>
                       <td className="p-3 text-stone-600">{j.machine_name}</td>
@@ -4344,7 +4454,14 @@ export default function CNCWorkshopTab({
                       <td className="p-3 font-mono text-stone-700">
                         {j.stop_time || '—'}{j.is_overnight && j.stop_time ? ' (+1d)' : ''}
                       </td>
-                      <td className="p-3 font-mono font-bold text-stone-900">{getJobRunningTimeDisplay(j)}</td>
+                      <td className="p-3 font-mono font-bold text-stone-900">
+                        <div>{getJobRunningTimeDisplay(j)}</div>
+                        {j.time_sessions && j.time_sessions.length > 1 && (
+                          <div className="text-[10px] font-normal text-teal-700">
+                            {j.time_sessions.length} sessions
+                          </div>
+                        )}
+                      </td>
                       {canViewTotalRevenue && (
                         <td className="p-3 text-right font-bold text-stone-900">
                           ₹{Number(j.amount || 0).toLocaleString('en-IN')}
@@ -4801,7 +4918,7 @@ export default function CNCWorkshopTab({
             <form
               onSubmit={handleSubmitJobForm}
               className={`p-4 md:p-6 space-y-4 flex-1 text-xs ${
-                activeTimePickerField ? 'overflow-hidden md:overflow-y-auto' : 'overflow-y-auto'
+                activeTimePickerTarget ? 'overflow-hidden md:overflow-y-auto' : 'overflow-y-auto'
               }`}
             >
               {jobFormError && (
@@ -4831,19 +4948,24 @@ export default function CNCWorkshopTab({
                   />
                 </div>
 
-                {/* Field 2: Article / Job No. */}
-                <div>
+                {/* Field 2: Job Name */}
+                <div className="min-w-0">
                   <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    <span className="md:hidden font-bold">2. </span>Article / Job No. <span className="text-rose-500">*</span>
+                    <span className="md:hidden font-bold">2. </span>Job Name <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
-                    required
-                    value={jobFormData.article_no || jobFormData.job_number || ''}
-                    onChange={(e) => setJobFormData({ ...jobFormData, article_no: e.target.value, job_number: e.target.value })}
-                    placeholder="e.g. CNC-2026-084"
-                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs font-mono"
+                    required={!editingJob || Boolean(editingJob.jobName) || !editingJob.customer_name}
+                    value={jobFormData.jobName ?? ''}
+                    onChange={(e) => setJobFormData({ ...jobFormData, jobName: e.target.value })}
+                    placeholder="Enter job name"
+                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
                   />
+                  {editingJob?.customer_name && (
+                    <p className="mt-1 text-[10px] text-stone-500 font-medium truncate">
+                      Historical Customer: <span className="font-semibold text-stone-700">{editingJob.customer_name}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Field 3: Job Type */}
@@ -4888,37 +5010,66 @@ export default function CNCWorkshopTab({
                   </div>
                 </div>
 
-                {/* Field 5: Tool Used */}
-                <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                {/* Field 5: Tool Used (Searchable Dropdown) */}
+                <div className="min-w-0">
+                  <label
+                    htmlFor="cnc-tool-used-select"
+                    className="text-xs font-semibold text-stone-700 block mb-1"
+                  >
                     <span className="md:hidden font-bold">5. </span>Tool Used <span className="text-rose-500">*</span>
+                  </label>
+                  <SearchableToolSelect
+                    id="cnc-tool-used-select"
+                    required
+                    value={jobFormData.tool_name ?? ''}
+                    onChange={(selectedTool) =>
+                      setJobFormData({ ...jobFormData, tool_name: selectedTool })
+                    }
+                    placeholder="Select or search tool"
+                  />
+                </div>
+
+                {/* Field 6: Wood / Material Dropdown + Conditional Custom Input */}
+                <div className="min-w-0">
+                  <label className="text-xs font-semibold text-stone-700 block mb-1">
+                    <span className="md:hidden font-bold">6. </span>Wood / Material
                   </label>
                   <div className="relative">
                     <select
-                      value={jobFormData.tool_name}
-                      onChange={(e) => setJobFormData({ ...jobFormData, tool_name: e.target.value })}
-                      className="w-full appearance-none px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8 font-mono"
+                      value={materialOption}
+                      onChange={(e) => {
+                        const nextOpt = e.target.value as CNCMaterialOption;
+                        setMaterialOption(nextOpt);
+                        if (nextOpt !== 'Other') {
+                          setCustomMaterial('');
+                          setJobFormData({ ...jobFormData, material: nextOpt });
+                        } else {
+                          setJobFormData({ ...jobFormData, material: customMaterial });
+                        }
+                      }}
+                      className="w-full appearance-none px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs pr-8"
                     >
-                      {FORM_TOOLS.map(t => (
-                        <option key={t} value={t}>{t}</option>
+                      {CNC_MATERIAL_OPTIONS.map((mat) => (
+                        <option key={mat} value={mat}>
+                          {mat}
+                        </option>
                       ))}
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                   </div>
-                </div>
-
-                {/* Field 6: Wood / Material */}
-                <div>
-                  <label className="text-xs font-semibold text-stone-700 block mb-1">
-                    <span className="md:hidden font-bold">6. </span>Wood / Material
-                  </label>
-                  <input
-                    type="text"
-                    value={jobFormData.material || ''}
-                    onChange={(e) => setJobFormData({ ...jobFormData, material: e.target.value })}
-                    placeholder="e.g. Teak Wood"
-                    className="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                  />
+                  {materialOption === 'Other' && (
+                    <input
+                      type="text"
+                      required
+                      value={customMaterial}
+                      onChange={(e) => {
+                        setCustomMaterial(e.target.value);
+                        setJobFormData({ ...jobFormData, material: e.target.value });
+                      }}
+                      placeholder="Enter material name"
+                      className="mt-2 w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                    />
+                  )}
                 </div>
 
                 {/* Field 7: Amount / Billing (₹) - Restricted from CNC Operators */}
@@ -5040,121 +5191,238 @@ export default function CNCWorkshopTab({
                   </div>
                 </div>
 
-                {/* Field 10: 12-Hour Scroll-Wheel Start Time, Stop Time & Auto-Calculated Machine Running Time */}
-                <div>
-                  <div className="flex items-center justify-between flex-wrap gap-x-2 gap-y-1 mb-1">
+                {/* Field 10: Multi-Session 12-Hour Scroll-Wheel Machine Running Time */}
+                <div className="min-w-0">
+                  <div className="flex items-center justify-between flex-wrap gap-x-2 gap-y-1 mb-1.5">
                     <label className="text-xs font-semibold text-stone-700">
                       Machine Running Time <span className="text-rose-500">*</span>
                     </label>
-                    <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-600 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(jobFormData.is_overnight)}
-                        onChange={(e) =>
-                          setJobFormData({ ...jobFormData, is_overnight: e.target.checked })
-                        }
-                        className="rounded border-stone-300 text-[#115e59] focus:ring-teal-700"
-                      />
-                      <Moon size={11} className="text-stone-500" />
-                      <span>Overnight shift</span>
-                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTimeSessions((prev) => [
+                          ...prev,
+                          createEmptyTimeSession(`session_${prev.length + 1}_${Date.now()}`),
+                        ])
+                      }
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#115e59] border border-teal-200 text-[11px] font-bold transition cursor-pointer"
+                    >
+                      <Plus size={12} />
+                      <span>Add Time</span>
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
-                        <span>Start Time</span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setJobFormData({ ...jobFormData, start_time: getLocalTimeHHMM() })
-                          }
-                          className="text-teal-700 hover:underline font-bold cursor-pointer"
-                        >
-                          Now
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Start Time"
-                        aria-haspopup="dialog"
-                        onClick={() => setActiveTimePickerField('start_time')}
-                        className="w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 bg-white border border-stone-200 hover:border-teal-600 rounded-xl text-[11px] sm:text-xs font-mono tabular-nums flex items-center justify-center sm:justify-between gap-1 text-left cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                      >
-                        <span
-                          className={`whitespace-nowrap ${
-                            jobFormData.start_time
-                              ? 'font-bold text-stone-900'
-                              : 'font-medium text-stone-400'
-                          }`}
-                        >
-                          {format24HourTo12HourDisplay(jobFormData.start_time) || '09:30 AM'}
-                        </span>
-                        <Clock size={12} className="text-stone-400 shrink-0 hidden sm:block" />
-                      </button>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
-                        <span>Stop Time</span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setJobFormData({ ...jobFormData, stop_time: getLocalTimeHHMM() })
-                          }
-                          className="text-teal-700 hover:underline font-bold cursor-pointer"
-                        >
-                          Now
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Stop Time"
-                        aria-haspopup="dialog"
-                        onClick={() => setActiveTimePickerField('stop_time')}
-                        className="w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 bg-white border border-stone-200 hover:border-teal-600 rounded-xl text-[11px] sm:text-xs font-mono tabular-nums flex items-center justify-center sm:justify-between gap-1 text-left cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
-                      >
-                        <span
-                          className={`whitespace-nowrap ${
-                            jobFormData.stop_time
-                              ? 'font-bold text-stone-900'
-                              : 'font-medium text-stone-400'
-                          }`}
-                        >
-                          {format24HourTo12HourDisplay(jobFormData.stop_time) || '01:45 PM'}
-                        </span>
-                        <Clock size={12} className="text-stone-400 shrink-0 hidden sm:block" />
-                      </button>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="text-[10px] text-stone-500 font-semibold mb-0.5">
-                        Running Time
-                      </div>
-                      <div
-                        className={`w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 rounded-xl border text-[11px] sm:text-xs font-mono font-black tabular-nums flex items-center justify-center ${
-                          liveRunningTimeResult.isValid
-                            ? 'bg-teal-50 border-teal-200 text-[#115e59]'
-                            : jobFormData.start_time || jobFormData.stop_time
-                            ? 'bg-rose-50 border-rose-200 text-rose-700'
-                            : 'bg-stone-50 border-stone-200 text-stone-500'
-                        }`}
-                      >
-                        {liveRunningTimeResult.isValid
-                          ? liveRunningTimeResult.formatted
-                          : editingJob && !jobFormData.start_time && !jobFormData.stop_time
+                  <div className="space-y-2.5">
+                    {liveSessionsEvaluation.sessions.map((session, sIdx) => {
+                      const hasSessionInput = Boolean(
+                        session.start_time.trim() || session.stop_time.trim()
+                      );
+                      const fallbackLegacyDisplay =
+                        sIdx === 0 &&
+                        !hasSessionInput &&
+                        editingJob &&
+                        !editingJob.start_time &&
+                        !editingJob.stop_time &&
+                        !(editingJob.time_sessions && editingJob.time_sessions.length > 0)
                           ? getJobRunningTimeDisplay(editingJob)
-                          : '00:00'}
-                      </div>
-                    </div>
+                          : '00:00';
+
+                      return (
+                        <div
+                          key={session.id}
+                          className="p-2.5 rounded-xl bg-stone-50/70 border border-stone-200/90 space-y-1.5"
+                        >
+                          {/* Session Header: Session label, Overnight Shift toggle, Optional Remove button */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-800">
+                              Session {sIdx + 1}
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-600 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(session.is_overnight)}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setTimeSessions((prev) =>
+                                      prev.map((item) =>
+                                        item.id === session.id
+                                          ? { ...item, is_overnight: checked }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className="rounded border-stone-300 text-[#115e59] focus:ring-teal-700"
+                                />
+                                <Moon size={11} className="text-stone-500" />
+                                <span>Overnight shift</span>
+                              </label>
+
+                              {timeSessions.length > 1 && (
+                                <button
+                                  type="button"
+                                  aria-label={`Remove Session ${sIdx + 1}`}
+                                  onClick={() =>
+                                    setTimeSessions((prev) =>
+                                      prev.length > 1
+                                        ? prev.filter((item) => item.id !== session.id)
+                                        : prev
+                                    )
+                                  }
+                                  className="w-6 h-6 inline-flex items-center justify-center rounded-md bg-white border border-stone-200 text-stone-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 transition cursor-pointer"
+                                  title={`Remove Session ${sIdx + 1}`}
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 3-Column Start / Stop / Session Running Time */}
+                          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
+                                <span>Start Time</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nowTime = getLocalTimeHHMM();
+                                    setTimeSessions((prev) =>
+                                      prev.map((item) =>
+                                        item.id === session.id
+                                          ? { ...item, start_time: nowTime }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className="text-teal-700 hover:underline font-bold cursor-pointer"
+                                >
+                                  Now
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Session ${sIdx + 1} Start Time`}
+                                aria-haspopup="dialog"
+                                onClick={() =>
+                                  setActiveTimePickerTarget({
+                                    sessionId: session.id,
+                                    sessionIndex: sIdx,
+                                    field: 'start_time',
+                                  })
+                                }
+                                className="w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 bg-white border border-stone-200 hover:border-teal-600 rounded-xl text-[11px] sm:text-xs font-mono tabular-nums flex items-center justify-center sm:justify-between gap-1 text-left cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                              >
+                                <span
+                                  className={`whitespace-nowrap ${
+                                    session.start_time
+                                      ? 'font-bold text-stone-900'
+                                      : 'font-medium text-stone-400'
+                                  }`}
+                                >
+                                  {format24HourTo12HourDisplay(session.start_time) || '09:30 AM'}
+                                </span>
+                                <Clock size={12} className="text-stone-400 shrink-0 hidden sm:block" />
+                              </button>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center justify-between text-[10px] text-stone-500 font-semibold mb-0.5">
+                                <span>Stop Time</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nowTime = getLocalTimeHHMM();
+                                    setTimeSessions((prev) =>
+                                      prev.map((item) =>
+                                        item.id === session.id
+                                          ? { ...item, stop_time: nowTime }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className="text-teal-700 hover:underline font-bold cursor-pointer"
+                                >
+                                  Now
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Session ${sIdx + 1} Stop Time`}
+                                aria-haspopup="dialog"
+                                onClick={() =>
+                                  setActiveTimePickerTarget({
+                                    sessionId: session.id,
+                                    sessionIndex: sIdx,
+                                    field: 'stop_time',
+                                  })
+                                }
+                                className="w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 bg-white border border-stone-200 hover:border-teal-600 rounded-xl text-[11px] sm:text-xs font-mono tabular-nums flex items-center justify-center sm:justify-between gap-1 text-left cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-teal-700 focus:border-teal-700 shadow-2xs"
+                              >
+                                <span
+                                  className={`whitespace-nowrap ${
+                                    session.stop_time
+                                      ? 'font-bold text-stone-900'
+                                      : 'font-medium text-stone-400'
+                                  }`}
+                                >
+                                  {format24HourTo12HourDisplay(session.stop_time) || '01:45 PM'}
+                                </span>
+                                <Clock size={12} className="text-stone-400 shrink-0 hidden sm:block" />
+                              </button>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="text-[10px] text-stone-500 font-semibold mb-0.5">
+                                Running Time
+                              </div>
+                              <div
+                                className={`w-full min-h-[40px] px-1.5 sm:px-2.5 py-2 rounded-xl border text-[11px] sm:text-xs font-mono font-black tabular-nums flex items-center justify-center ${
+                                  session.result.isValid
+                                    ? 'bg-teal-50 border-teal-200 text-[#115e59]'
+                                    : hasSessionInput
+                                    ? 'bg-rose-50 border-rose-200 text-rose-700'
+                                    : 'bg-white border-stone-200 text-stone-500'
+                                }`}
+                              >
+                                {session.result.isValid
+                                  ? session.result.formatted
+                                  : fallbackLegacyDisplay}
+                              </div>
+                            </div>
+                          </div>
+
+                          {!session.result.isValid && hasSessionInput && (
+                            <p className="text-[10px] text-rose-600 font-semibold">
+                              {session.result.error}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {!liveRunningTimeResult.isValid &&
-                    (jobFormData.start_time || jobFormData.stop_time) && (
-                      <p className="text-[10px] text-rose-600 font-semibold mt-1">
-                        {liveRunningTimeResult.error}
-                      </p>
-                    )}
+                  {/* Total Running Time Summary Bar */}
+                  <div className="mt-2 px-3 py-2 rounded-xl bg-teal-50/80 border border-teal-200/90 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-teal-900">
+                      Total Running Time
+                      {liveSessionsEvaluation.sessions.length > 1
+                        ? ` (${liveSessionsEvaluation.sessions.length} sessions)`
+                        : ''}
+                    </span>
+                    <span className="font-mono font-black text-sm text-[#115e59] tabular-nums">
+                      {liveSessionsEvaluation.totalMinutes > 0
+                        ? liveSessionsEvaluation.totalFormatted
+                        : editingJob &&
+                          !editingJob.start_time &&
+                          !editingJob.stop_time &&
+                          !(editingJob.time_sessions && editingJob.time_sessions.length > 0) &&
+                          !liveSessionsEvaluation.hasAnyInput
+                        ? getJobRunningTimeDisplay(editingJob)
+                        : '00:00'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Field 11: Multi-file CNC Program Files (.dxf / .nc) with Version History */}
@@ -5240,26 +5508,33 @@ export default function CNCWorkshopTab({
         </div>
       )}
 
-      {/* Reusable 12-Hour Scroll-Wheel Time Picker for CNC Start/Stop Time */}
+      {/* Reusable 12-Hour Scroll-Wheel Time Picker for CNC Start/Stop Time Sessions */}
       <TimeWheelPicker
-        isOpen={isJobModalOpen && activeTimePickerField !== null}
-        title={activeTimePickerField === 'start_time' ? 'Select Start Time' : 'Select Stop Time'}
+        isOpen={isJobModalOpen && activeTimePickerTarget !== null}
+        title={
+          activeTimePickerTarget
+            ? `${
+                timeSessions.length > 1 ? `Session ${activeTimePickerTarget.sessionIndex + 1} • ` : ''
+              }${activeTimePickerTarget.field === 'start_time' ? 'Select Start Time' : 'Select Stop Time'}`
+            : 'Select Time'
+        }
         value={
-          activeTimePickerField === 'start_time'
-            ? jobFormData.start_time
-            : activeTimePickerField === 'stop_time'
-            ? jobFormData.stop_time
+          activeTimePickerTarget
+            ? timeSessions.find((s) => s.id === activeTimePickerTarget.sessionId)?.[
+                activeTimePickerTarget.field
+              ] || ''
             : ''
         }
         onConfirm={(hhmm24) => {
-          if (activeTimePickerField === 'start_time') {
-            setJobFormData((prev) => ({ ...prev, start_time: hhmm24 }));
-          } else if (activeTimePickerField === 'stop_time') {
-            setJobFormData((prev) => ({ ...prev, stop_time: hhmm24 }));
+          if (activeTimePickerTarget) {
+            const { sessionId, field } = activeTimePickerTarget;
+            setTimeSessions((prev) =>
+              prev.map((item) => (item.id === sessionId ? { ...item, [field]: hhmm24 } : item))
+            );
           }
-          setActiveTimePickerField(null);
+          setActiveTimePickerTarget(null);
         }}
-        onCancel={() => setActiveTimePickerField(null)}
+        onCancel={() => setActiveTimePickerTarget(null)}
       />
 
       {/* MODAL: TOOL & BIT ENTRY / EDIT (Google Stitch Design) */}

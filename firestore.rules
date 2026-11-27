@@ -40,13 +40,16 @@ service cloud.firestore {
     }
 
     function isActiveMappedUser() {
-      return hasAuthMap()
-        && request.auth.token.email_verified == true
-        && authMap().status == 'ACTIVE';
+      return hasAuthMap() && authMap().status == 'ACTIVE';
     }
 
     function staffUserId() {
       return hasAuthMap() ? authMap().userId : '';
+    }
+
+    function isSuperAdmin() {
+      return isBootstrapAdmin()
+        || (isActiveMappedUser() && authMap().role == 'super_admin');
     }
 
     function isAdmin() {
@@ -55,8 +58,8 @@ service cloud.firestore {
     }
 
     function isCNCManager() {
-      return isAdmin()
-        || (isActiveMappedUser() && authMap().role in ['cnc_workshop', 'cnc_manager']);
+      return isBootstrapAdmin()
+        || (isActiveMappedUser() && authMap().role in ['admin', 'super_admin', 'cnc_workshop', 'cnc_manager']);
     }
 
     function isActiveOperator() {
@@ -64,16 +67,31 @@ service cloud.firestore {
     }
 
     function isVerifiedStaff() {
-      return isAdmin()
+      return isBootstrapAdmin()
         || (isActiveMappedUser() && authMap().role in [
-          'manager',
-          'wood_tab_manager',
-          'cnc_workshop',
-          'cnc_manager',
-          'carpenter',
-          'polish_person',
-          'qc_staff'
+          'super_admin', 'admin', 'manager', 'wood_tab_manager',
+          'cnc_workshop', 'cnc_manager', 'carpenter', 'polish_person', 'qc_staff'
         ]);
+    }
+
+    function isMappedActorMatch(m, userIdField, roleField, isOwner) {
+      return m.status == 'ACTIVE'
+        && userIdField == m.userId
+        && (roleField == m.role || (isOwner && roleField in ['admin', 'super_admin']));
+    }
+
+    // Binds client-submitted actor identity fields strictly to verified auth + /userAuthMap/{uid}.
+    // For the verified bootstrap owner (`luceecode@gmail.com`), allows both stored `admin` and elevated
+    // `super_admin` role labels without mutating the production `/users/user_lucee_gmail` record.
+    function isActorIdentityBound(authUidField, userIdField, roleField) {
+      let isOwner = isBootstrapAdmin();
+      let mapped = hasAuthMap();
+      return isSignedIn()
+        && authUidField == request.auth.uid
+        && (
+          (mapped && isMappedActorMatch(authMap(), userIdField, roleField, isOwner))
+          || (isOwner && !mapped && isValidId(userIdField) && roleField in ['admin', 'super_admin'])
+        );
     }
 
     function isValidDateStr(d) {
@@ -143,12 +161,12 @@ service cloud.firestore {
     function isValidCncJob(data) {
       return data.keys().hasAll(['id', 'job_date', 'job_type', 'status', 'created_at'])
         && data.keys().hasOnly([
-          'id', 'order_id', 'article_no', 'customer_name', 'job_number', 'job_date',
+          'id', 'order_id', 'article_no', 'customer_name', 'jobName', 'job_number', 'job_date',
           'product_name', 'material', 'dimensions', 'job_type', 'machine_name',
           'tool_id', 'tool_name', 'run_time_minutes', 'design_time_minutes',
           'design_time_value', 'design_time_unit', 'completion_time_minutes',
           'completion_time_value', 'completion_time_unit',
-          'start_time', 'stop_time', 'machine_running_time', 'is_overnight',
+          'start_time', 'stop_time', 'machine_running_time', 'is_overnight', 'time_sessions',
           'operator_id', 'operator_name', 'amount', 'status', 'notes',
           'design_file', 'fileName', 'fileUrl', 'storagePath', 'fileSize', 'uploadedAt',
           'design_file_url', 'design_file_name', 'design_file_size', 'design_file_uploaded_at',
@@ -163,6 +181,8 @@ service cloud.firestore {
         ]
         && data.status in ['Pending', 'Queued', 'In Progress', 'Completed', 'Rework']
         && data.created_at is string && data.created_at.size() <= 64
+        && (!data.keys().hasAny(['customer_name']) || (data.customer_name is string && data.customer_name.size() <= 160))
+        && (!data.keys().hasAny(['jobName']) || (data.jobName is string && data.jobName.size() <= 160))
         && (!data.keys().hasAny(['machine_name']) || (data.machine_name is string && data.machine_name.size() >= 1 && data.machine_name.size() <= 60))
         && (!data.keys().hasAny(['operator_id']) || (data.operator_id is string && data.operator_id.size() <= 128))
         && (!data.keys().hasAny(['operator_name']) || (data.operator_name is string && data.operator_name.size() <= 120))
@@ -170,6 +190,7 @@ service cloud.firestore {
         && (!data.keys().hasAny(['stop_time']) || data.stop_time == '' || isValid24hTime(data.stop_time))
         && (!data.keys().hasAny(['machine_running_time']) || (data.machine_running_time is string && data.machine_running_time.size() <= 16))
         && (!data.keys().hasAny(['is_overnight']) || data.is_overnight is bool)
+        && (!data.keys().hasAny(['time_sessions']) || (data.time_sessions is list && data.time_sessions.size() <= 50))
         && (!data.keys().hasAny(['amount']) || (data.amount is number && data.amount >= 0 && data.amount <= 10000000))
         && (!data.keys().hasAny(['run_time_minutes']) || (data.run_time_minutes is number && data.run_time_minutes >= 0 && data.run_time_minutes <= 100000))
         && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 2000));
@@ -213,6 +234,406 @@ service cloud.firestore {
         && data.timestamp is string && data.timestamp.size() <= 64;
     }
 
+    // Strict 1-to-1 mapping of Trash module <-> entityType <-> originalCollection
+    function isValidTrashTargetMap(data) {
+      let key = data.module + ':' + data.entityType;
+      return {
+        'orders:order': 'orders',
+        'customers:customer': 'customers',
+        'crm:crm_customer': 'crmCustomers',
+        'crm:crm_quotation': 'crmQuotations',
+        'crm:crm_followup': 'crmFollowUps',
+        'crm:crm_payment': 'crmPayments',
+        'crm:crm_note': 'crmNotes',
+        'crm:crm_attachment': 'crmAttachments',
+        'cnc_workshop:cnc_job': 'cncJobs',
+        'cnc_workshop:cnc_tool': 'cncTools',
+        'wood_management:wood_request': 'woodRequests',
+        'mrp:mrp_hardware': 'mrp_hardware',
+        'mrp:mrp_wood': 'mrp_wood',
+        'mrp:mrp_bom': 'mrp_project_boms',
+        'users:user': 'users'
+      }.get(key, '') == data.originalCollection
+      || (
+        key == 'cnc_workshop:cnc_program_file'
+        && 'parentId' in data
+        && isValidId(data.parentId)
+        && data.originalCollection == ('cncJobs/' + data.parentId + '/programFiles')
+      );
+    }
+
+    function isValidTrashTarget(data) {
+      return data.module is string
+        && data.entityType is string
+        && data.originalCollection is string
+        && isValidTrashTargetMap(data);
+    }
+
+    // Verifies the real Firestore source document existed prior to the batch and was deleted in the same batch.
+    // Prevents fabricating Trash records for active or nonexistent records.
+    function isTrashSourceDeleted(data) {
+      let p = path('/databases/' + database + '/documents/' + data.originalCollection + '/' + data.originalId);
+      return data.originalCollection == 'woodRequests'
+        ? !existsAfter(p)
+        : (exists(p) && !existsAfter(p));
+    }
+
+    // Explicit module + entity archival permission + actor identity binding in a single authMap() lookup.
+    function isOwnerCreateTrashValid(data) {
+      return isBootstrapAdmin()
+        && data.deletedByAuthUid == request.auth.uid
+        && isValidId(data.deletedByUserId)
+        && data.deletedByRole in ['admin', 'super_admin']
+        && (
+          !hasAuthMap()
+          || (authMap().status == 'ACTIVE' && data.deletedByUserId == authMap().userId)
+        );
+    }
+
+    function isMappedCreateTrashValid(data) {
+      let m = authMap();
+      return m.status == 'ACTIVE'
+        && data.deletedByAuthUid == request.auth.uid
+        && data.deletedByUserId == m.userId
+        && data.deletedByRole == m.role
+        && (
+          m.role in ['admin', 'super_admin']
+          || (
+            data.module == 'cnc_workshop'
+            && (
+              (m.role in ['cnc_workshop', 'cnc_manager'] && data.entityType in ['cnc_job', 'cnc_program_file', 'cnc_tool'])
+              || (
+                m.role in ['cnc_operator', 'operator']
+                && data.entityType == 'cnc_program_file'
+                && 'parentId' in data
+                && isValidId(data.parentId)
+                && exists(/databases/$(database)/documents/cncJobs/$(data.parentId))
+                && get(/databases/$(database)/documents/cncJobs/$(data.parentId)).data.operator_id == m.userId
+              )
+            )
+          )
+        );
+    }
+
+    function canArchiveAndBindTrashCreate(data) {
+      return isSignedIn()
+        && ('deletedByAuthUid' in data)
+        && ('deletedByUserId' in data)
+        && ('deletedByRole' in data)
+        && (
+          isOwnerCreateTrashValid(data)
+          || (hasAuthMap() && isMappedCreateTrashValid(data))
+        );
+    }
+
+    // Used only for /chunks and /related parent verification (single-arg authorization check).
+    function isMappedTrashArchiveAllowed(data) {
+      let m = authMap();
+      return m.status == 'ACTIVE' && (
+        m.role in ['admin', 'super_admin']
+        || (
+          data.module == 'cnc_workshop' && (
+            (m.role in ['cnc_workshop', 'cnc_manager'] && data.entityType in ['cnc_job', 'cnc_program_file', 'cnc_tool'])
+            || (
+              m.role in ['cnc_operator', 'operator']
+              && data.entityType == 'cnc_program_file'
+              && 'parentId' in data
+              && isValidId(data.parentId)
+              && exists(/databases/$(database)/documents/cncJobs/$(data.parentId))
+              && get(/databases/$(database)/documents/cncJobs/$(data.parentId)).data.operator_id == m.userId
+            )
+          )
+        )
+      );
+    }
+
+    function canArchiveTrashRecord(data) {
+      return isBootstrapAdmin()
+        || (hasAuthMap() && isMappedTrashArchiveAllowed(data));
+    }
+
+    function isValidTrashRestoreMeta(data, k) {
+      return k.hasAll(['restoredAt', 'restoredByAuthUid', 'restoredByUserId', 'restoredByName', 'restoredByEmail', 'restoredByRole'])
+        && data.restoredAt == request.time
+        && data.restoredByAuthUid is string && data.restoredByAuthUid.size() <= 128
+        && data.restoredByUserId is string && data.restoredByUserId.size() <= 128
+        && data.restoredByName is string && data.restoredByName.size() <= 120
+        && data.restoredByEmail is string && data.restoredByEmail.size() <= 180
+        && data.restoredByRole is string && data.restoredByRole.size() <= 40
+        && (!('restoreTargetId' in data) || isValidId(data.restoreTargetId));
+    }
+
+    function isValidTrashPurgeMeta(data, k) {
+      return k.hasAll(['purgedAt', 'purgedByAuthUid', 'purgedByUserId', 'purgedByRole'])
+        && data.purgedAt == request.time
+        && data.purgedByAuthUid is string && data.purgedByAuthUid.size() <= 128
+        && data.purgedByUserId is string && data.purgedByUserId.size() <= 128
+        && data.purgedByRole is string && data.purgedByRole.size() <= 40;
+    }
+
+    function isValidTrashCreate(data, trashId) {
+      let k = data.keys();
+      return k.hasAll([
+          'id', 'module', 'entityType', 'originalCollection', 'originalId',
+          'displayTitle', 'snapshotMode', 'payloadBytes', 'chunkCount', 'relatedCount',
+          'deletedByAuthUid', 'deletedByUserId', 'deletedByName', 'deletedByEmail',
+          'deletedByRole', 'deletedAt', 'expiresAt', 'retentionDays', 'status'
+        ])
+        && k.hasOnly([
+          'id', 'module', 'entityType', 'originalCollection', 'originalId', 'parentId',
+          'displayTitle', 'displaySubtitle', 'snapshotMode', 'payload',
+          'payloadBytes', 'chunkCount', 'relatedCount', 'relatedRefs',
+          'storagePaths', 'parentTrashId', 'batchId',
+          'deletedByAuthUid', 'deletedByUserId', 'deletedByName', 'deletedByEmail',
+          'deletedByRole', 'deletedAt', 'expiresAt', 'retentionDays', 'status'
+        ])
+        && data.id == trashId
+        && data.status == 'IN_TRASH'
+        && data.retentionDays == 30
+        && data.deletedAt == request.time
+        && data.expiresAt is timestamp
+        && data.expiresAt >= request.time + duration.value(2591700, 's')
+        && data.expiresAt <= request.time + duration.value(2592300, 's')
+        && isValidId(data.originalId)
+        && (!('parentId' in data) || isValidId(data.parentId))
+        && isValidTrashTarget(data)
+        && data.displayTitle is string && data.displayTitle.size() >= 1 && data.displayTitle.size() <= 240
+        && (!('displaySubtitle' in data) || (data.displaySubtitle is string && data.displaySubtitle.size() <= 320))
+        && data.payloadBytes is int && data.payloadBytes >= 0 && data.payloadBytes <= 52428800
+        && data.chunkCount is int && data.chunkCount >= 0 && data.chunkCount <= 200
+        && data.relatedCount is int && data.relatedCount >= 0 && data.relatedCount <= 1000
+        && (
+          (data.snapshotMode == 'inline' && 'payload' in data && data.payload is map && data.payloadBytes <= 700000 && data.chunkCount == 0)
+          || (data.snapshotMode == 'chunked' && !('payload' in data) && data.chunkCount >= 1)
+        )
+        && (!('relatedRefs' in data) || (data.relatedRefs is list && data.relatedRefs.size() <= 50 && (data.relatedRefs.size() == 0 || data.relatedRefs[0] is map)))
+        && (!('storagePaths' in data) || (data.storagePaths is list && data.storagePaths.size() <= 50 && (data.storagePaths.size() == 0 || (data.storagePaths[0] is string && data.storagePaths[0].size() <= 512))))
+        && (!('parentTrashId' in data) || isValidId(data.parentTrashId))
+        && (!('batchId' in data) || isValidId(data.batchId))
+        && data.deletedByName is string && data.deletedByName.size() >= 1 && data.deletedByName.size() <= 120
+        && data.deletedByEmail is string && data.deletedByEmail.size() <= 180;
+    }
+
+    function isValidTrashChunk(data, trashId) {
+      let k = data.keys();
+      return k.hasAll(['id', 'trashId', 'chunkIndex', 'totalChunks', 'encoding', 'data', 'byteLength', 'createdAt'])
+        && k.hasOnly(['id', 'trashId', 'chunkIndex', 'totalChunks', 'encoding', 'data', 'byteLength', 'createdAt'])
+        && isValidId(data.id)
+        && data.trashId == trashId
+        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex < data.totalChunks
+        && data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 200
+        && data.encoding == 'utf-8-json-slice'
+        && data.data is string && data.data.size() >= 1 && data.data.size() <= 600000
+        && data.byteLength is int && data.byteLength >= 1 && data.byteLength <= 600000
+        && data.createdAt is timestamp;
+    }
+
+    function isChunkParentValid(chunk, pPath) {
+      let parent = getAfter(pPath).data;
+      return parent.status == 'IN_TRASH'
+        && parent.deletedByAuthUid == request.auth.uid
+        && parent.snapshotMode == 'chunked'
+        && chunk.totalChunks == parent.chunkCount
+        && chunk.chunkIndex < parent.chunkCount
+        && canArchiveTrashRecord(parent);
+    }
+
+    function canCreateTrashChunk(chunk, trashId, chunkId) {
+      let pPath = path('/databases/' + database + '/documents/recentlyDeleted/' + trashId);
+      return isValidTrashChunk(chunk, trashId)
+        && chunk.id == chunkId
+        && chunk.createdAt == request.time
+        && existsAfter(pPath)
+        && isChunkParentValid(chunk, pPath);
+    }
+
+    function isValidTrashRelated(data, trashId) {
+      let k = data.keys();
+      return k.hasAll(['id', 'trashId', 'entityType', 'originalCollection', 'originalId', 'payload', 'payloadBytes', 'createdAt'])
+        && k.hasOnly(['id', 'trashId', 'entityType', 'originalCollection', 'originalId', 'payload', 'payloadBytes', 'createdAt'])
+        && isValidId(data.id)
+        && data.trashId == trashId
+        && data.entityType is string && data.entityType.size() >= 1 && data.entityType.size() <= 64
+        && data.originalCollection is string && data.originalCollection.size() >= 1 && data.originalCollection.size() <= 200
+        && isValidId(data.originalId)
+        && data.payload is map
+        && data.payloadBytes is int && data.payloadBytes >= 0 && data.payloadBytes <= 700000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidTrashRelatedTarget(related, parent) {
+      return (
+        parent.entityType == 'order'
+        && related.entityType in ['status_log', 'payment']
+        && related.originalCollection in ['statusLogs', 'payments']
+      ) || (
+        parent.entityType == 'cnc_job'
+        && related.entityType == 'cnc_program_file'
+        && related.originalCollection == ('cncJobs/' + parent.originalId + '/programFiles')
+      ) || (
+        parent.entityType == 'user'
+        && related.entityType in ['operator_invite', 'user_auth_map']
+        && related.originalCollection in ['operatorInvites', 'userAuthMap']
+      ) || (
+        parent.entityType in ['customer', 'crm_customer']
+        && related.entityType in ['crm_followup', 'crm_payment', 'crm_note', 'crm_attachment']
+        && related.originalCollection in ['crmFollowUps', 'crmPayments', 'crmNotes', 'crmAttachments']
+      );
+    }
+
+    function isRelatedParentValid(related, pPath) {
+      let parent = getAfter(pPath).data;
+      return parent.status == 'IN_TRASH'
+        && parent.deletedByAuthUid == request.auth.uid
+        && parent.relatedCount >= 1
+        && isValidTrashRelatedTarget(related, parent)
+        && canArchiveTrashRecord(parent);
+    }
+
+    function canCreateTrashRelated(related, trashId, relatedId) {
+      let pPath = path('/databases/' + database + '/documents/recentlyDeleted/' + trashId);
+      return isValidTrashRelated(related, trashId)
+        && related.id == relatedId
+        && related.createdAt == request.time
+        && existsAfter(pPath)
+        && isRelatedParentValid(related, pPath);
+    }
+
+    function isValidActivityProof(p) {
+      let k = p.keys();
+      return k.hasAll(['collection', 'documentId'])
+        && k.hasOnly(['collection', 'documentId', 'parentId', 'trashId'])
+        && p.collection in [
+          'orders', 'customers', 'crmCustomers', 'crmQuotations', 'crmFollowUps',
+          'crmPayments', 'crmNotes', 'crmAttachments', 'cncJobs', 'cncTools',
+          'cncProgramFiles', 'users', 'materials', 'payments', 'statusLogs',
+          'mrp_hardware', 'mrp_wood', 'mrp_consumption_logs', 'mrp_project_boms',
+          'recentlyDeleted'
+        ]
+        && isValidId(p.documentId)
+        && (!('parentId' in p) || isValidId(p.parentId))
+        && (!('trashId' in p) || isValidId(p.trashId))
+        && (p.collection != 'cncProgramFiles' || ('parentId' in p));
+    }
+
+    function isProofStageChanged(targetPath) {
+      let before = get(targetPath).data;
+      let after = getAfter(targetPath).data;
+      return before.get('current_status', before.get('stage', before.get('current_stage', '')))
+        != after.get('current_status', after.get('stage', after.get('current_stage', '')));
+    }
+
+    function isProofStatusChanged(targetPath, coll) {
+      let before = get(targetPath).data;
+      let after = getAfter(targetPath).data;
+      return coll == 'orders'
+        ? (before.get('wood_schedule_status', '') != after.get('wood_schedule_status', ''))
+        : (
+          coll in ['cncJobs', 'crmQuotations', 'crmFollowUps', 'crmCustomers', 'users']
+          && before.get('status', '') != after.get('status', '')
+        );
+    }
+
+    function isProofTrashStateValid(action, targetPath, p) {
+      let tPath = path('/databases/' + database + '/documents/recentlyDeleted/' + p.trashId);
+      return action == 'DELETE' ? (
+          exists(targetPath)
+          && !existsAfter(targetPath)
+          && existsAfter(tPath)
+          && getAfter(tPath).data.originalId == p.documentId
+          && getAfter(tPath).data.status == 'IN_TRASH'
+        )
+        : action == 'RESTORE' ? (
+          isAdmin()
+          && exists(tPath)
+          && get(tPath).data.status == 'IN_TRASH'
+          && getAfter(tPath).data.status == 'RESTORED'
+          && existsAfter(targetPath)
+        )
+        : (
+          action == 'PURGE'
+          && isSuperAdmin()
+          && exists(tPath)
+          && (!existsAfter(tPath) || getAfter(tPath).data.status == 'PURGED')
+        );
+    }
+
+    function isProofTrashActionMatch(action, targetPath, p) {
+      return 'trashId' in p
+        && isValidId(p.trashId)
+        && isProofTrashStateValid(action, targetPath, p);
+    }
+
+    function isVerifiedActivityProofBody(data) {
+      let p = data.proof;
+      let targetPath = path(
+        '/databases/' + database + '/documents/' +
+        (p.collection == 'cncProgramFiles' ? ('cncJobs/' + p.parentId + '/programFiles') : p.collection) +
+        '/' + p.documentId
+      );
+      return p.documentId == data.entityId
+        && (
+          data.action == 'CREATE' ? (!exists(targetPath) && existsAfter(targetPath))
+          : data.action in ['UPDATE', 'ASSIGN', 'UPLOAD'] ? (exists(targetPath) && existsAfter(targetPath))
+          : data.action == 'STAGE_CHANGE' ? (
+            p.collection == 'orders'
+            && exists(targetPath) && existsAfter(targetPath)
+            && isProofStageChanged(targetPath)
+          )
+          : data.action == 'STATUS_CHANGE' ? (
+            exists(targetPath) && existsAfter(targetPath) && isProofStatusChanged(targetPath, p.collection)
+          )
+          : data.action == 'PAYMENT' ? (
+            p.collection in ['payments', 'crmPayments', 'crmQuotations', 'orders']
+            && existsAfter(targetPath)
+          )
+          : isProofTrashActionMatch(data.action, targetPath, p)
+        );
+    }
+
+    // Verifies critical client-logged events against actual atomic mutations in the same batch.
+    function isVerifiedActivityProof(data) {
+      return 'proof' in data
+        && data.proof is map
+        && isValidActivityProof(data.proof)
+        && isVerifiedActivityProofBody(data);
+    }
+
+    function isValidActivityEvent(data) {
+      let k = data.keys();
+      return k.hasAll([
+          'id', 'module', 'action', 'entityType', 'entityId', 'entityLabel',
+          'actorAuthUid', 'actorUserId', 'actorName', 'actorEmail', 'actorRole',
+          'summary', 'verificationStatus', 'source', 'createdAt'
+        ])
+        && k.hasOnly([
+          'id', 'module', 'action', 'entityType', 'entityId', 'entityLabel',
+          'actorAuthUid', 'actorUserId', 'actorName', 'actorEmail', 'actorRole',
+          'summary', 'changes', 'metadata', 'proof', 'verificationStatus', 'source', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && data.module in ['auth', 'orders', 'crm', 'customers', 'cnc_workshop', 'wood_management', 'mrp', 'users', 'settings', 'trash']
+        && data.action in [
+          'CREATE', 'UPDATE', 'DELETE', 'RESTORE', 'PURGE',
+          'STAGE_CHANGE', 'STATUS_CHANGE', 'ASSIGN', 'PAYMENT',
+          'UPLOAD', 'EXPORT', 'LOGIN', 'LOGIN_DENIED', 'ACCESS_DENIED'
+        ]
+        && data.entityType is string && data.entityType.size() >= 1 && data.entityType.size() <= 64
+        && data.entityId is string && data.entityId.size() >= 1 && data.entityId.size() <= 256
+        && data.entityLabel is string && data.entityLabel.size() >= 1 && data.entityLabel.size() <= 240
+        && data.actorAuthUid is string && data.actorAuthUid.size() >= 1 && data.actorAuthUid.size() <= 128
+        && data.actorUserId is string && data.actorUserId.size() >= 1 && data.actorUserId.size() <= 128
+        && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 120
+        && data.actorEmail is string && data.actorEmail.size() <= 180
+        && data.actorRole is string && data.actorRole.size() >= 2 && data.actorRole.size() <= 40
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 500
+        && data.source == 'web_client'
+        && data.verificationStatus in ['RULE_BOUND_MUTATION', 'CLIENT_TELEMETRY']
+        && data.createdAt is timestamp
+        && (!('changes' in data) || (data.changes is list && data.changes.size() <= 30 && (data.changes.size() == 0 || data.changes[0] is map)))
+        && (!('metadata' in data) || (data.metadata is map && data.metadata.keys().size() <= 20));
+    }
+
     // 3. Auth Mapping Directory (/userAuthMap/{authUid})
     match /userAuthMap/{authUid} {
       allow get: if isValidId(authUid) && (isAdmin() || (isSignedIn() && request.auth.uid == authUid));
@@ -225,7 +646,6 @@ service cloud.firestore {
             isSignedIn()
             && request.auth.uid == authUid
             && request.auth.token.email != null
-            && request.auth.token.email_verified == true
             && exists(/databases/$(database)/documents/users/$(incoming().userId))
             && get(/databases/$(database)/documents/users/$(incoming().userId)).data.email == request.auth.token.email
             && get(/databases/$(database)/documents/users/$(incoming().userId)).data.role == incoming().role
@@ -307,11 +727,11 @@ service cloud.firestore {
             && existing().operator_id == staffUserId()
             && incoming().operator_id == staffUserId()
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'job_date', 'article_no', 'job_number', 'job_type', 'machine_name',
+              'job_date', 'article_no', 'job_number', 'customer_name', 'jobName', 'job_type', 'machine_name',
               'tool_id', 'tool_name', 'material',
               'design_time_minutes', 'design_time_value', 'design_time_unit',
               'completion_time_minutes', 'completion_time_value', 'completion_time_unit',
-              'run_time_minutes', 'start_time', 'stop_time', 'machine_running_time', 'is_overnight',
+              'run_time_minutes', 'start_time', 'stop_time', 'machine_running_time', 'is_overnight', 'time_sessions',
               'status', 'notes', 'fileName', 'fileUrl', 'storagePath', 'fileSize', 'uploadedAt',
               'program_files_count', 'design_file', 'design_file_url', 'design_file_name',
               'design_file_size', 'design_file_uploaded_at', 'completed_at', 'updated_at'
@@ -326,14 +746,14 @@ service cloud.firestore {
           || (
             isActiveOperator()
             && exists(/databases/$(database)/documents/cncJobs/$(jobId))
-            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == authMap().userId
           )
         );
         allow list: if isCNCManager()
           || (
             isActiveOperator()
             && exists(/databases/$(database)/documents/cncJobs/$(jobId))
-            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == authMap().userId
           );
         allow create, update: if isValidId(jobId) && isValidId(fileId)
           && isValidCncProgramFile(incoming())
@@ -343,7 +763,7 @@ service cloud.firestore {
             || (
               isActiveOperator()
               && exists(/databases/$(database)/documents/cncJobs/$(jobId))
-              && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+              && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == authMap().userId
             )
           );
         allow delete: if isValidId(jobId) && isValidId(fileId) && (
@@ -351,7 +771,7 @@ service cloud.firestore {
           || (
             isActiveOperator()
             && exists(/databases/$(database)/documents/cncJobs/$(jobId))
-            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == staffUserId()
+            && get(/databases/$(database)/documents/cncJobs/$(jobId)).data.operator_id == authMap().userId
           )
         );
       }
@@ -484,6 +904,106 @@ service cloud.firestore {
       allow list: if isVerifiedStaff();
       allow create, update: if isValidId(eventId) && isVerifiedStaff() && incoming().id == eventId;
       allow delete: if isValidId(eventId) && isAdmin();
+    }
+
+    // 10. Centralized Recently Deleted Trash (/recentlyDeleted/{trashId}) - Hardened Phase 1
+    // - Read & Restore: Admin, Super Admin & verified Owner only
+    // - Archive Create: Explicit module/entity permissions matching delete authority + real source deletion
+    // - Permanent Purge (delete or PURGED status): Super Admin & verified Owner only
+    match /recentlyDeleted/{trashId} {
+      allow get: if isValidId(trashId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(trashId)
+        && canArchiveAndBindTrashCreate(incoming())
+        && isValidTrashCreate(incoming(), trashId)
+        && isTrashSourceDeleted(incoming());
+      allow update: if isValidId(trashId)
+        && existing().status == 'IN_TRASH'
+        && (
+          incoming().status == 'RESTORED'
+            ? (
+              isAdmin()
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'status', 'restoredAt', 'restoredByAuthUid', 'restoredByUserId',
+                'restoredByName', 'restoredByEmail', 'restoredByRole', 'restoreTargetId'
+              ])
+              && isValidTrashRestoreMeta(incoming(), incoming().keys())
+              && isActorIdentityBound(incoming().restoredByAuthUid, incoming().restoredByUserId, incoming().restoredByRole)
+            )
+            : (
+              incoming().status == 'PURGED'
+              && isSuperAdmin()
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'status', 'purgedAt', 'purgedByAuthUid', 'purgedByUserId', 'purgedByRole'
+              ])
+              && isValidTrashPurgeMeta(incoming(), incoming().keys())
+              && isActorIdentityBound(incoming().purgedByAuthUid, incoming().purgedByUserId, incoming().purgedByRole)
+            )
+        );
+      allow delete: if isValidId(trashId) && isSuperAdmin();
+
+      match /chunks/{chunkId} {
+        allow get: if isValidId(trashId) && isValidId(chunkId) && isAdmin()
+          && exists(/databases/$(database)/documents/recentlyDeleted/$(trashId));
+        allow list: if isValidId(trashId) && isAdmin();
+        allow create: if isValidId(trashId) && isValidId(chunkId)
+          && canCreateTrashChunk(incoming(), trashId, chunkId);
+        allow update: if false;
+        allow delete: if isValidId(trashId) && isValidId(chunkId) && isSuperAdmin();
+      }
+
+      match /related/{relatedId} {
+        allow get: if isValidId(trashId) && isValidId(relatedId) && isAdmin()
+          && exists(/databases/$(database)/documents/recentlyDeleted/$(trashId));
+        allow list: if isValidId(trashId) && isAdmin();
+        allow create: if isValidId(trashId) && isValidId(relatedId)
+          && canCreateTrashRelated(incoming(), trashId, relatedId);
+        allow update: if false;
+        allow delete: if isValidId(trashId) && isValidId(relatedId) && isSuperAdmin();
+      }
+    }
+
+    // 11. Append-Only Verifiable Activity Timeline (/activityTimeline/{activityId}) - Hardened Phase 1
+    // - Read: Admin, Super Admin & verified Owner only
+    // - Create (Client):
+    //     * NEVER allowed to forge source == 'server_trusted' or verificationStatus == 'SERVER_VERIFIED'
+    //     * Telemetry-only actions (LOGIN, EXPORT, LOGIN_DENIED, ACCESS_DENIED) require verificationStatus == 'CLIENT_TELEMETRY'
+    //     * Critical operations (CREATE, UPDATE, DELETE, RESTORE, PURGE, PAYMENT, STAGE_CHANGE, STATUS_CHANGE, ASSIGN, UPLOAD)
+    //       MUST present verificationStatus == 'RULE_BOUND_MUTATION' + atomic batch proof verified via exists/existsAfter/getAfter
+    // - Update / Delete: Permanently forbidden
+    match /activityTimeline/{activityId} {
+      allow get: if isValidId(activityId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(activityId)
+        && isSignedIn()
+        && isValidActivityEvent(incoming())
+        && incoming().id == activityId
+        && incoming().createdAt == request.time
+        && (
+          incoming().verificationStatus == 'CLIENT_TELEMETRY'
+            ? (
+              incoming().action in ['LOGIN', 'EXPORT', 'LOGIN_DENIED', 'ACCESS_DENIED']
+              && (
+                incoming().action in ['LOGIN_DENIED', 'ACCESS_DENIED']
+                  ? (
+                    incoming().module == 'auth'
+                    && incoming().actorAuthUid == request.auth.uid
+                    && (!hasAuthMap() || (incoming().actorUserId == authMap().userId && (incoming().actorRole == authMap().role || (isBootstrapAdmin() && incoming().actorRole in ['admin', 'super_admin']))))
+                  )
+                  : isActorIdentityBound(incoming().actorAuthUid, incoming().actorUserId, incoming().actorRole)
+              )
+            )
+            : (
+              incoming().verificationStatus == 'RULE_BOUND_MUTATION'
+              && incoming().action in [
+                'CREATE', 'UPDATE', 'DELETE', 'RESTORE', 'PURGE',
+                'STAGE_CHANGE', 'STATUS_CHANGE', 'ASSIGN', 'PAYMENT', 'UPLOAD'
+              ]
+              && isActorIdentityBound(incoming().actorAuthUid, incoming().actorUserId, incoming().actorRole)
+              && isVerifiedActivityProof(incoming())
+            )
+        );
+      allow update, delete: if false;
     }
   }
 }

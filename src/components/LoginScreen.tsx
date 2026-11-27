@@ -556,7 +556,7 @@ export default function LoginScreen({ users, onLoginSuccess }: LoginScreenProps)
                     Bhisez Workshop
                   </h1>
                   <p className="text-stone-500 text-xs mt-1 text-center">
-                    Authorized personnel &amp; CNC operator access control
+                    Authorized Admin &amp; operators access control
                   </p>
                 </div>
               </div>

@@ -29,7 +29,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "event_type": { "type": "string", "enum": ["LOGIN_SUCCESS", "LOGIN_DENIED", "ACCESS_DENIED", "USER_CREATED", "USER_UPDATED", "ROLE_CHANGED", "PERMISSION_CHANGED", "STATUS_CHANGED", "SENSITIVE_ACTION", "ORDER_DELETED", "PASSWORD_RESET_REQUESTED"] },
+        "event_type": { "type": "string", "enum": ["LOGIN_SUCCESS", "LOGIN_DENIED", "ACCESS_DENIED", "USER_CREATED", "USER_UPDATED", "USER_MODIFIED", "USER_DELETED", "ROLE_CHANGED", "PERMISSION_CHANGED", "STATUS_CHANGED", "SENSITIVE_ACTION", "ORDER_DELETED", "PASSWORD_RESET_REQUESTED"] },
         "user_id": { "type": "string" },
         "user_email": { "type": "string" },
         "user_role": { "type": "string" },
@@ -349,6 +349,7 @@
         "order_id": { "type": "string", "description": "Foreign key to original production order" },
         "article_no": { "type": "string", "description": "Original order article number" },
         "customer_name": { "type": "string" },
+        "jobName": { "type": "string", "description": "Dedicated job name entered for the CNC workshop task" },
         "job_number": { "type": "string", "description": "Sequential CNC job identifier" },
         "job_date": { "type": "string", "format": "date" },
         "product_name": { "type": "string" },
@@ -367,8 +368,23 @@
         "completion_time_unit": { "type": "string" },
         "start_time": { "type": "string", "description": "24-hour machine start time HH:MM" },
         "stop_time": { "type": "string", "description": "24-hour machine stop time HH:MM" },
-        "machine_running_time": { "type": "string", "description": "Calculated running duration HH:MM" },
+        "machine_running_time": { "type": "string", "description": "Calculated total running duration HH:MM" },
         "is_overnight": { "type": "boolean", "description": "Indicates stop time crosses midnight" },
+        "time_sessions": {
+          "type": "array",
+          "description": "Structured list of independent machine running time sessions for this job",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "start_time": { "type": "string" },
+              "stop_time": { "type": "string" },
+              "running_time": { "type": "string" },
+              "duration_minutes": { "type": "number" },
+              "is_overnight": { "type": "boolean" }
+            }
+          }
+        },
         "operator_id": { "type": "string", "description": "Assigned CNC Operator User ID" },
         "operator_name": { "type": "string" },
         "amount": { "type": "number", "description": "CNC Workshop job revenue or rate" },
@@ -467,6 +483,109 @@
         "updated_at": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "role", "status"]
+    },
+    "recentlyDeletedItem": {
+      "title": "Recently Deleted Trash Item",
+      "description": "Centralized soft-deleted record envelope with 30-day retention, 1 MB chunk overflow support, and preserved Storage paths",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "module": { "type": "string", "enum": ["orders", "crm", "customers", "cnc_workshop", "wood_management", "mrp", "users"] },
+        "entityType": { "type": "string", "enum": ["order", "customer", "crm_customer", "crm_quotation", "crm_followup", "crm_payment", "crm_note", "crm_attachment", "cnc_job", "cnc_program_file", "cnc_tool", "wood_request", "mrp_hardware", "mrp_wood", "mrp_bom", "user"] },
+        "originalCollection": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "originalId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "parentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayTitle": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "displaySubtitle": { "type": "string", "maxLength": 320 },
+        "snapshotMode": { "type": "string", "enum": ["inline", "chunked"] },
+        "payload": { "type": "object" },
+        "payloadBytes": { "type": "number" },
+        "chunkCount": { "type": "number" },
+        "relatedCount": { "type": "number" },
+        "relatedRefs": { "type": "array" },
+        "storagePaths": { "type": "array" },
+        "parentTrashId": { "type": "string", "maxLength": 128 },
+        "batchId": { "type": "string", "maxLength": 128 },
+        "deletedByAuthUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "deletedByUserId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "deletedByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "deletedByEmail": { "type": "string", "maxLength": 180 },
+        "deletedByRole": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "deletedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "retentionDays": { "type": "number" },
+        "status": { "type": "string", "enum": ["IN_TRASH", "RESTORED", "PURGED"] },
+        "restoredAt": { "type": "string", "format": "date-time" },
+        "restoredByAuthUid": { "type": "string", "maxLength": 128 },
+        "restoredByUserId": { "type": "string", "maxLength": 128 },
+        "restoredByName": { "type": "string", "maxLength": 120 },
+        "restoredByEmail": { "type": "string", "maxLength": 180 },
+        "restoredByRole": { "type": "string", "maxLength": 40 },
+        "restoreTargetId": { "type": "string", "maxLength": 256 },
+        "purgedAt": { "type": "string", "format": "date-time" },
+        "purgedByAuthUid": { "type": "string", "maxLength": 128 },
+        "purgedByUserId": { "type": "string", "maxLength": 128 },
+        "purgedByRole": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "module", "entityType", "originalCollection", "originalId", "displayTitle", "snapshotMode", "payloadBytes", "chunkCount", "relatedCount", "deletedByAuthUid", "deletedByUserId", "deletedByName", "deletedByEmail", "deletedByRole", "deletedAt", "expiresAt", "retentionDays", "status"]
+    },
+    "trashPayloadChunk": {
+      "title": "Trash Payload Chunk",
+      "description": "Segmented serialized snapshot slice for oversized documents (quotations/orders/attachments) exceeding 650 KB",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "trashId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "chunkIndex": { "type": "number" },
+        "totalChunks": { "type": "number" },
+        "encoding": { "type": "string", "enum": ["utf-8-json-slice"] },
+        "data": { "type": "string", "minLength": 1, "maxLength": 600000 },
+        "byteLength": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "trashId", "chunkIndex", "totalChunks", "encoding", "data", "byteLength", "createdAt"]
+    },
+    "trashRelatedRecord": {
+      "title": "Trash Related Child Record",
+      "description": "Cascaded child document snapshot (statusLogs, payments, programFiles) stored outside parent Trash doc to avoid 1 MB limits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "trashId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "entityType": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "originalCollection": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "originalId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "payload": { "type": "object" },
+        "payloadBytes": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "trashId", "entityType", "originalCollection", "originalId", "payload", "payloadBytes", "createdAt"]
+    },
+    "activityEvent": {
+      "title": "Activity Timeline Event",
+      "description": "Append-only cross-module user activity ledger distinguishing SERVER_VERIFIED, RULE_BOUND_MUTATION, and CLIENT_TELEMETRY events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "module": { "type": "string", "enum": ["auth", "orders", "crm", "customers", "cnc_workshop", "wood_management", "mrp", "users", "settings", "trash"] },
+        "action": { "type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "RESTORE", "PURGE", "STAGE_CHANGE", "STATUS_CHANGE", "ASSIGN", "PAYMENT", "UPLOAD", "EXPORT", "LOGIN", "LOGIN_DENIED", "ACCESS_DENIED"] },
+        "entityType": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "entityLabel": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "actorAuthUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorUserId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "actorEmail": { "type": "string", "maxLength": 180 },
+        "actorRole": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "changes": { "type": "array" },
+        "metadata": { "type": "object" },
+        "proof": { "type": "object" },
+        "verificationStatus": { "type": "string", "enum": ["SERVER_VERIFIED", "RULE_BOUND_MUTATION", "CLIENT_TELEMETRY"] },
+        "source": { "type": "string", "enum": ["web_client", "server_trusted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "module", "action", "entityType", "entityId", "entityLabel", "actorAuthUid", "actorUserId", "actorName", "actorEmail", "actorRole", "summary", "verificationStatus", "source", "createdAt"]
     }
   },
   "firestore": {
@@ -561,6 +680,23 @@
     "/operatorInvites/{inviteId}": {
       "schema": "operatorInvite",
       "description": "Hashed email invite metadata for first-time operator/staff activation"
+    },
+    "/recentlyDeleted/{trashId}": {
+      "schema": "recentlyDeletedItem",
+      "description": "Centralized soft-delete Trash items with 30-day retention (Admin/Super Admin read & restore; Super Admin only permanent purge)"
+    },
+    "/recentlyDeleted/{trashId}/chunks/{chunkId}": {
+      "schema": "trashPayloadChunk",
+      "description": "Chunked payload slices for oversized deleted documents under 1 MB Firestore limit"
+    },
+    "/recentlyDeleted/{trashId}/related/{relatedId}": {
+      "schema": "trashRelatedRecord",
+      "description": "Cascaded child record snapshots linked to a parent Trash item"
+    },
+    "/activityTimeline/{activityId}": {
+      "schema": "activityEvent",
+      "description": "Append-only cross-module user activity timeline (Admin/Super Admin readable)"
     }
   }
 }
+  
